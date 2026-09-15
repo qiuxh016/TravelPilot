@@ -1,0 +1,9 @@
+{
+  "name": "travelpilot",
+  "private": true,
+  "scripts": {
+    "web:dev": "pnpm --dir apps/web dev",
+    "web:build": "pnpm --dir apps/web build"
+  },
+  "packageManager": "pnpm@11.19.0"
+}
