@@ -18,6 +18,24 @@ dev = [
   "ruff>=0.9,<1.0",
 ]
 
+# The repository is a monorepo, so setuptools must not scan the repository
+# root and mistake apps/packages/infra for one flat Python package.
+[tool.setuptools]
+packages = [
+  "travelpilot_api",
+  "travelpilot_worker",
+  "travelpilot_core",
+  "travelpilot_core.domain",
+  "travelpilot_infra",
+]
+
+[tool.setuptools.package-dir]
+travelpilot_api = "apps/api/src/travelpilot_api"
+travelpilot_worker = "apps/worker/src/travelpilot_worker"
+travelpilot_core = "packages/core/src/travelpilot_core"
+"travelpilot_core.domain" = "packages/core/src/travelpilot_core/domain"
+travelpilot_infra = "packages/infrastructure/src/travelpilot_infra"
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
