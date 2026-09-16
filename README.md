@@ -206,18 +206,6 @@ git add .
 git commit -m "describe your change"
 git push origin main
 ```
-
-## 当前开发阶段
-
-当前正在完成：
-
-```text
-Trip CRUD
-  → POI / Wishlist
-  → 前后端联调
-  → 基础测试和错误处理
-```
-
 后续计划：
 
 1. 接入地图 Provider；
