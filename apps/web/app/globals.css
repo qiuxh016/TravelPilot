@@ -18,5 +18,58 @@ h1 { font-size: clamp(44px, 7vw, 88px); line-height: .98; letter-spacing: -.07em
 .index { color: var(--accent); font-size: 12px; }
 .layer h2 { font-size: 28px; margin: 54px 0 10px; letter-spacing: -.04em; }
 .layer p { margin: 0; color: var(--muted); line-height: 1.5; }
+.trip-form {
+    display: grid;
+    gap: 16px;
+    max-width: 560px;
+  }
+  
+.trip-form label {
+display: grid;
+gap: 8px;
+color: var(--muted);
+font-size: 14px;
+}
+
+.trip-form input,
+.trip-form select,
+.trip-form textarea {
+width: 100%;
+border: 1px solid var(--border);
+border-radius: 8px;
+background: var(--surface);
+color: var(--text);
+padding: 12px;
+font: inherit;
+}
+
+.trip-form button {
+width: fit-content;
+border: 0;
+cursor: pointer;
+}
+
+.trip-form button:disabled {
+cursor: not-allowed;
+opacity: 0.6;
+}
+
+.workspace {
+display: grid;
+grid-template-columns: 1.2fr 0.8fr;
+gap: 48px;
+}
+
+.wishlist-list {
+display: grid;
+gap: 14px;
+}
+
+  @media (max-width: 800px) {
+    .workspace {
+      grid-template-columns: 1fr;
+      gap: 36px;
+    }
+  }
 @media (max-width: 720px) { .shell { padding: 20px; } .status { display: none; } .hero { padding: 80px 0 64px; } .layers { grid-template-columns: 1fr; } }
 

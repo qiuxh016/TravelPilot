@@ -2,6 +2,13 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+from travelpilot_api.api.v1.trips import router as trips_router
+from fastapi.middleware.cors import CORSMiddleware
+from travelpilot_api.api.v1.wishlist import (
+    trip_wishlist_router,
+    wishlist_item_router,
+)
 
 
 class HealthResponse(BaseModel):
@@ -10,10 +17,26 @@ class HealthResponse(BaseModel):
     timestamp: datetime
 
 
-app = FastAPI(title="TravelPilot API", version="0.1.0")
+app = FastAPI(
+    title="TravelPilot API",
+    version="0.1.0",
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-
-@app.get("/health", response_model=HealthResponse, tags=["system"])
+@app.get(
+    "/health",
+    response_model=HealthResponse,
+    tags=["system"],
+)
 async def health() -> HealthResponse:
     return HealthResponse(
         status="ok",
@@ -22,8 +45,22 @@ async def health() -> HealthResponse:
     )
 
 
-@app.get("/api/v1/trips", tags=["trips"])
-async def list_trips() -> dict[str, list[dict[str, str]]]:
-    """Placeholder endpoint for the first Trip CRUD slice."""
-    return {"items": []}
+# Trip CRUD
+app.include_router(
+    trips_router,
+    prefix="/api/v1",
+)
 
+
+# 创建和查询某个 Trip 下的 Wishlist
+app.include_router(
+    trip_wishlist_router,
+    prefix="/api/v1",
+)
+
+
+# 修改和删除单个 WishlistItem
+app.include_router(
+    wishlist_item_router,
+    prefix="/api/v1",
+)
