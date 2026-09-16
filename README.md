@@ -227,9 +227,9 @@ Trip CRUD
 5. 实现天气、疲劳和取消地点触发的局部重规划；
 6. 建立 Traveler Memory 和离线评测集。
 
-更多细节：
+## 四周计划
 
-- [week1.md](./week1.md)
-- [TravelPilot 项目规划](./TravelPilot_项目规划.md)
-- [TravelPilot 项目结构与开源参考](./TravelPilot_项目结构与开源参考.md)
-
+- [Week 1：基础闭环](./week1.md)
+- [Week 2：地图、POI 与确定性规划](./week2.md)
+- [Week 3：内容理解、Agent Runtime 与 MCP](./week3.md)
+- [Week 4：动态重规划、Memory、评测与交付](./week4.md)
