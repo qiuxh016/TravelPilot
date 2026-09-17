@@ -9,6 +9,8 @@ from travelpilot_api.api.v1.wishlist import (
     trip_wishlist_router,
     wishlist_item_router,
 )
+from travelpilot_api.api.v1.maps import router as maps_router
+from travelpilot_api.api.v1.plans import router as plans_router
 
 
 class HealthResponse(BaseModel):
@@ -64,3 +66,10 @@ app.include_router(
     wishlist_item_router,
     prefix="/api/v1",
 )
+
+app.include_router(
+    maps_router,
+    prefix="/api/v1",
+)
+
+app.include_router(plans_router, prefix="/api/v1")

@@ -6,7 +6,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from travelpilot_infra.db.base import Base
-from travelpilot_infra.db.models import TripModel
+from travelpilot_infra.db import models  # noqa: F401
 from travelpilot_infra.db.session import settings
 
 

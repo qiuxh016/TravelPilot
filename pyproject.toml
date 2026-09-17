@@ -31,6 +31,11 @@ packages = [
   "travelpilot_core",
   "travelpilot_core.domain",
   "travelpilot_infra",
+  "travelpilot_infra.db",
+  "travelpilot_infra.db.models",
+  "travelpilot_infra.db.repositories",
+  "travelpilot_infra.providers",
+  "travelpilot_infra.providers.maps",
 ]
 
 [tool.setuptools.package-dir]

@@ -165,20 +165,20 @@ async def matrix(p:MatrixRequest,maps=Depends(get_maps_provider)):
 
 ## 3. Plan 数据库和版本 API（Day 4）
 
-新建 `packages/infrastructure/src/travelpilot_infra/db/models/plan.py`，定义 `TripPlanModel(id, trip_id, version, status, warnings JSONB, created_at)` 与 `TripPlanNodeModel(id, plan_id, poi_id, day, start_time, end_time, priority, status, note)`；外键指向 trip/plan/poi，`(trip_id, version)` 唯一。同步在 `models/__init__.py` 导入两个模型。POI 增加：
+已完成实现的文件是 `packages/infrastructure/src/travelpilot_infra/db/models/plan.py`，其中定义 `TripPlanModel` 和 `TripPlanNodeModel`；外键指向 trip/plan/poi，`(trip_id, version)` 唯一。`models/__init__.py` 已导入两个模型，POI 已增加：
 
 ```python
 raw_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 ```
 
-生成迁移：
+本次实际迁移文件是 `packages/infrastructure/src/travelpilot_infra/db/migrations/versions/4f8e2c9a1b3d_create_trip_plans.py`，已经包含 `upgrade()` 和 `downgrade()`，可直接执行：
 
 ```powershell
 .\.venv\Scripts\alembic.exe revision --autogenerate -m "add plans and poi metadata"
 .\.venv\Scripts\alembic.exe upgrade head
 ```
 
-实现 `POST /api/v1/trips/{trip_id}/plan-runs`、`GET /api/v1/trips/{trip_id}/plans`、`GET /api/v1/trips/{trip_id}/plans/{plan_id}`。事务内取 Wishlist，版本为 `max(version)+1`，只 INSERT 新 Plan/Nodes，不覆盖旧版本；空 Wishlist 返回 400 `WISHLIST_EMPTY`，Provider 错误返回 503 `MAPS_PROVIDER_UNAVAILABLE`。
+实际实现文件：`packages/infrastructure/src/travelpilot_infra/db/repositories/plans.py`、`packages/core/src/travelpilot_core/application/plans.py`、`apps/api/src/travelpilot_api/schemas/plans.py`、`apps/api/src/travelpilot_api/api/v1/plans.py`。路由为 `POST /api/v1/trips/{trip_id}/plans`、`GET /api/v1/trips/{trip_id}/plans`、`GET /api/v1/trips/{trip_id}/plans/{plan_id}`。Service 读取 Wishlist，版本为 `max(version)+1`，只 INSERT 新 Plan/Nodes，不覆盖旧版本；空 Wishlist 返回 400 `WISHLIST_EMPTY`。路由已经在 `main.py` 注册。
 
 ## 4. 确定性规划器（Day 5）
 
