@@ -20,3 +20,8 @@ test-results/
 # Local research PDFs are kept on disk but are not committed to Git.
 paper/
 
+# Local weekly plans and project research notes.
+week*.md
+TravelPilot_项目结构与开源参考.md
+TravelPilot_项目规划.md
+
