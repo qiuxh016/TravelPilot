@@ -1,8 +1,9 @@
-from datetime import date, datetime, time, timezone
+from datetime import UTC, date, datetime, time
 from uuid import UUID, uuid4
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Time, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, Time, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from travelpilot_infra.db.base import Base
@@ -17,7 +18,7 @@ class TripPlanModel(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="READY")
     warnings: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
 
 
 class TripPlanNodeModel(Base):

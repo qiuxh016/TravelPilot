@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from travelpilot_api.schemas.wishlist import (
     WishlistCreate,
     WishlistUpdate,

@@ -1,8 +1,9 @@
 from decimal import Decimal
 from uuid import UUID, uuid4
 
-from sqlalchemy import Numeric, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy import Numeric, String
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from travelpilot_infra.db.base import Base

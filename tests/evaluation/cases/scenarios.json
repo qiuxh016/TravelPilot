@@ -1,0 +1,10 @@
+[
+  {"id": "chengdu-relaxed", "kind": "plan", "description": "成都四日轻松旅行", "days": 4, "durations": [180, 120, 120], "expect_warning": false},
+  {"id": "rain-outdoor", "kind": "event", "description": "雨天室外地点受影响", "event_type": "WEATHER_CHANGE", "expect_operation": "REMOVE"},
+  {"id": "fatigue", "kind": "event", "description": "用户疲劳减少当天行程", "event_type": "USER_FATIGUE", "expect_operation": "REMOVE"},
+  {"id": "poi-cancelled", "kind": "event", "description": "地点临时取消", "event_type": "POI_CANCELLED", "expect_operation": "REMOVE"},
+  {"id": "time-conflict", "kind": "plan", "description": "全天时间容量冲突", "days": 1, "durations": [600, 600], "expect_warning": true},
+  {"id": "opening-hours", "kind": "opening", "description": "地点营业时间冲突", "expect_warning": true},
+  {"id": "long-route", "kind": "route", "description": "路线过长无法容纳", "travel_min": 600, "expect_warning": true},
+  {"id": "provider-failure", "kind": "provider", "description": "地图 Provider 失败，不缓存错误", "expect_error": "provider"}
+]

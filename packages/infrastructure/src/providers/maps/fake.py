@@ -1,4 +1,5 @@
 import math
+
 from travelpilot_core.ports.maps import Place, Route
 
 PLACES = [

@@ -73,3 +73,10 @@ gap: 14px;
   }
 @media (max-width: 720px) { .shell { padding: 20px; } .status { display: none; } .hero { padding: 80px 0 64px; } .layers { grid-template-columns: 1fr; } }
 
+
+button.primary, button.secondary { border-radius: 999px; padding: 12px 18px; font: inherit; cursor: pointer; }
+button.primary { border: 0; background: var(--accent); color: #172014; }
+button.secondary { border: 1px solid var(--border); background: transparent; color: var(--text); }
+button:disabled { opacity: .55; cursor: not-allowed; }
+.candidate-row { display: flex; align-items: center; gap: 10px; padding: 12px 0; color: var(--text); }
+blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px 18px; color: var(--muted); white-space: pre-wrap; }

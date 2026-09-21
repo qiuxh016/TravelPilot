@@ -1,9 +1,13 @@
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from travelpilot_api.schemas.plans import PlanRead, PlanNodeRead, PlanNodeUpdate, PlanChangeRead
 from travelpilot_core.application.plans import PlanService
 from travelpilot_infra.db.session import get_session
+from travelpilot_infra.providers.maps.errors import MapsProviderError
+
+from travelpilot_api.dependencies import get_maps_provider
+from travelpilot_api.schemas.plans import PlanChangeRead, PlanNodeRead, PlanNodeUpdate, PlanRead
 
 router = APIRouter(prefix="/trips/{trip_id}", tags=["plans"])
 
@@ -21,15 +25,17 @@ def to_read(plan, rows):
 
 
 @router.post("/plan-runs", response_model=PlanRead, status_code=status.HTTP_201_CREATED)
-async def generate_plan(trip_id: UUID, session: AsyncSession = Depends(get_session)):
+async def generate_plan(trip_id: UUID, session: AsyncSession = Depends(get_session), maps=Depends(get_maps_provider)):
     try:
-        plan = await PlanService(session).generate(trip_id)
+        plan = await PlanService(session).generate(trip_id, maps)
     except LookupError as exc:
         raise HTTPException(404, detail="Trip not found") from exc
     except ValueError as exc:
         if str(exc) == "WISHLIST_EMPTY":
             raise HTTPException(400, detail={"code": "WISHLIST_EMPTY", "message": "Wishlist is empty"}) from exc
         raise
+    except MapsProviderError as exc:
+        raise HTTPException(503, detail="地图服务暂时不可用") from exc
     full = await PlanService(session).get(trip_id, plan.id)
     return to_read(*full)
 
@@ -55,13 +61,16 @@ async def update_node(trip_id: UUID, plan_id: UUID, node_id: UUID, payload: Plan
     if await service.get(trip_id, plan_id) is None:
         raise HTTPException(404, detail="Plan not found")
     try:
-        node = await service.update_node(plan_id, node_id, payload.model_dump(exclude_unset=True), reason)
+        revised = await service.update_node(plan_id, node_id, payload.model_dump(exclude_unset=True), reason)
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(409, detail=str(exc)) from exc
     except Exception:
         await session.rollback()
         raise
-    if node is None:
+    if revised is None:
         raise HTTPException(404, detail="Plan node not found")
-    return to_read(*(await service.get(trip_id, plan_id)))
+    return to_read(*(await service.get(trip_id, revised.id)))
 
 
 @router.delete("/plans/{plan_id}/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -69,7 +78,12 @@ async def delete_node(trip_id: UUID, plan_id: UUID, node_id: UUID, reason: str |
     service = PlanService(session)
     if await service.get(trip_id, plan_id) is None:
         raise HTTPException(404, detail="Plan not found")
-    if not await service.delete_node(plan_id, node_id, reason):
+    try:
+        revised = await service.delete_node(plan_id, node_id, reason)
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(409, detail=str(exc)) from exc
+    if revised is None:
         raise HTTPException(404, detail="Plan node not found")
 
 

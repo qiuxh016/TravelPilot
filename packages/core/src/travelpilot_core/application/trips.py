@@ -3,7 +3,6 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from travelpilot_infra.db.models.trip import TripModel
 from travelpilot_infra.db.repositories.trips import TripRepository
 

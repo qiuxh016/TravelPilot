@@ -1,4 +1,6 @@
 from pydantic import BaseModel, Field
+
+
 class PlaceRead(BaseModel):
     provider:str; provider_id:str; name:str; address:str|None; category:str
     latitude:float; longitude:float; opening_hours:dict|None=None

@@ -2,7 +2,6 @@ from decimal import Decimal
 
 import pytest
 from pydantic import ValidationError
-
 from travelpilot_api.schemas.wishlist import WishlistCreate
 
 
@@ -25,8 +24,8 @@ def test_wishlist_rejects_invalid_latitude() -> None:
         WishlistCreate(
             name="错误地点",
             category="CUSTOM",
-            latitude=Decimal("100"),
-            longitude=Decimal("104"),
+            latitude=Decimal(100),
+            longitude=Decimal(104),
             suggested_duration_min=60,
             priority=3,
         )
@@ -37,8 +36,8 @@ def test_wishlist_rejects_invalid_priority() -> None:
         WishlistCreate(
             name="地点",
             category="CUSTOM",
-            latitude=Decimal("30"),
-            longitude=Decimal("104"),
+            latitude=Decimal(30),
+            longitude=Decimal(104),
             suggested_duration_min=60,
             priority=6,
         )

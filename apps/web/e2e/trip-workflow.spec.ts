@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("用户可以创建旅行并进入详情页", async ({ page }) => {
+test("用户可以创建旅行并进入详情页", async ({ page, request }) => {
   await page.goto("/trips");
 
   await expect(
@@ -24,4 +24,6 @@ test("用户可以创建旅行并进入详情页", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "成都" }),
   ).toBeVisible();
+  const tripId = page.url().split("/").pop();
+  await request.delete(`http://127.0.0.1:8000/api/v1/trips/${tripId}`);
 });

@@ -1,6 +1,8 @@
 import httpx
 from travelpilot_core.ports.maps import Place, Route
+
 from .errors import MapsConfigurationError, MapsUpstreamError
+
 
 class AmapProvider:
     def __init__(self, api_key: str, timeout: float = 8):
@@ -39,6 +41,19 @@ class AmapProvider:
         return Route(origin, destination, int(path["distance"]), max(1, round(int(path["duration"]) / 60)), "amap")
 
     async def get_distance_matrix(self, points):
+        if not points:
+            return []
         origins = ";".join(f"{point[1]},{point[0]}" for point in points)
-        data = await self._get("/distance", origins=origins, destination=f"{points[0][1]},{points[0][0]}")
-        return [[int(item["duration"]) // 60 for item in data.get("results", [])]]
+        columns = []
+        for point in points:
+            data = await self._get("/distance", origins=origins,
+                                   destination=f"{point[1]},{point[0]}", type=1)
+            results = data.get("results", [])
+            if len(results) != len(points):
+                raise MapsUpstreamError("地图服务暂时不可用")
+            try:
+                columns.append([max(0, round(int(item["duration"]) / 60)) for item in results])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise MapsUpstreamError("地图服务暂时不可用") from exc
+        return [[columns[destination][origin] for destination in range(len(points))]
+                for origin in range(len(points))]

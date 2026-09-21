@@ -1,4 +1,4 @@
-from datetime import date, time, datetime
+from datetime import date, datetime, time
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -40,6 +40,9 @@ class PlanChangeRead(BaseModel):
     plan_id: UUID
     node_id: UUID | None
     change_type: str
+    stable_key: str
+    reason_code: str
+    change_cost: int
     before_data: dict | None
     after_data: dict | None
     reason: str | None

@@ -1,16 +1,23 @@
-from datetime import datetime, timezone
+import logging
+import time
+from datetime import UTC, datetime
+from uuid import uuid4
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
+
+from travelpilot_api.api.v1.agent import router as agent_router
+from travelpilot_api.api.v1.content import router as content_router
+from travelpilot_api.api.v1.events import router as events_router
+from travelpilot_api.api.v1.maps import router as maps_router
+from travelpilot_api.api.v1.memory import router as memory_router
+from travelpilot_api.api.v1.plans import router as plans_router
 from travelpilot_api.api.v1.trips import router as trips_router
-from fastapi.middleware.cors import CORSMiddleware
 from travelpilot_api.api.v1.wishlist import (
     trip_wishlist_router,
     wishlist_item_router,
 )
-from travelpilot_api.api.v1.maps import router as maps_router
-from travelpilot_api.api.v1.plans import router as plans_router
 
 
 class HealthResponse(BaseModel):
@@ -34,6 +41,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+logger = logging.getLogger("travelpilot.api")
+
+
+@app.middleware("http")
+async def request_trace(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or str(uuid4())
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        logger.error("request_failed request_id=%s method=%s path=%s error_type=%s",
+                     request_id, request.method, request.url.path, type(exc).__name__)
+        raise
+    response.headers["x-request-id"] = request_id
+    logger.info("request request_id=%s method=%s path=%s status=%s latency_ms=%s",
+                request_id, request.method, request.url.path, response.status_code,
+                round((time.perf_counter() - started) * 1000))
+    return response
+
+
 @app.get(
     "/health",
     response_model=HealthResponse,
@@ -43,7 +70,7 @@ async def health() -> HealthResponse:
     return HealthResponse(
         status="ok",
         service="travelpilot-api",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
     )
 
 
@@ -73,3 +100,8 @@ app.include_router(
 )
 
 app.include_router(plans_router, prefix="/api/v1")
+
+app.include_router(content_router, prefix="/api/v1")
+app.include_router(agent_router, prefix="/api/v1")
+app.include_router(events_router, prefix="/api/v1")
+app.include_router(memory_router, prefix="/api/v1")

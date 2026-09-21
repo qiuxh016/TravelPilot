@@ -123,6 +123,12 @@ export default function TripDetailPage() {
         </p>
       </section>
 
+      <div className="actions">
+        <Link className="secondary" href={`/places?tripId=${tripId}`}>搜索 POI</Link>
+        <Link className="secondary" href={`/trips/${tripId}/plan`}>查看计划</Link>
+        <Link className="secondary" href={`/trips/${tripId}/import`}>导入攻略</Link>
+        <Link className="secondary" href={`/trips/${tripId}/memory`}>旅行记忆</Link>
+      </div>
       {error && <p role="alert">{error}</p>}
 
       <section className="workspace">

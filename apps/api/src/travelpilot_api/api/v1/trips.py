@@ -2,11 +2,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from travelpilot_core.application.trips import TripService
+from travelpilot_infra.db.session import get_session
 
 from travelpilot_api.schemas.trips import TripCreate, TripRead, TripUpdate
-from travelpilot_infra.db.session import get_session
-from travelpilot_core.application.trips import TripService
-
 
 router = APIRouter(
     prefix="/trips",
@@ -84,15 +83,7 @@ async def update_trip(
     trip = await service.update_trip(trip_id, changes)
 
     if trip is None:
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content={
-                "error": {
-                    "code": "TRIP_NOT_FOUND",
-                    "message": "Trip does not exist",
-                }
-            },
-        )
+        raise HTTPException(status_code=404, detail="Trip not found")
 
     return TripRead.model_validate(trip)
 

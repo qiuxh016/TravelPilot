@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from travelpilot_infra.providers.maps.errors import MapsProviderError
+
 from travelpilot_api.dependencies import get_maps_provider
 from travelpilot_api.schemas.maps import *
-from travelpilot_infra.providers.maps.errors import MapsProviderError
+
 router=APIRouter(tags=["maps"])
 def unavailable(exc): raise HTTPException(503, detail="地图服务暂时不可用") from exc
 @router.get("/places/search",response_model=list[PlaceRead])
@@ -19,5 +21,5 @@ async def estimate(p:RouteRequest,maps=Depends(get_maps_provider)):
     except MapsProviderError as e: unavailable(e)
 @router.post("/routes/matrix",response_model=MatrixRead)
 async def matrix(p:MatrixRequest,maps=Depends(get_maps_provider)):
-    try:return MatrixRead(durations_min=await maps.get_distance_matrix(p.points),provider=maps.__class__.__name__)
+    try:return MatrixRead(durations_min=await maps.get_distance_matrix(p.points),provider=maps.provider.__class__.__name__ if hasattr(maps, "provider") else maps.__class__.__name__)
     except MapsProviderError as e: unavailable(e)

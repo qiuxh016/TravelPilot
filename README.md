@@ -1,217 +1,91 @@
 # TravelPilot
 
-TravelPilot 是一个面向国内自由行的 Context-aware Multi-Agent Travel Copilot。
+TravelPilot 是面向国内自由行的旅行规划 MVP。它把攻略文本变成待确认地点，保存 Wishlist，以地图路程和时间约束生成版本化 Plan，并在天气、疲劳、取消和延误等事件后局部重规划。
 
-当前阶段目标：
+## 当前能力
 
-```text
-创建 Trip → 添加 Wishlist 地点 → 保存到 PostgreSQL → 前端查看
-```
+- Trip 与 Wishlist CRUD；Fake/高德 POI 搜索、地点详情、路线和距离矩阵；本地 10 分钟查询缓存。
+- 确定性规划：按地点粗分组、日期分配、近邻排序，再检查交通、营业时间、每日数量和末尾缓冲。每次生成都是新 Plan 版本；节点编辑和删除同样生成新版本。
+- 攻略文本导入：可选兼容 Chat Completions 的模型做结构化抽取；未配置模型时用保守本地抽取。所有候选都需要用户确认后才进入 Wishlist。
+- Planner Agent：读取 Trip、Wishlist 和已确认记忆；把“轻松/紧凑”等偏好转换为排程约束，通过受限 Tool Port 查询地图矩阵，并记录 Agent 和 Tool trace。
+- 事件重规划：只处理事件当天及之后的非固定节点，保留旧版本并返回 KEEP/ADD/REMOVE/MOVE/UPDATE Diff。暴雨时优先用已收藏的室内地点替换；无候选时展示警告。
+- 反馈与记忆：反馈生成待确认记忆，支持确认、修改和删除；仅已确认记忆进入 Agent 上下文。
+- Redis Worker：可异步消费重规划任务，查询任务状态。API 也保留同步 `/replan-runs` 方便交互演示。
 
-## 技术栈
+网页为响应式 Web 应用，可在桌面和手机浏览器访问；尚无原生移动 App。Fake 地图与本地抽取可离线演示；真实高德、外部模型和天气 Provider 需要另外配置并验证。天气 Tool 在未配置 Provider 时明确返回 `UNAVAILABLE`。
 
-- Web：Next.js 15、React、TypeScript
-- API：Python、FastAPI、Uvicorn、Pydantic
-- 数据库：PostgreSQL 17 + pgvector
-- 缓存/队列：Redis 7
-- ORM/迁移：SQLAlchemy、Alembic
-- 测试：Pytest、Playwright（逐步接入）
-- 工程：Docker Compose、Git、GitHub
+## 结构
 
-## 项目结构
+| 目录 | 职责 |
+| --- | --- |
+| `apps/api` | FastAPI 路由、请求与响应 Schema、请求日志 |
+| `apps/web` | Next.js 页面与 API client |
+| `apps/worker` | Redis 后台重规划任务 |
+| `packages/core` | 纯排程、约束、影响分析、Agent Runtime 与 Tool Schema |
+| `packages/infrastructure` | PostgreSQL、Alembic、地图与 MCP 适配器 |
+| `tests/evaluation` | 八个固定离线场景和指标计算 |
 
-```text
-TravelPilot/
-├─ apps/
-│  ├─ web/                         # Next.js 前端
-│  │  ├─ app/                      # 首页、Trip 页面、样式
-│  │  └─ lib/api.ts               # 前端 API Client
-│  ├─ api/                         # FastAPI 后端
-│  │  ├─ src/travelpilot_api/
-│  │  │  ├─ main.py               # API 入口和 Router 注册
-│  │  │  ├─ api/v1/               # Trip、Wishlist 路由
-│  │  │  └─ schemas/              # Pydantic 模型
-│  │  └─ tests/                   # 后端测试
-│  └─ worker/                      # 后台任务入口
-├─ packages/
-│  ├─ core/                        # 领域和应用逻辑
-│  ├─ infrastructure/             # 数据库和 Provider 适配器
-│  └─ contracts/                  # API/Event 契约
-├─ docs/                           # 架构文档和 ADR
-├─ docker-compose.yml              # PostgreSQL + Redis
-├─ pyproject.toml                  # Python 依赖和打包配置
-├─ package.json                    # pnpm workspace 配置
-├─ week1.md                        # Week 1 实施步骤
-├─ TravelPilot_项目规划.md
-└─ TravelPilot_项目结构与开源参考.md
-```
+## 本地启动（Windows PowerShell）
 
-## 环境要求
-
-- Windows 10/11
-- Python 3.12+
-- Node.js 20+
-- pnpm
-- Docker Desktop（Linux Containers 模式）
-- Git
-- VS Code（推荐）
-
-## 本地启动
-
-### 安装依赖
+需要 Python 3.12+、Node.js 20+、pnpm、Docker Desktop。以下命令均在仓库根目录执行。
 
 ```powershell
-git clone https://github.com/qiuxh016/TravelPilot.git
-cd TravelPilot
-
 python -m venv .venv
-.\\.venv\\Scripts\\Activate.ps1
-python -m pip install -e ".[dev]"
-
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 pnpm install
-```
-
-### 环境变量
-
-复制模板：
-
-```powershell
 Copy-Item .env.example .env
-```
-
-根目录 `.env`：
-
-```env
-DATABASE_URL=postgresql+asyncpg://travelpilot:travelpilot@localhost:5432/travelpilot
-REDIS_URL=redis://localhost:6379/0
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
-前端可以创建 `apps/web/.env.local`：
-
-```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
-不要提交包含真实 API Key 的 `.env` 文件。
-
-### 启动基础服务
-
-```powershell
 docker compose up -d postgres redis
-docker compose ps
-.\\.venv\\Scripts\\alembic.exe upgrade head
+.\.venv\Scripts\alembic.exe upgrade head
 ```
 
-本地连接：
+如果主机 `6379` 已被占用，可在未提交的 `.env` 中设 `REDIS_PORT=6380`、`REDIS_URL=redis://localhost:6380/0`，再执行 `docker compose up -d redis`。不要停止占用该端口的其他服务。高德需要在 `.env` 中设置 `MAPS_PROVIDER=amap` 和 `AMAP_API_KEY`；默认 `fake` 不需要 Key。可选文本模型使用 `LLM_API_KEY`、`LLM_MODEL` 和 `LLM_BASE_URL`。不要提交真实凭据。
 
-```text
-PostgreSQL: localhost:5432
-用户：travelpilot
-密码：travelpilot
-数据库：travelpilot
-Redis: redis://localhost:6379/0
-```
-
-### 启动后端
+分别在三个 PowerShell 窗口运行：
 
 ```powershell
-uvicorn apps.api.src.travelpilot_api.main:app --reload
-```
-
-地址：
-
-```text
-http://localhost:8000/health
-http://localhost:8000/docs
-```
-
-### 启动前端
-
-另开 PowerShell：
-
-```powershell
+.\.venv\Scripts\uvicorn.exe travelpilot_api.main:app --reload --port 8000
 pnpm --dir apps/web dev
+.\.venv\Scripts\python.exe -m travelpilot_worker.main
 ```
 
-默认地址：
+Web 默认 `http://localhost:3000`，API 文档为 `http://localhost:8000/docs`。如果 Web 使用 `3001`，API 已允许该本地端口。使用隔离 Redis 时，Worker 可传 `--redis-url redis://localhost:6380/0`。
 
-```text
-http://localhost:3000
-```
+## 演示流程
 
-如果 3000 被占用，Next.js 会自动使用 3001；此时要在 FastAPI CORS 中允许对应端口。
+1. 在 `/trips` 创建旅行，进入详情页。
+2. 进入“导入攻略”，粘贴“想去宽窄巷子和熊猫基地”，勾选候选并确认；或在“搜索 POI”加入地点。
+3. 在“查看计划”生成 Plan v1，再次生成得到 v2；旧版本仍可查询。
+4. 在事件页输入旅行日期内的生效时间，选择天气变化、疲劳、地点取消或延误，查看新版本与 Diff。
+5. 在旅行记忆页提交“今天很累，希望下午少安排景点”，确认候选记忆；Planner Agent 后续会读取它。
 
-## 当前 API
+API 入口包括 `/api/v1/trips`、`/api/v1/trips/{trip_id}/wishlist`、`/api/v1/places/search`、`/api/v1/routes/*`、`/api/v1/trips/{trip_id}/plan-runs`、`/api/v1/trips/{trip_id}/content`、`/api/v1/content/{content_id}/confirm`、`/api/v1/trips/{trip_id}/agent-plan-runs`、`/api/v1/trips/{trip_id}/events`、`/api/v1/trips/{trip_id}/replan-runs`、`/api/v1/trips/{trip_id}/replan-jobs` 和 `/api/v1/trips/{trip_id}/feedback`。完整 Schema 见 Swagger。
 
-```text
-GET    /health
-
-POST   /api/v1/trips
-GET    /api/v1/trips
-GET    /api/v1/trips/{trip_id}
-PATCH  /api/v1/trips/{trip_id}
-DELETE /api/v1/trips/{trip_id}
-
-POST   /api/v1/trips/{trip_id}/wishlist
-GET    /api/v1/trips/{trip_id}/wishlist
-PATCH  /api/v1/wishlist/{item_id}
-DELETE /api/v1/wishlist/{item_id}
-```
-
-创建 Trip 示例：
-
-```json
-{
-  "destination": "成都",
-  "start_date": "2026-10-01",
-  "end_date": "2026-10-04",
-  "budget": 6000,
-  "pace_level": 2
-}
-```
-
-## 测试和质量检查
+## 验证
 
 ```powershell
-.\\.venv\\Scripts\\python.exe -m compileall -q apps packages
-.\\.venv\\Scripts\\python.exe -m pytest -q
-.\\.venv\\Scripts\\ruff.exe check .
+.\.venv\Scripts\python.exe -m compileall -q apps packages
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\ruff.exe check .
 pnpm --dir apps/web build
 ```
 
-Playwright：
+启动 PostgreSQL 并完成迁移后，可运行会自动清理测试 Trip 和 POI 的真实闭环：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\verify_live.py
+```
+
+Redis 位于 `6380` 时运行 Worker 闭环：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\verify_worker.py
+```
+
+启动 API 和 Web 后运行浏览器测试：
 
 ```powershell
 pnpm --dir apps/web exec playwright install chromium
 pnpm --dir apps/web exec playwright test
 ```
 
-核心验收流程：
-
-```text
-打开 /trips → 创建旅行 → 进入详情页
-→ 添加 Wishlist → 刷新页面 → 确认地点仍然存在
-```
-
-## 常用命令
-
-```powershell
-docker compose ps
-docker compose logs --tail 50 postgres redis
-
-git status --short --branch
-git pull
-git add .
-git commit -m "describe your change"
-git push origin main
-```
-后续计划：
-
-1. 接入地图 Provider；
-2. 增加 POI 搜索和路线查询；
-3. 实现确定性基础规划器和 Plan Validator；
-4. 接入 Content Agent、MCP Tool Layer；
-5. 实现天气、疲劳和取消地点触发的局部重规划；
-6. 建立 Traveler Memory 和离线评测集。
-
+`tests/evaluation/cases/scenarios.json` 和 [评测说明](docs/research/evaluation.md) 是固定离线逻辑评测，不代表外部地图、天气或模型质量。项目尚未实现自动购票、支付、爬虫或生产级部署。

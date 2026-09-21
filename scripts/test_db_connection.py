@@ -1,7 +1,6 @@
 import asyncio
 
 from sqlalchemy import text
-
 from travelpilot_infra.db.session import engine
 
 

@@ -3,8 +3,8 @@
 Revision ID: 4f8e2c9a1b3d
 Revises: 9d3eabb9a46a
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "4f8e2c9a1b3d"

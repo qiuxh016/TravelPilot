@@ -2,7 +2,6 @@ from datetime import date
 
 import pytest
 from pydantic import ValidationError
-
 from travelpilot_api.schemas.trips import TripCreate
 
 

@@ -2,15 +2,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from travelpilot_core.application.wishlist import WishlistService
+from travelpilot_infra.db.session import get_session
 
 from travelpilot_api.schemas.wishlist import (
     WishlistCreate,
     WishlistRead,
     WishlistUpdate,
 )
-from travelpilot_core.application.wishlist import WishlistService
-from travelpilot_infra.db.session import get_session
-
 
 # 创建和查询某个旅行下的 Wishlist
 trip_wishlist_router = APIRouter(
@@ -149,5 +148,3 @@ async def delete_wishlist_item(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Wishlist item not found",
         )
-
-    return None
