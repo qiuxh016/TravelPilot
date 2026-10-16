@@ -9,6 +9,12 @@ class ContentCreate(BaseModel):
     text: str = Field(min_length=2, max_length=20000)
 
 
+class OcrTextRead(BaseModel):
+    text: str
+    confidence: float | None
+    stored: bool = False
+
+
 class CandidateRead(BaseModel):
     id: UUID
     entity_id: UUID

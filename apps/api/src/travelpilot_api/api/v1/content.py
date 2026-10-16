@@ -1,6 +1,8 @@
+import asyncio
+import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from travelpilot_core.agents.extraction import extract_places
@@ -17,16 +19,43 @@ from travelpilot_infra.db.session import get_session
 from travelpilot_infra.providers.maps.errors import MapsProviderError
 
 from travelpilot_api.dependencies import get_maps_provider
+from travelpilot_api.media_storage import normalize_image
+from travelpilot_api.ocr import recognize_text
 from travelpilot_api.schemas.content import (
     CandidateRead,
     ConfirmCandidates,
     ContentCreate,
     ContentRead,
     EntityRead,
+    OcrTextRead,
 )
 from travelpilot_api.settings import settings
 
 router = APIRouter(tags=["content"])
+logger = logging.getLogger("travelpilot.content")
+
+
+@router.post("/trips/{trip_id}/content/ocr", response_model=OcrTextRead)
+async def recognize_content_image(trip_id: UUID, file: UploadFile = File(...),
+                                  session: AsyncSession = Depends(get_session)):
+    if await session.get(TripModel, trip_id) is None:
+        raise HTTPException(404, detail="Trip not found")
+    if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(415, detail="仅支持 JPEG、PNG 或 WebP 图片")
+    if file.size is not None and file.size > settings.media_max_upload_bytes:
+        raise HTTPException(413, detail="图片超出单张大小限制")
+    content = await file.read(settings.media_max_upload_bytes + 1)
+    if len(content) > settings.media_max_upload_bytes:
+        raise HTTPException(413, detail="图片超出单张大小限制")
+    try:
+        normalized, _, _, _ = await asyncio.to_thread(normalize_image, content, file.content_type)
+        text, confidence = await asyncio.to_thread(recognize_text, normalized)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("content_ocr_failed error_type=%s", type(exc).__name__)
+        raise HTTPException(503, detail="图片文字识别暂时不可用") from exc
+    return OcrTextRead(text=text, confidence=confidence, stored=False)
 
 
 async def _read(session: AsyncSession, content_id: UUID) -> ContentRead:

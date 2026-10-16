@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPlanRun, listPlans, type Plan } from "../../../../lib/api";
+import { SchematicMap } from "../../../../components/schematic-map";
+import { WeatherDemo } from "../../../../components/weather-demo";
 
 export default function PlanPage() {
   const tripId = useParams<{ tripId: string }>().tripId;
@@ -27,6 +29,12 @@ export default function PlanPage() {
     </section>
     {error ? <p role="alert">{error}</p> : null}
     {latest ? <><p>Plan v{latest.version} · {latest.status}</p>
+      <WeatherDemo days={days} />
+      {days.length > 0 ? <SchematicMap
+        title="当日地点顺序"
+        showRoute
+        points={latest.nodes.filter((node) => node.day === days[0]).map((node) => ({ id: node.id, name: node.name, detail: `${node.start_time.slice(0, 5)}–${node.end_time.slice(0, 5)}` }))}
+      /> : null}
       {latest.warnings.map((warning, index) => <p role="status" key={index}>⚠ {warning}</p>)}
       {days.map((day) => <section key={day}><h2>{day}</h2><div className="wishlist-list">{latest.nodes.filter((node) => node.day === day).map((node) => <article className="layer" key={node.id}>
         <span className="index">{node.start_time.slice(0, 5)}–{node.end_time.slice(0, 5)} · 优先级 {node.priority}</span>

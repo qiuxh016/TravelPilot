@@ -3,21 +3,26 @@ import time
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from travelpilot_api.api.v1.advisor import router as advisor_router
 from travelpilot_api.api.v1.agent import router as agent_router
+from travelpilot_api.api.v1.auth import router as auth_router
 from travelpilot_api.api.v1.content import router as content_router
 from travelpilot_api.api.v1.events import router as events_router
 from travelpilot_api.api.v1.maps import router as maps_router
 from travelpilot_api.api.v1.memory import router as memory_router
+from travelpilot_api.api.v1.moments import router as moments_router
 from travelpilot_api.api.v1.plans import router as plans_router
+from travelpilot_api.api.v1.social import router as social_router
 from travelpilot_api.api.v1.trips import router as trips_router
 from travelpilot_api.api.v1.wishlist import (
     trip_wishlist_router,
     wishlist_item_router,
 )
+from travelpilot_api.auth import require_request_scope
 
 
 class HealthResponse(BaseModel):
@@ -75,9 +80,15 @@ async def health() -> HealthResponse:
 
 
 # Trip CRUD
+app.include_router(auth_router, prefix="/api/v1")
+app.include_router(social_router, prefix="/api/v1")
+app.include_router(moments_router, prefix="/api/v1")
+app.include_router(advisor_router, prefix="/api/v1")
+
 app.include_router(
     trips_router,
     prefix="/api/v1",
+    dependencies=[Depends(require_request_scope)],
 )
 
 
@@ -85,6 +96,7 @@ app.include_router(
 app.include_router(
     trip_wishlist_router,
     prefix="/api/v1",
+    dependencies=[Depends(require_request_scope)],
 )
 
 
@@ -92,16 +104,18 @@ app.include_router(
 app.include_router(
     wishlist_item_router,
     prefix="/api/v1",
+    dependencies=[Depends(require_request_scope)],
 )
 
 app.include_router(
     maps_router,
     prefix="/api/v1",
+    dependencies=[Depends(require_request_scope)],
 )
 
-app.include_router(plans_router, prefix="/api/v1")
+app.include_router(plans_router, prefix="/api/v1", dependencies=[Depends(require_request_scope)])
 
-app.include_router(content_router, prefix="/api/v1")
-app.include_router(agent_router, prefix="/api/v1")
-app.include_router(events_router, prefix="/api/v1")
-app.include_router(memory_router, prefix="/api/v1")
+app.include_router(content_router, prefix="/api/v1", dependencies=[Depends(require_request_scope)])
+app.include_router(agent_router, prefix="/api/v1", dependencies=[Depends(require_request_scope)])
+app.include_router(events_router, prefix="/api/v1", dependencies=[Depends(require_request_scope)])
+app.include_router(memory_router, prefix="/api/v1", dependencies=[Depends(require_request_scope)])

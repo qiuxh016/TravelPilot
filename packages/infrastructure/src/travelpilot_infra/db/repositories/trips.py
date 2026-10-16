@@ -16,15 +16,15 @@ class TripRepository:
         await self.session.refresh(trip)
         return trip
 
-    async def get_by_id(self, trip_id: UUID) -> TripModel | None:
+    async def get_by_id(self, trip_id: UUID, owner_id: UUID) -> TripModel | None:
         result = await self.session.execute(
-            select(TripModel).where(TripModel.id == trip_id)
+            select(TripModel).where(TripModel.id == trip_id, TripModel.owner_id == owner_id)
         )
         return result.scalar_one_or_none()
 
-    async def list_all(self) -> list[TripModel]:
+    async def list_by_owner(self, owner_id: UUID) -> list[TripModel]:
         result = await self.session.execute(
-            select(TripModel).order_by(TripModel.created_at.desc())
+            select(TripModel).where(TripModel.owner_id == owner_id).order_by(TripModel.created_at.desc())
         )
         return list(result.scalars().all())
 

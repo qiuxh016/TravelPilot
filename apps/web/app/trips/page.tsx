@@ -51,14 +51,21 @@ export default function TripsPage() {
         <Link className="primary" href="/trips/new">
           创建旅行
         </Link>
+        <Link className="secondary" href="/demo">
+          地图与天气演示
+        </Link>
+        <Link className="secondary" href="/account">账户</Link>
       </nav>
 
       <section className="hero">
-        <p className="eyebrow">Your trips</p>
         <h1>我的旅行</h1>
         <p className="lede">
-          管理你的旅行和收藏地点。
+          规划行程、探索目的地，让每一次出发都更从容。
         </p>
+        <div className="actions">
+          <Link className="primary" href="/trips/new">创建旅行</Link>
+          <Link className="secondary" href="/demo">查看地图与天气演示</Link>
+        </div>
       </section>
 
       {loading && (
@@ -89,15 +96,13 @@ export default function TripsPage() {
       )}
 
       {!loading && !error && trips.length === 0 && (
-        <section className="layer">
-          <h2>还没有旅行</h2>
-          <p>
-            创建一次旅行，然后添加 Wishlist 地点。
-          </p>
-
-          <Link className="primary" href="/trips/new">
-            创建第一条旅行
-          </Link>
+        <section className="empty-state">
+          <div className="empty-state-mark" aria-hidden="true">✦</div>
+          <div>
+            <h2>从一条旅行开始</h2>
+            <p>创建旅行后，添加想去的地点，再生成每日计划。</p>
+          </div>
+          <Link className="primary" href="/trips/new">创建第一条旅行</Link>
         </section>
       )}
 

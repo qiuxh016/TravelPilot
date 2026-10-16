@@ -1,4 +1,5 @@
 .venv/
+.data/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -17,6 +18,7 @@ coverage/
 playwright-report/
 test-results/
 *.log
+*.tsbuildinfo
 
 # Local research PDFs are kept on disk but are not committed to Git.
 paper/

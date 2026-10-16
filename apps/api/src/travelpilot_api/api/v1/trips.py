@@ -3,8 +3,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from travelpilot_core.application.trips import TripService
+from travelpilot_infra.db.models.user import UserModel
 from travelpilot_infra.db.session import get_session
 
+from travelpilot_api.auth import get_current_user
 from travelpilot_api.schemas.trips import TripCreate, TripRead, TripUpdate
 
 router = APIRouter(
@@ -21,6 +23,7 @@ router = APIRouter(
 async def create_trip(
     payload: TripCreate,
     session: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
 ) -> TripRead:
     service = TripService(session)
 
@@ -30,6 +33,7 @@ async def create_trip(
         end_date=payload.end_date,
         budget=payload.budget,
         pace_level=payload.pace_level,
+        owner_id=user.id,
     )
 
     return TripRead.model_validate(trip)
@@ -41,9 +45,10 @@ async def create_trip(
 )
 async def list_trips(
     session: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
 ) -> list[TripRead]:
     service = TripService(session)
-    trips = await service.list_trips()
+    trips = await service.list_trips(user.id)
 
     return [TripRead.model_validate(trip) for trip in trips]
 
@@ -55,9 +60,10 @@ async def list_trips(
 async def get_trip(
     trip_id: UUID,
     session: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
 ) -> TripRead:
     service = TripService(session)
-    trip = await service.get_trip(trip_id)
+    trip = await service.get_trip(trip_id, user.id)
 
     if trip is None:
         raise HTTPException(
@@ -76,11 +82,12 @@ async def update_trip(
     trip_id: UUID,
     payload: TripUpdate,
     session: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
 ) -> TripRead:
     service = TripService(session)
 
     changes = payload.model_dump(exclude_unset=True)
-    trip = await service.update_trip(trip_id, changes)
+    trip = await service.update_trip(trip_id, user.id, changes)
 
     if trip is None:
         raise HTTPException(status_code=404, detail="Trip not found")
@@ -95,9 +102,10 @@ async def update_trip(
 async def delete_trip(
     trip_id: UUID,
     session: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
 ) -> None:
     service = TripService(session)
-    deleted = await service.delete_trip(trip_id)
+    deleted = await service.delete_trip(trip_id, user.id)
 
     if not deleted:
         raise HTTPException(

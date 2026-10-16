@@ -2,24 +2,44 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import {
   addWishlistItem,
+  deleteTrip,
+  deleteWishlistItem,
   getTrip,
   listWishlist,
+  updateTrip,
+  updateWishlistItem,
   type Trip,
   type WishlistItem,
 } from "../../../lib/api";
+import { SchematicMap } from "../../../components/schematic-map";
 
 export default function TripDetailPage() {
   const params = useParams<{ tripId: string }>();
+  const router = useRouter();
   const tripId = params.tripId;
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [editingTrip, setEditingTrip] = useState(false);
+  const [tripSaving, setTripSaving] = useState(false);
+  const [tripDeleting, setTripDeleting] = useState(false);
+  const [tripDestination, setTripDestination] = useState("");
+  const [tripStartDate, setTripStartDate] = useState("");
+  const [tripEndDate, setTripEndDate] = useState("");
+  const [tripBudget, setTripBudget] = useState("");
+  const [tripPace, setTripPace] = useState("3");
+  const [editingWishlistId, setEditingWishlistId] = useState<string | null>(null);
+  const [wishlistPriority, setWishlistPriority] = useState("3");
+  const [wishlistInterest, setWishlistInterest] = useState("");
+  const [wishlistNotes, setWishlistNotes] = useState("");
+  const [wishlistSavingId, setWishlistSavingId] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState("ATTRACTION");
@@ -92,6 +112,102 @@ export default function TripDetailPage() {
     }
   }
 
+  function beginTripEdit() {
+    if (!trip) return;
+    setTripDestination(trip.destination);
+    setTripStartDate(trip.start_date);
+    setTripEndDate(trip.end_date);
+    setTripBudget(trip.budget == null ? "" : String(trip.budget));
+    setTripPace(String(trip.pace_level));
+    setError("");
+    setNotice("");
+    setEditingTrip(true);
+  }
+
+  async function handleTripUpdate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (tripEndDate < tripStartDate) {
+      setError("结束日期不能早于开始日期。");
+      return;
+    }
+    try {
+      setTripSaving(true);
+      setError("");
+      const updated = await updateTrip(tripId, {
+        destination: tripDestination.trim(),
+        start_date: tripStartDate,
+        end_date: tripEndDate,
+        budget: tripBudget === "" ? null : Number(tripBudget),
+        pace_level: Number(tripPace),
+      });
+      setTrip(updated);
+      setEditingTrip(false);
+      setNotice("旅行信息已保存。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存旅行信息失败");
+    } finally {
+      setTripSaving(false);
+    }
+  }
+
+  async function handleTripDelete() {
+    const confirmed = window.confirm("删除这次旅行？关联的 Wishlist、计划、旅行记忆和反馈也会一并删除，且无法恢复。");
+    if (!confirmed) return;
+    try {
+      setTripDeleting(true);
+      setError("");
+      await deleteTrip(tripId);
+      router.replace("/trips");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除旅行失败");
+      setTripDeleting(false);
+    }
+  }
+
+  function beginWishlistEdit(item: WishlistItem) {
+    setEditingWishlistId(item.id);
+    setWishlistPriority(String(item.priority));
+    setWishlistInterest(item.interest_score == null ? "" : String(item.interest_score));
+    setWishlistNotes(item.notes ?? "");
+    setError("");
+    setNotice("");
+  }
+
+  async function handleWishlistUpdate(event: FormEvent<HTMLFormElement>, itemId: string) {
+    event.preventDefault();
+    try {
+      setWishlistSavingId(itemId);
+      setError("");
+      await updateWishlistItem(itemId, {
+        priority: Number(wishlistPriority),
+        interest_score: wishlistInterest === "" ? null : Number(wishlistInterest),
+        notes: wishlistNotes,
+      });
+      setEditingWishlistId(null);
+      setNotice("收藏信息已保存。");
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存收藏信息失败");
+    } finally {
+      setWishlistSavingId(null);
+    }
+  }
+
+  async function handleWishlistDelete(item: WishlistItem) {
+    if (!window.confirm(`删除收藏地点“${item.name}”？`)) return;
+    try {
+      setWishlistSavingId(item.id);
+      setError("");
+      await deleteWishlistItem(item.id);
+      setWishlist((current) => current.filter((entry) => entry.id !== item.id));
+      setNotice("收藏地点已删除。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除收藏地点失败");
+    } finally {
+      setWishlistSavingId(null);
+    }
+  }
+
   if (loading) {
     return <main className="shell">正在加载……</main>;
   }
@@ -123,13 +239,41 @@ export default function TripDetailPage() {
         </p>
       </section>
 
+      <div className="actions" aria-label="旅行管理">
+        <button className="secondary" type="button" onClick={beginTripEdit}>编辑旅行</button>
+        <button className="secondary" type="button" onClick={() => void handleTripDelete()} disabled={tripDeleting}>
+          {tripDeleting ? "正在删除…" : "删除旅行"}
+        </button>
+      </div>
+      {editingTrip && (
+        <form className="trip-form layer" onSubmit={handleTripUpdate}>
+          <h2>编辑旅行信息</h2>
+          <label>目的地<input required maxLength={120} value={tripDestination} onChange={(event) => setTripDestination(event.target.value)} /></label>
+          <label>开始日期<input required type="date" value={tripStartDate} onChange={(event) => setTripStartDate(event.target.value)} /></label>
+          <label>结束日期<input required type="date" min={tripStartDate} value={tripEndDate} onChange={(event) => setTripEndDate(event.target.value)} /></label>
+          <label>预算<input type="number" min="0" step="0.01" value={tripBudget} onChange={(event) => setTripBudget(event.target.value)} placeholder="可选" /></label>
+          <label>旅行节奏：{tripPace}<input type="range" min="1" max="5" value={tripPace} onChange={(event) => setTripPace(event.target.value)} /></label>
+          <div className="actions">
+            <button className="primary" type="submit" disabled={tripSaving}>{tripSaving ? "正在保存…" : "保存修改"}</button>
+            <button className="secondary" type="button" onClick={() => setEditingTrip(false)} disabled={tripSaving}>取消</button>
+          </div>
+        </form>
+      )}
+
       <div className="actions">
         <Link className="secondary" href={`/places?tripId=${tripId}`}>搜索 POI</Link>
         <Link className="secondary" href={`/trips/${tripId}/plan`}>查看计划</Link>
         <Link className="secondary" href={`/trips/${tripId}/import`}>导入攻略</Link>
         <Link className="secondary" href={`/trips/${tripId}/memory`}>旅行记忆</Link>
+        <Link className="secondary" href={`/trips/${tripId}/sharing`}>分享设置</Link>
       </div>
       {error && <p role="alert">{error}</p>}
+      {notice && <p role="status">{notice}</p>}
+
+      <SchematicMap
+        title="Wishlist 地点分布"
+        points={wishlist.map((item) => ({ id: item.id, name: item.name, detail: item.address }))}
+      />
 
       <section className="workspace">
         <div>
@@ -152,6 +296,22 @@ export default function TripDetailPage() {
                   建议游玩：{item.suggested_duration_min} 分钟
                 </p>
                 <p>{item.notes}</p>
+                {editingWishlistId === item.id ? (
+                  <form className="trip-form" onSubmit={(event) => void handleWishlistUpdate(event, item.id)}>
+                    <label>优先级：{wishlistPriority}<input type="range" min="1" max="5" value={wishlistPriority} onChange={(event) => setWishlistPriority(event.target.value)} /></label>
+                    <label>兴趣分（0–1）<input type="number" min="0" max="1" step="0.1" value={wishlistInterest} onChange={(event) => setWishlistInterest(event.target.value)} placeholder="可选" /></label>
+                    <label>备注<textarea value={wishlistNotes} onChange={(event) => setWishlistNotes(event.target.value)} /></label>
+                    <div className="actions">
+                      <button className="primary" type="submit" disabled={wishlistSavingId === item.id}>{wishlistSavingId === item.id ? "正在保存…" : "保存"}</button>
+                      <button className="secondary" type="button" onClick={() => setEditingWishlistId(null)} disabled={wishlistSavingId === item.id}>取消</button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="actions">
+                    <button className="secondary" type="button" onClick={() => beginWishlistEdit(item)}>编辑收藏</button>
+                    <button className="secondary" type="button" onClick={() => void handleWishlistDelete(item)} disabled={wishlistSavingId === item.id}>{wishlistSavingId === item.id ? "处理中…" : "删除收藏"}</button>
+                  </div>
+                )}
               </article>
             ))}
           </div>

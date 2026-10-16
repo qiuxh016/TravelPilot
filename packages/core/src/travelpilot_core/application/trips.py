@@ -19,6 +19,7 @@ class TripService:
         end_date: date,
         budget: Decimal | None,
         pace_level: int,
+        owner_id: UUID,
     ) -> TripModel:
         trip = TripModel(
             destination=destination,
@@ -27,24 +28,26 @@ class TripService:
             budget=budget,
             pace_level=pace_level,
             status="DRAFT",
+            owner_id=owner_id,
         )
 
         created = await self.repository.create(trip)
         await self.session.commit()
         return created
 
-    async def get_trip(self, trip_id: UUID) -> TripModel | None:
-        return await self.repository.get_by_id(trip_id)
+    async def get_trip(self, trip_id: UUID, owner_id: UUID) -> TripModel | None:
+        return await self.repository.get_by_id(trip_id, owner_id)
 
-    async def list_trips(self) -> list[TripModel]:
-        return await self.repository.list_all()
+    async def list_trips(self, owner_id: UUID) -> list[TripModel]:
+        return await self.repository.list_by_owner(owner_id)
 
     async def update_trip(
         self,
         trip_id: UUID,
+        owner_id: UUID,
         changes: dict,
     ) -> TripModel | None:
-        trip = await self.repository.get_by_id(trip_id)
+        trip = await self.repository.get_by_id(trip_id, owner_id)
 
         if trip is None:
             return None
@@ -53,8 +56,8 @@ class TripService:
         await self.session.commit()
         return updated
 
-    async def delete_trip(self, trip_id: UUID) -> bool:
-        trip = await self.repository.get_by_id(trip_id)
+    async def delete_trip(self, trip_id: UUID, owner_id: UUID) -> bool:
+        trip = await self.repository.get_by_id(trip_id, owner_id)
 
         if trip is None:
             return False
