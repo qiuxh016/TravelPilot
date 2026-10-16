@@ -13,3 +13,6 @@ class MatrixRequest(BaseModel):
     points:list[tuple[float,float]]=Field(min_length=2,max_length=30)
 class MatrixRead(BaseModel):
     durations_min:list[list[int]]; provider:str
+class StaticMapRequest(BaseModel):
+    points:list[tuple[float,float]]=Field(min_length=1,max_length=10)
+    selected_index:int=Field(default=0,ge=0,le=9)

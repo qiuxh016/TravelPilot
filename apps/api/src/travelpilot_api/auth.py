@@ -88,18 +88,20 @@ def set_session_cookies(response: Response, token: str) -> None:
     from travelpilot_api.settings import settings
 
     secure = settings.app_env.lower() == "production"
+    domain = settings.session_cookie_domain or None
     response.set_cookie(SESSION_COOKIE, token, max_age=SESSION_HOURS * 60 * 60,
-                        httponly=True, secure=secure, samesite="lax", path="/api/v1")
+                        httponly=True, secure=secure, samesite="lax", path="/api/v1", domain=domain)
     response.set_cookie(CSRF_COOKIE, secrets.token_urlsafe(24), max_age=SESSION_HOURS * 60 * 60,
-                        httponly=False, secure=secure, samesite="lax", path="/")
+                        httponly=False, secure=secure, samesite="lax", path="/", domain=domain)
 
 
 def clear_session_cookies(response: Response) -> None:
     from travelpilot_api.settings import settings
 
     secure = settings.app_env.lower() == "production"
-    response.delete_cookie(SESSION_COOKIE, path="/api/v1", secure=secure, httponly=True, samesite="lax")
-    response.delete_cookie(CSRF_COOKIE, path="/", secure=secure, httponly=False, samesite="lax")
+    domain = settings.session_cookie_domain or None
+    response.delete_cookie(SESSION_COOKIE, path="/api/v1", secure=secure, httponly=True, samesite="lax", domain=domain)
+    response.delete_cookie(CSRF_COOKIE, path="/", secure=secure, httponly=False, samesite="lax", domain=domain)
 
 
 async def require_request_scope(

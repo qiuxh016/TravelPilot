@@ -1,18 +1,41 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from travelpilot_core.application.trips import TripService
+from travelpilot_infra.db.models.trip import TripModel
 from travelpilot_infra.db.models.user import UserModel
 from travelpilot_infra.db.session import get_session
+from travelpilot_infra.providers.weather.open_meteo import WeatherProviderError
 
 from travelpilot_api.auth import get_current_user
+from travelpilot_api.dependencies import get_weather_provider
 from travelpilot_api.schemas.trips import TripCreate, TripRead, TripUpdate
+from travelpilot_api.schemas.weather import TripWeatherRead
 
 router = APIRouter(
     prefix="/trips",
     tags=["trips"],
 )
+
+
+@router.get("/{trip_id}/weather", response_model=TripWeatherRead)
+async def get_trip_weather(
+    trip_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
+    weather=Depends(get_weather_provider),
+):
+    trip = await session.scalar(select(TripModel).where(
+        TripModel.id == trip_id, TripModel.owner_id == user.id,
+    ))
+    if trip is None:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    try:
+        return await weather.forecast(trip.destination, trip.start_date, trip.end_date)
+    except WeatherProviderError as exc:
+        raise HTTPException(status_code=503, detail="天气服务暂时不可用") from exc
 
 
 @router.post(

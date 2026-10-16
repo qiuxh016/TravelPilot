@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { deleteAccount, exportAccount, logout, setAccessToken } from "../../lib/api";
+import { deleteAccount, exportAccount, logout } from "../../lib/api";
 
 export default function AccountPage() {
   const router = useRouter();
@@ -16,12 +16,11 @@ export default function AccountPage() {
     URL.revokeObjectURL(url);
   }
   async function signOut() {
-    try { await logout(); } finally { setAccessToken(null); router.replace("/login"); }
+    try { await logout(); } finally { router.replace("/login"); }
   }
   async function removeAccount() {
     if (!window.confirm("删除账户会永久删除该账户的旅行、计划、攻略和记忆，且无法撤销。继续吗？")) return;
     await deleteAccount();
-    setAccessToken(null);
     router.replace("/login");
   }
   return <main className="shell">

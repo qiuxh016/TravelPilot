@@ -1,3 +1,5 @@
+import math
+
 import httpx
 from travelpilot_core.ports.maps import Place, Route
 
@@ -43,7 +45,7 @@ class AmapProvider:
     async def get_distance_matrix(self, points):
         if not points:
             return []
-        origins = ";".join(f"{point[1]},{point[0]}" for point in points)
+        origins = "|".join(f"{point[1]},{point[0]}" for point in points)
         columns = []
         for point in points:
             data = await self._get("/distance", origins=origins,
@@ -57,3 +59,43 @@ class AmapProvider:
                 raise MapsUpstreamError("地图服务暂时不可用") from exc
         return [[columns[destination][origin] for destination in range(len(points))]
                 for origin in range(len(points))]
+
+    async def get_static_map(self, points, selected_index=0):
+        """Return a server-fetched AMap static map so the Web Service key stays private."""
+        if not points:
+            raise ValueError("至少需要一个地图点")
+        locations = [(longitude, latitude) for latitude, longitude in points]
+        center = (
+            sum(point[0] for point in locations) / len(locations),
+            sum(point[1] for point in locations) / len(locations),
+        )
+        longitude_span = max((point[0] for point in locations), default=center[0]) - min((point[0] for point in locations), default=center[0])
+        latitude_span = max((point[1] for point in locations), default=center[1]) - min((point[1] for point in locations), default=center[1])
+        # Fit the full set to the 1024x420 viewport instead of clipping distant stops
+        # at a fixed city-block zoom. A single/nearby stop set gets a close city view.
+        fit_width_zoom = math.log2(1440 / max(longitude_span, 0.001))
+        fit_height_zoom = math.log2(590 / max(latitude_span, 0.001))
+        zoom = max(4, min(17, math.floor(min(fit_width_zoom, fit_height_zoom))))
+        markers = "|".join(
+            f"mid,{('0xC17D37' if index == selected_index else '0x236443')},{label}:{longitude:.6f},{latitude:.6f}"
+            for index, (label, (longitude, latitude)) in enumerate(zip("123456789A", locations, strict=False))
+        )
+        params = {
+            "location": f"{center[0]:.6f},{center[1]:.6f}",
+            "zoom": str(zoom),
+            "size": "1024*420",
+            "markers": markers,
+        }
+        if len(locations) > 1:
+            path = ";".join(f"{longitude:.6f},{latitude:.6f}" for longitude, latitude in locations)
+            params["paths"] = f"6,0x236443,0.8,,:{path}"
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get("https://restapi.amap.com/v3/staticmap", params={**params, "key": self.api_key})
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise MapsUpstreamError("地图服务暂时不可用") from exc
+        content_type = response.headers.get("content-type", "")
+        if not content_type.startswith("image/"):
+            raise MapsUpstreamError("地图服务返回错误")
+        return response.content, content_type

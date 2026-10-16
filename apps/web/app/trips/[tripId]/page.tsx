@@ -15,7 +15,7 @@ import {
   type Trip,
   type WishlistItem,
 } from "../../../lib/api";
-import { SchematicMap } from "../../../components/schematic-map";
+import { RouteMap } from "../../../components/route-map";
 
 export default function TripDetailPage() {
   const params = useParams<{ tripId: string }>();
@@ -270,9 +270,9 @@ export default function TripDetailPage() {
       {error && <p role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
 
-      <SchematicMap
+      <RouteMap
         title="Wishlist 地点分布"
-        points={wishlist.map((item) => ({ id: item.id, name: item.name, detail: item.address }))}
+        points={wishlist.map((item) => ({ id: item.id, name: item.name, detail: item.address, latitude: item.latitude, longitude: item.longitude }))}
       />
 
       <section className="workspace">

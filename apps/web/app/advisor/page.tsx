@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { SchematicMap } from "../../components/schematic-map";
+import { RouteMap } from "../../components/route-map";
 import {
   AdvisorSession, Trip, confirmAdvisorDraft, createAdvisorDraft, createAdvisorSession,
   listAdvisorSessions, listTrips, sendAdvisorMessage,
@@ -142,14 +142,19 @@ export default function AdvisorPage() {
   const visibleMapDay = draftDays.includes(mapDay) ? mapDay : draftDays[0] ?? "";
   const mapStops = active?.draft?.stops.filter((stop) => stop.day === visibleMapDay) ?? [];
 
+  function focusPlanningSetup(nextMode: Mode, nextPreference?: string) {
+    setMode(nextMode);
+    if (nextPreference) setPreference(nextPreference);
+    document.getElementById("advisor-start")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <main className="shell advisor-page advisor-live">
       <header className="advisor-heading">
-        <div><h1>AI 旅行顾问</h1><p>对话、地点核验和行程草案都按账户保存；正式行程只在你确认后创建。</p></div>
-        <span className="advisor-live-badge">会话与草案已接入</span>
+        <div><h1>和旅行顾问一起，<br className="advisor-title-break" />把想法变成行程。</h1><p>先说说你喜欢什么。地点和日期可以慢慢补齐，正式行程会等你确认后再保存。</p></div>
       </header>
 
-      <section className="advisor-start panel">
+      <section className="advisor-start panel" id="advisor-start">
         <div className="advisor-panel-title"><div><h2>开始一次规划</h2><p>目前顾问能识别明确提到的地点并交给地图服务核验。目的地灵感推荐与开放式多轮推理需要配置模型能力。</p></div></div>
         <div className="advisor-mode-switch" role="group" aria-label="选择规划方式">
           {modes.map((item) => <button key={item.id} type="button" className={mode === item.id ? "is-selected" : ""} aria-pressed={mode === item.id} onClick={() => setMode(item.id)}>
@@ -192,7 +197,12 @@ export default function AdvisorPage() {
               <textarea id="advisor-message" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="说出地点、偏好或想调整的内容…" rows={2} disabled={busy || active.status !== "ACTIVE"} />
               <button className="primary" type="submit" disabled={!message.trim() || busy || active.status !== "ACTIVE"}>发送</button>
             </form>
-          </> : <p className="advisor-empty">创建新会话，或从右侧历史会话中打开。</p>}
+          </> : <div className="advisor-welcome">
+            <span className="advisor-welcome-mark" aria-hidden="true">✳</span>
+            <h3>不用先想好完整路线。</h3>
+            <p>选一种开始方式，填写大致日期和偏好，再把想去的地方告诉顾问。你可以边聊边调整。</p>
+            <div className="advisor-welcome-prompts"><button type="button" onClick={() => focusPlanningSetup("destination", "喜欢本地美食和老街巷，行程节奏轻松一些")}>想慢慢逛，看看本地生活 <span>↗</span></button><button type="button" onClick={() => focusPlanningSetup("destination", "我会逐个告诉你想去的地点，请帮我合理安排顺序")}>我已经有几个想去的地方 <span>↗</span></button><button type="button" onClick={() => focusPlanningSetup("existing")}>调整一趟已经创建的旅行 <span>↗</span></button></div>
+          </div>}
         </section>
 
         <div className="advisor-plan">
@@ -223,7 +233,7 @@ export default function AdvisorPage() {
               <span className="advisor-stop-index">{index + 1}</span><div className="advisor-stop-time">{stop.start_time.slice(0, 5)}<br /><span>{stop.end_time.slice(0, 5)}</span></div>
               <div className="advisor-stop-content"><h3>{stop.name}</h3><small>{stop.day} · {stop.category}</small><p>{stop.address || "地图候选地点"}</p></div>
             </article>)}</div> : <p className="advisor-empty">选择地点并生成草案后，这里会显示按日期和地图交通时间排出的路线。</p>}
-            {active?.draft?.stops.length ? <div className="advisor-live-map"><SchematicMap title="当日地点顺序示意" points={mapStops.map((stop) => ({ id: stop.candidate_id, name: stop.name, detail: `${stop.start_time.slice(0, 5)}–${stop.end_time.slice(0, 5)}` }))} showRoute /></div> : null}
+            {active?.draft?.stops.length ? <div className="advisor-live-map"><RouteMap title="当日真实地点地图" points={mapStops.map((stop) => ({ id: stop.candidate_id, name: stop.name, detail: `${stop.start_time.slice(0, 5)}–${stop.end_time.slice(0, 5)}`, latitude: stop.latitude, longitude: stop.longitude }))} disclaimer="编号与草案中的游览顺序一致。" /></div> : null}
             {active?.draft?.warnings.map((warning) => <p className="advisor-live-warning" key={warning}>{warning}</p>)}
           </section>
         </div>
@@ -236,12 +246,12 @@ export default function AdvisorPage() {
         </button>)}</div> : <p className="advisor-empty">还没有顾问会话。</p>}
       </section>
 
-      <footer className="advisor-confirm-bar">
+      {(active?.draft || active?.confirmed_trip_id) && <footer className="advisor-confirm-bar">
         <div><strong>{active?.status === "CONFIRMED" ? "草案已保存" : "确认后写入正式旅行"}</strong><p>保存时会创建或更新 Wishlist 与 Plan，重复确认不会创建重复计划。</p></div>
         {notice && <span role="status" className="advisor-action-notice">{notice}</span>}
         {active?.draft && draftIsStale && <span role="status" className="advisor-live-error">对话、节奏或选点已变化，请重新生成草案</span>}
         {active?.status === "CONFIRMED" && active.confirmed_trip_id ? <Link className="primary" href={`/trips/${active.confirmed_trip_id}/plan`}>查看已保存行程</Link> : <button type="button" className="primary" onClick={confirmDraft} disabled={!active?.draft || draftIsStale || busy}>{busy ? "保存中…" : "确认并保存行程"}</button>}
-      </footer>
+      </footer>}
     </main>
   );
 }

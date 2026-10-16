@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import re
 import secrets
 from datetime import UTC, datetime, timedelta
@@ -7,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from redis.asyncio import Redis
 from sqlalchemy import delete, exists, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,9 +59,15 @@ from travelpilot_api.auth import (
     verify_password,
 )
 from travelpilot_api.mail import latest_development_email, send_action_email
+from travelpilot_api.rate_limit import (
+    consume_email_send_budget,
+    enforce_ip_rate_limit,
+    get_rate_limit_redis,
+)
 from travelpilot_api.settings import settings
 
 router = APIRouter(tags=["auth"])
+logger = logging.getLogger("travelpilot.api.auth")
 
 
 class Credentials(BaseModel):
@@ -108,13 +116,11 @@ class UserRead(BaseModel):
 
 
 class SessionRead(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
     expires_at: datetime
     user: UserRead
 
 
-async def _issue_session(user: UserModel, session: AsyncSession) -> SessionRead:
+async def _issue_session(user: UserModel, session: AsyncSession) -> tuple[str, SessionRead]:
     token = new_session_token()
     now = datetime.now(UTC)
     expires_at = now + timedelta(hours=12)
@@ -122,12 +128,27 @@ async def _issue_session(user: UserModel, session: AsyncSession) -> SessionRead:
     session.add(UserSessionModel(user_id=user.id, token_hash=token_digest(token), expires_at=expires_at))
     await session.commit()
     await session.refresh(user)
-    return SessionRead(access_token=token, expires_at=expires_at, user=user)
+    return token, SessionRead(expires_at=expires_at, user=user)
 
 
-async def _create_email_token(user: UserModel, purpose: str, session: AsyncSession) -> str:
-    token = new_session_token()
+async def _create_email_token(user: UserModel, purpose: str, session: AsyncSession) -> str | None:
     now = datetime.now(UTC)
+    await session.execute(delete(EmailTokenModel).where(EmailTokenModel.expires_at <= now))
+    locked_user_id = await session.scalar(select(UserModel.id).where(
+        UserModel.id == user.id
+    ).with_for_update())
+    if locked_user_id is None:
+        await session.rollback()
+        return None
+    latest = await session.scalar(select(EmailTokenModel).where(
+        EmailTokenModel.user_id == user.id,
+        EmailTokenModel.purpose == purpose,
+    ).order_by(EmailTokenModel.created_at.desc()).limit(1))
+    cooldown = timedelta(seconds=settings.email_action_cooldown_seconds)
+    if latest is not None and latest.created_at > now - cooldown:
+        await session.commit()
+        return None
+    token = new_session_token()
     await session.execute(delete(EmailTokenModel).where(
         EmailTokenModel.user_id == user.id,
         EmailTokenModel.purpose == purpose,
@@ -143,15 +164,44 @@ async def _create_email_token(user: UserModel, purpose: str, session: AsyncSessi
     return token
 
 
-async def _send_email_action(user: UserModel, purpose: str, session: AsyncSession) -> None:
+async def _send_email_action(
+    user: UserModel,
+    purpose: str,
+    session: AsyncSession,
+    redis: Redis,
+) -> bool:
     token = await _create_email_token(user, purpose, session)
+    if token is None:
+        return False
+    token_hash = token_digest(token)
+    try:
+        within_budget = await consume_email_send_budget(redis)
+    except HTTPException:
+        await session.execute(delete(EmailTokenModel).where(EmailTokenModel.token_hash == token_hash))
+        await session.commit()
+        raise
+    if not within_budget:
+        await session.execute(delete(EmailTokenModel).where(EmailTokenModel.token_hash == token_hash))
+        await session.commit()
+        logger.warning("email_send_budget_exhausted purpose=%s", purpose)
+        return False
     route = "/verify-email" if purpose == "verify_email" else "/reset-password"
     subject = "验证 TravelPilot 邮箱" if purpose == "verify_email" else "重置 TravelPilot 密码"
     await send_action_email(user.email, subject, f"{settings.web_base_url.rstrip('/')}{route}?token={token}")
+    return True
 
 
 @router.post("/auth/register", response_model=AuthNotice, status_code=202)
-async def register(payload: Credentials, session: AsyncSession = Depends(get_session)):
+async def register(
+    payload: Credentials,
+    request: Request,
+    redis: Redis = Depends(get_rate_limit_redis),
+    session: AsyncSession = Depends(get_session),
+):
+    await enforce_ip_rate_limit(
+        redis, request, bucket="register", limit=settings.public_auth_ip_limit_per_minute,
+        window_seconds=60,
+    )
     expected = settings.registration_invite_code
     if expected and not secrets.compare_digest(payload.invite_code or "", expected):
         raise HTTPException(403, detail="邀请码无效")
@@ -160,7 +210,7 @@ async def register(payload: Credentials, session: AsyncSession = Depends(get_ses
     try:
         await session.flush()
         await session.commit()
-        await _send_email_action(user, "verify_email", session)
+        await _send_email_action(user, "verify_email", session, redis)
     except IntegrityError as exc:
         await session.rollback()
         raise HTTPException(409, detail="邮箱已注册") from exc
@@ -189,18 +239,36 @@ async def verify_email(payload: TokenInput, session: AsyncSession = Depends(get_
 
 
 @router.post("/auth/verify-email/resend", response_model=AuthNotice)
-async def resend_verification(payload: EmailInput, session: AsyncSession = Depends(get_session)):
+async def resend_verification(
+    payload: EmailInput,
+    request: Request,
+    redis: Redis = Depends(get_rate_limit_redis),
+    session: AsyncSession = Depends(get_session),
+):
+    await enforce_ip_rate_limit(
+        redis, request, bucket="email-action", limit=settings.email_request_ip_limit_per_hour,
+        window_seconds=60 * 60,
+    )
     user = await session.scalar(select(UserModel).where(UserModel.email == payload.email))
     if user is not None and user.is_active and not user.email_verified:
-        await _send_email_action(user, "verify_email", session)
+        await _send_email_action(user, "verify_email", session, redis)
     return AuthNotice(message="如果该邮箱需要验证，我们已发送验证邮件。")
 
 
 @router.post("/auth/password-reset/request", response_model=AuthNotice)
-async def request_password_reset(payload: EmailInput, session: AsyncSession = Depends(get_session)):
+async def request_password_reset(
+    payload: EmailInput,
+    request: Request,
+    redis: Redis = Depends(get_rate_limit_redis),
+    session: AsyncSession = Depends(get_session),
+):
+    await enforce_ip_rate_limit(
+        redis, request, bucket="email-action", limit=settings.email_request_ip_limit_per_hour,
+        window_seconds=60 * 60,
+    )
     user = await session.scalar(select(UserModel).where(UserModel.email == payload.email))
     if user is not None and user.is_active:
-        await _send_email_action(user, "password_reset", session)
+        await _send_email_action(user, "password_reset", session, redis)
     return AuthNotice(message="如果该邮箱已注册，我们已发送密码重置邮件。")
 
 
@@ -236,7 +304,17 @@ async def dev_mailbox(email: str, request: Request):
 
 
 @router.post("/auth/login", response_model=SessionRead)
-async def login(payload: Credentials, request: Request, response: Response, session: AsyncSession = Depends(get_session)):
+async def login(
+    payload: Credentials,
+    request: Request,
+    response: Response,
+    redis: Redis = Depends(get_rate_limit_redis),
+    session: AsyncSession = Depends(get_session),
+):
+    await enforce_ip_rate_limit(
+        redis, request, bucket="login", limit=settings.public_auth_ip_limit_per_minute,
+        window_seconds=60,
+    )
     now = datetime.now(UTC)
     key_hash = hashlib.sha256(f"{payload.email}\0{request.client.host if request.client else 'unknown'}".encode()).hexdigest()
     attempt = await session.get(LoginAttemptModel, key_hash)
@@ -263,8 +341,8 @@ async def login(payload: Credentials, request: Request, response: Response, sess
         raise HTTPException(403, detail="请先验证邮箱，再登录。")
     if attempt:
         await session.delete(attempt)
-    result = await _issue_session(user, session)
-    set_session_cookies(response, result.access_token)
+    token, result = await _issue_session(user, session)
+    set_session_cookies(response, token)
     return result
 
 

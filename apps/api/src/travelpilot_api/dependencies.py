@@ -5,6 +5,7 @@ from travelpilot_infra.providers.maps.amap import AmapProvider
 from travelpilot_infra.providers.maps.cached import CachedMapsProvider
 from travelpilot_infra.providers.maps.errors import MapsConfigurationError
 from travelpilot_infra.providers.maps.fake import FakeMapsProvider
+from travelpilot_infra.providers.weather.open_meteo import OpenMeteoProvider
 
 from travelpilot_api.settings import settings
 
@@ -16,3 +17,8 @@ def get_maps_provider():
     except MapsConfigurationError as exc:
         raise HTTPException(503, detail="地图服务未配置") from exc
     return CachedMapsProvider(provider)
+
+
+@lru_cache(maxsize=1)
+def get_weather_provider():
+    return OpenMeteoProvider(settings.weather_timeout_seconds)

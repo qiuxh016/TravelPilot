@@ -2,19 +2,6 @@ import { productConfig } from "./product-config";
 
 const API_URL = productConfig.apiBaseUrl;
 
-const TOKEN_KEY = "travelpilot_access_token";
-
-export function setAccessToken(token: string | null) {
-  if (typeof window === "undefined") return;
-  if (token) window.sessionStorage.setItem(TOKEN_KEY, token);
-  else window.sessionStorage.removeItem(TOKEN_KEY);
-}
-
-export function getAccessToken() {
-  if (typeof window === "undefined") return null;
-  return window.sessionStorage.getItem(TOKEN_KEY);
-}
-
 export type ApiErrorPayload = {
   error?: {
     code?: string;
@@ -49,6 +36,24 @@ export type Trip = {
   status: string;
   created_at: string;
   updated_at: string;
+};
+
+export type TripWeather = {
+  status: "AVAILABLE" | "OUT_OF_RANGE";
+  city: string;
+  timezone: string | null;
+  source: string;
+  attribution: string;
+  fetched_at: string;
+  message: string | null;
+  days: {
+    date: string;
+    description: string;
+    weather_code: number;
+    temperature_max_c: number | null;
+    temperature_min_c: number | null;
+    precipitation_probability_max: number | null;
+  }[];
 };
 
 export type TripCreateInput = {
@@ -98,7 +103,6 @@ async function request<T>(
     credentials: "include",
     headers: {
       ...(!isFormData ? { "Content-Type": "application/json" } : {}),
-      ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
       ...(csrf && !["GET", "HEAD", "OPTIONS"].includes(method) ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {}),
       ...(options?.headers ?? {}),
     },
@@ -115,7 +119,7 @@ async function request<T>(
   return response.json() as Promise<T>;
 }
 
-export type AuthSession = { access_token: string; token_type: string; expires_at: string; user: { id: string; email: string; created_at: string } };
+export type AuthSession = { expires_at: string; user: { id: string; email: string; created_at: string } };
 export type AuthNotice = { message: string };
 export const register = (email: string, password: string, invite_code?: string) => request<AuthNotice>("/api/v1/auth/register", { method: "POST", body: JSON.stringify({ email, password, invite_code }) });
 export const login = (email: string, password: string) => request<AuthSession>("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
@@ -126,7 +130,9 @@ export const confirmPasswordReset = (token: string, password: string) => request
 export const logout = () => request<void>("/api/v1/auth/logout", { method: "POST" });
 export const exportAccount = () => request<Record<string, unknown>>("/api/v1/account/export");
 export const deleteAccount = () => request<void>("/api/v1/account", { method: "DELETE" });
-export const getCurrentUser = () => request<AuthSession["user"]>("/api/v1/auth/me");
+export const getCurrentUser = () => request<AuthSession["user"]>("/api/v1/auth/me", {
+  signal: AbortSignal.timeout(10_000),
+});
 
 export async function listTrips(): Promise<Trip[]> {
   return request<Trip[]>("/api/v1/trips");
@@ -145,6 +151,25 @@ export async function getTrip(
   tripId: string,
 ): Promise<Trip> {
   return request<Trip>(`/api/v1/trips/${tripId}`);
+}
+
+export const getTripWeather = (tripId: string) =>
+  request<TripWeather>(`/api/v1/trips/${tripId}/weather`);
+export const getWeatherForecast = (city: string, startDate: string, endDate: string) =>
+  request<TripWeather>(`/api/v1/weather/forecast?city=${encodeURIComponent(city)}&start_date=${startDate}&end_date=${endDate}`);
+export async function getStaticMapImage(points: { latitude: number; longitude: number }[], selectedIndex = 0): Promise<string> {
+  const csrf = typeof document === "undefined" ? "" : document.cookie.split("; ").find((item) => item.startsWith("travelpilot_csrf="))?.split("=").slice(1).join("=") ?? "";
+  const response = await fetch(`${API_URL}/api/v1/maps/static-map`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {}),
+    },
+    body: JSON.stringify({ points: points.map((point) => [point.latitude, point.longitude]), selected_index: selectedIndex }),
+  });
+  if (!response.ok) throw await parseError(response);
+  return URL.createObjectURL(await response.blob());
 }
 
 export type AdvisorCandidate = {
@@ -317,7 +342,6 @@ export async function getMomentMediaBlob(assetId: string, thumbnail = true): Pro
   const response = await fetch(`${API_URL}/api/v1/media/${assetId}${thumbnail ? "/thumbnail" : ""}`, {
     credentials: "include",
     headers: {
-      ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
       ...(csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {}),
     },
   });

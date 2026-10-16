@@ -11,7 +11,7 @@ TravelPilot 是一个面向自由行的旅行规划工具，帮助用户整理�
 - 记录旅行事件、执行局部重规划，并通过反馈维护旅行记忆。
 - 好友、旅行只读分享和旅行动态；图片使用受控访问。
 
-地图默认使用 Fake Provider，配置高德 Key 后可调用高德服务。模型能力通过服务端配置，可选启用。天气 Provider 尚未接入，界面会显示不可用状态。
+地图默认使用 Fake Provider；配置高德 Web 服务 Key 并设置 `MAPS_PROVIDER=amap` 后可切换为高德服务。行程计划页接入 Open-Meteo 预报，显示当前 16 天范围内的目的地天气、获取时间和数据署名；免费接口仅用于个人非商业试用。模型能力通过服务端配置，可选启用。
 
 ## 技术栈
 
@@ -36,11 +36,11 @@ docker compose up -d postgres redis
 分别在三个 PowerShell 窗口启动 API、Web 和后台 Worker：
 
 ```powershell
-.\.venv\Scripts\uvicorn.exe travelpilot_api.main:app --reload --port 8000
+.\.venv\Scripts\python.exe -m uvicorn travelpilot_api.main:app --host 127.0.0.1 --port 8000
 pnpm --dir apps/web dev
 .\.venv\Scripts\python.exe -m travelpilot_worker.main
 ```
 
-打开 Web：<http://localhost:3000> ；API 文档：<http://localhost:8000/docs>。
+打开 Web 时以 Next.js 启动日志显示的地址为准（默认 `http://localhost:3000`；若端口被占用会自动选择其他端口）。API 文档：<http://localhost:8000/docs>。
 
-本地开发环境的邮箱验证链接可从 `http://localhost:8000/api/v1/auth/dev-mailbox/{邮箱}` 查看。高德地图和文本模型为可选服务，在 `.env` 配置 `AMAP_API_KEY`、`LLM_API_KEY`、`LLM_MODEL` 等变量即可。不要提交 `.env` 或真实凭据。
+本地开发环境的邮箱验证链接可从 `http://localhost:8000/api/v1/auth/dev-mailbox/{邮箱}` 查看。高德地图和文本模型为可选服务，在 `.env` 配置 `MAPS_PROVIDER=amap`、`AMAP_API_KEY`、`LLM_API_KEY`、`LLM_MODEL` 等变量即可。高德 Key 应创建为“Web 服务”类型。生产环境需将 `WEB_ALLOWED_ORIGINS` 设为精确的 HTTPS 前端源；若 Web 与 API 使用不同子域名，还需将 `SESSION_COOKIE_DOMAIN` 设为共同父域。不要提交 `.env` 或真实凭据。
