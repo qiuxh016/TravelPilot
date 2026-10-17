@@ -55,6 +55,7 @@ def build_itinerary(
     travel_matrix: list[list[int]] | None = None,
     *,
     buffer_min: int = 60,
+    transfer_buffer_min: int = 0,
     max_pois_per_day: int = 6,
     start_travel_min: list[int] | None = None,
 ) -> tuple[list[Visit], list[str]]:
@@ -116,6 +117,7 @@ def build_itinerary(
             index, candidate = selected
             if previous is not None:
                 cursor += max(0, travel_matrix[previous[0]][index]) if travel_matrix is not None else _travel(previous[1], candidate)
+                cursor += max(0, transfer_buffer_min)
             open_at = _minutes((candidate.opening_hours or {}).get("open"), 0)
             close_at = _minutes((candidate.opening_hours or {}).get("close"), 24 * 60)
             start = max(cursor, open_at)

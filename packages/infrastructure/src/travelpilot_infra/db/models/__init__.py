@@ -7,6 +7,8 @@ from travelpilot_infra.db.models.plan import TripPlanModel, TripPlanNodeModel
 from travelpilot_infra.db.models.plan_change import PlanChangeModel
 from travelpilot_infra.db.models.poi import PoiModel
 from travelpilot_infra.db.models.social import (
+    FriendConversationModel,
+    FriendMessageModel,
     FriendshipModel,
     MemorySuggestionModel,
     MomentCommentModel,
@@ -48,6 +50,8 @@ __all__ = [
     "EmailTokenModel",
     "EntityCandidateModel",
     "ExtractedEntityModel",
+    "FriendConversationModel",
+    "FriendMessageModel",
     "FriendshipModel",
     "LoginAttemptModel",
     "MemoryModel",

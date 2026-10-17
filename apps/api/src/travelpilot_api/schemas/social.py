@@ -12,6 +12,50 @@ class FriendRequestNotice(BaseModel):
     message: str
 
 
+class FriendSearchResult(BaseModel):
+    user_id: UUID
+    username: str
+    display_name: str
+    email_hint: str
+    has_avatar: bool
+    is_self: bool = False
+
+
+class FriendConversationRead(BaseModel):
+    id: UUID
+    friend_user_id: UUID
+    username: str
+    display_name: str
+    self_analysis_consent: bool = False
+    friend_analysis_consent: bool = False
+
+
+class FriendAnalysisConsentUpdate(BaseModel):
+    enabled: bool
+
+
+class FriendAnalysisRead(BaseModel):
+    summary: str
+    observed_tone: str
+    travel_preferences: list[str] = Field(default_factory=list)
+    suggested_reply: str
+    evidence: list[str] = Field(default_factory=list)
+    includes_images: bool
+
+
+class FriendMessageCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+
+
+class FriendMessageRead(BaseModel):
+    id: UUID
+    sender_user_id: UUID
+    body: str
+    has_media: bool
+    mime_type: str | None = None
+    created_at: datetime
+
+
 class FriendshipRead(BaseModel):
     id: UUID
     friend_user_id: UUID

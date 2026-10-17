@@ -36,6 +36,7 @@ export type Trip = {
   status: string;
   created_at: string;
   updated_at: string;
+  has_plan: boolean;
 };
 
 export type TripWeather = {
@@ -119,11 +120,13 @@ async function request<T>(
   return response.json() as Promise<T>;
 }
 
-export type AccountUser = { id: string; email: string; created_at: string; display_name: string; home_city: string; bio: string; has_avatar: boolean };
+export type AccountUser = { id: string; email: string; username: string; created_at: string; display_name: string; home_city: string; bio: string; has_avatar: boolean };
 export type AuthSession = { expires_at: string; user: AccountUser };
 export type AuthNotice = { message: string };
-export const register = (email: string, password: string, invite_code?: string) => request<AuthNotice>("/api/v1/auth/register", { method: "POST", body: JSON.stringify({ email, password, invite_code }) });
-export const login = (email: string, password: string) => request<AuthSession>("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+export const register = (input: { email: string; username: string; display_name: string; password: string; invite_code?: string }) =>
+  request<AuthNotice>("/api/v1/auth/register", { method: "POST", body: JSON.stringify(input) });
+export const login = (account: string, password: string) =>
+  request<AuthSession>("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ account, password }) });
 export const verifyEmail = (token: string) => request<AuthNotice>("/api/v1/auth/verify-email", { method: "POST", body: JSON.stringify({ token }) });
 export const resendVerification = (email: string) => request<AuthNotice>("/api/v1/auth/verify-email/resend", { method: "POST", body: JSON.stringify({ email }) });
 export const requestPasswordReset = (email: string) => request<AuthNotice>("/api/v1/auth/password-reset/request", { method: "POST", body: JSON.stringify({ email }) });
@@ -196,6 +199,7 @@ export type AdvisorCandidate = {
   id: string; provider: string; provider_id: string; name: string; address: string | null;
   category: string; latitude: number; longitude: number; duration_min: number;
   opening_hours: Record<string, string> | null; confidence: number; suggestion: string | null;
+  popularity_score?: number | null; explicit_day?: string; explicit_start_time?: string;
   in_current_plan?: boolean; existing_poi_id?: string; verification_status?: string; verified_at?: string;
 };
 export type AdvisorMessage = { id: string; role: "user" | "assistant"; content: string; payload: Record<string, unknown> | null; created_at: string };
@@ -252,7 +256,7 @@ export const updateAdvisorSessionContext = (sessionId: string, input: AdvisorSes
 export const getAdvisorSession = (sessionId: string) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}`);
 export const sendAdvisorMessage = (sessionId: string, content: string) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/messages`, { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ content }) });
 export const recommendAdvisorDestinations = (sessionId: string) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/destinations`, { method: "POST", body: "{}" });
-export const createAdvisorDraft = (sessionId: string, candidate_ids: string[]) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/draft`, { method: "POST", body: JSON.stringify({ candidate_ids }) });
+export const createAdvisorDraft = (sessionId: string, candidate_ids: string[], schedules: { candidate_id: string; day: string; start_time: string }[]) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/draft`, { method: "POST", body: JSON.stringify({ candidate_ids, schedules }) });
 export const confirmAdvisorDraft = (sessionId: string, draft_version: number) => request<{ trip_id: string; plan_id: string; plan_version: number; already_confirmed: boolean }>(`/api/v1/advisor/sessions/${sessionId}/confirm`, { method: "POST", body: JSON.stringify({ draft_version }) });
 export const deleteAdvisorSession = (sessionId: string) => request<void>(`/api/v1/advisor/sessions/${sessionId}`, { method: "DELETE" });
 export async function updateTrip(tripId: string, input: Partial<TripCreateInput>): Promise<Trip> {
@@ -320,6 +324,13 @@ export type Plan = {
 export const createPlanRun = (tripId: string) => request<Plan>(`/api/v1/trips/${tripId}/plan-runs`, { method: "POST" });
 export const listPlans = (tripId: string) => request<Plan[]>(`/api/v1/trips/${tripId}/plans`);
 export const getPlan = (tripId: string, planId: string) => request<Plan>(`/api/v1/trips/${tripId}/plans/${planId}`);
+export type PlanNodeUpdateInput = Partial<Pick<PlanNode, "day" | "start_time" | "end_time" | "priority" | "status" | "note">>;
+export const updatePlanNode = (tripId: string, planId: string, nodeId: string, input: PlanNodeUpdateInput) =>
+  request<Plan>(`/api/v1/trips/${tripId}/plans/${planId}/nodes/${nodeId}`, {
+    method: "PATCH", body: JSON.stringify(input),
+  });
+export const deletePlanNode = (tripId: string, planId: string, nodeId: string) =>
+  request<void>(`/api/v1/trips/${tripId}/plans/${planId}/nodes/${nodeId}?reason=USER_EDIT`, { method: "DELETE" });
 
 export type Candidate = {
   id: string; entity_id: string; provider: string; provider_id: string;
@@ -378,6 +389,10 @@ export const updateUserMemory = (id: string, input: { category?: string; text?: 
 export const deleteUserMemory = (id: string) => request<void>(`/api/v1/account/memories/${id}`, { method: "DELETE" });
 
 export type Friendship = { id: string; friend_user_id: string; email: string; display_name: string; status: "PENDING" | "ACCEPTED" | "BLOCKED"; direction: "INCOMING" | "OUTGOING" | "NONE"; created_at: string };
+export type FriendSearchResult = { user_id: string; username: string; display_name: string; email_hint: string; has_avatar: boolean; is_self: boolean };
+export type FriendConversation = { id: string; friend_user_id: string; username: string; display_name: string; self_analysis_consent: boolean; friend_analysis_consent: boolean };
+export type FriendMessage = { id: string; sender_user_id: string; body: string; has_media: boolean; mime_type: string | null; created_at: string };
+export type FriendChatAnalysis = { summary: string; observed_tone: string; travel_preferences: string[]; suggested_reply: string; evidence: string[]; includes_images: boolean };
 export type TripShare = { id: string; trip_id: string; grantee_user_id: string; email: string; scope: "TRIP_SUMMARY" | "TRIP_AND_PLAN"; created_at: string };
 export type SharedTrip = { id: string; destination: string; start_date: string; end_date: string; scope: "TRIP_SUMMARY" | "TRIP_AND_PLAN"; owner_email: string };
 export type SharedTripDetail = SharedTrip & { plan_version: number | null; plan_nodes: { name: string; day: string; start_time: string; end_time: string; status: string }[] };
@@ -385,6 +400,38 @@ export const listFriends = () => request<Friendship[]>("/api/v1/friends");
 export const listFriendRequests = () => request<Friendship[]>("/api/v1/friends/requests");
 export const listBlockedFriends = () => request<Friendship[]>("/api/v1/friends/blocked");
 export const createFriendRequest = (email: string) => request<{ message: string }>("/api/v1/friends/requests", { method: "POST", body: JSON.stringify({ email }) });
+export const searchFriends = (query: string) => request<FriendSearchResult[]>(`/api/v1/friends/search?q=${encodeURIComponent(query)}`);
+export const createFriendRequestForUser = (userId: string) => request<{ message: string }>(`/api/v1/friends/requests/users/${userId}`, { method: "POST" });
+export async function getFriendAvatarBlob(userId: string): Promise<string> {
+  const csrf = typeof document === "undefined" ? "" : document.cookie.split("; ").find((item) => item.startsWith("travelpilot_csrf="))?.split("=").slice(1).join("=") ?? "";
+  const response = await fetch(`${API_URL}/api/v1/friends/users/${userId}/avatar`, {
+    credentials: "include", headers: { ...(csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {}) },
+  });
+  if (!response.ok) throw await parseError(response);
+  return URL.createObjectURL(await response.blob());
+}
+export const getOrCreateFriendConversation = (friendUserId: string) => request<FriendConversation>(`/api/v1/friends/conversations/${friendUserId}`, { method: "POST" });
+export const updateFriendAnalysisConsent = (conversationId: string, enabled: boolean) => request<FriendConversation>(`/api/v1/friends/conversations/${conversationId}/analysis-consent`, { method: "PUT", body: JSON.stringify({ enabled }) });
+export const analyzeFriendConversation = (conversationId: string, includeImages: boolean) => request<FriendChatAnalysis>(`/api/v1/friends/conversations/${conversationId}/analyze?include_images=${includeImages}`, { method: "POST" });
+export const listFriendMessages = (conversationId: string) => request<FriendMessage[]>(`/api/v1/friends/conversations/${conversationId}/messages`);
+export const sendFriendMessage = (conversationId: string, body: string) => request<FriendMessage>(`/api/v1/friends/conversations/${conversationId}/messages`, { method: "POST", body: JSON.stringify({ body }) });
+export async function sendFriendMessageImage(conversationId: string, file: File, text = ""): Promise<FriendMessage> {
+  const csrf = typeof document === "undefined" ? "" : document.cookie.split("; ").find((item) => item.startsWith("travelpilot_csrf="))?.split("=").slice(1).join("=") ?? "";
+  const response = await fetch(`${API_URL}/api/v1/friends/conversations/${conversationId}/messages/image?text=${encodeURIComponent(text)}`, {
+    method: "POST", credentials: "include", body: file,
+    headers: { "Content-Type": file.type, ...(csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {}) },
+  });
+  if (!response.ok) throw await parseError(response);
+  return response.json() as Promise<FriendMessage>;
+}
+export async function getFriendMessageImageBlob(conversationId: string, messageId: string): Promise<string> {
+  const csrf = typeof document === "undefined" ? "" : document.cookie.split("; ").find((item) => item.startsWith("travelpilot_csrf="))?.split("=").slice(1).join("=") ?? "";
+  const response = await fetch(`${API_URL}/api/v1/friends/conversations/${conversationId}/messages/${messageId}/image`, {
+    credentials: "include", headers: { ...(csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {}) },
+  });
+  if (!response.ok) throw await parseError(response);
+  return URL.createObjectURL(await response.blob());
+}
 export const acceptFriendRequest = (friendshipId: string) => request<Friendship>(`/api/v1/friends/requests/${friendshipId}/accept`, { method: "POST" });
 export const declineFriendRequest = (friendshipId: string) => request<void>(`/api/v1/friends/requests/${friendshipId}`, { method: "DELETE" });
 export const removeFriend = (friendshipId: string) => request<void>(`/api/v1/friends/${friendshipId}`, { method: "DELETE" });

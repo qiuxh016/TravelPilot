@@ -2,6 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from travelpilot_core.application.plans import PlanService
 from travelpilot_core.application.wishlist import WishlistService
 from travelpilot_infra.db.models.trip import TripModel
 from travelpilot_infra.db.models.wishlist import WishlistItemModel
@@ -153,10 +154,12 @@ async def delete_wishlist_item(
 
     service = WishlistService(session)
 
-    deleted = await service.delete_item(item_id)
-
-    if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Wishlist item not found",
-        )
+    try:
+        await PlanService(session).remove_poi_from_latest(_item.trip_id, _item.poi_id)
+        deleted = await service.delete_item(item_id, commit=False)
+        if not deleted:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wishlist item not found")
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise

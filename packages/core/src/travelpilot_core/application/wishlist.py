@@ -175,6 +175,8 @@ class WishlistService:
     async def delete_item(
         self,
         item_id: UUID,
+        *,
+        commit: bool = True,
     ) -> bool:
         """删除 WishlistItem。
 
@@ -191,6 +193,9 @@ class WishlistService:
             return False
 
         await self.session.delete(item)
-        await self.session.commit()
+        if commit:
+            await self.session.commit()
+        else:
+            await self.session.flush()
 
         return True

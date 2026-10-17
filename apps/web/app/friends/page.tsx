@@ -1,23 +1,146 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   acceptFriendRequest,
+  analyzeFriendConversation,
   blockFriend,
-  createFriendRequest,
+  createFriendRequestForUser,
   declineFriendRequest,
+  getFriendAvatarBlob,
+  getFriendMessageImageBlob,
+  getOrCreateFriendConversation,
   getSharedTrip,
   listFriendRequests,
   listBlockedFriends,
   listFriends,
   listSharedTrips,
+  listFriendMessages,
   removeFriend,
+  searchFriends,
+  sendFriendMessage,
+  sendFriendMessageImage,
+  updateFriendAnalysisConsent,
   unblockFriend,
+  type FriendSearchResult,
+  type FriendMessage,
+  type FriendConversation,
+  type FriendChatAnalysis,
   type Friendship,
   type SharedTrip,
   type SharedTripDetail,
 } from "../../lib/api";
+
+function SearchAvatar({ profile }: { profile: FriendSearchResult }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+    if (profile.has_avatar) void getFriendAvatarBlob(profile.user_id).then((next) => {
+      objectUrl = next;
+      if (active) setUrl(next); else URL.revokeObjectURL(next);
+    }).catch(() => undefined);
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [profile.user_id, profile.has_avatar]);
+  return <span className="friend-avatar">{url ? <img src={url} alt="" /> : (profile.display_name || profile.username).slice(0, 1).toUpperCase()}</span>;
+}
+
+function ChatImage({ conversationId, message }: { conversationId: string; message: FriendMessage }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+    void getFriendMessageImageBlob(conversationId, message.id).then((value) => {
+      objectUrl = value;
+      if (active) setUrl(value); else URL.revokeObjectURL(value);
+    }).catch(() => undefined);
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [conversationId, message.id]);
+  return url ? <img className="friend-chat-image" src={url} alt="好友发送的图片" /> : <span className="friend-chat-image-loading">图片加载中…</span>;
+}
+
+function FriendChatDialog({ friend, onClose }: { friend: Friendship; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [conversation, setConversation] = useState<FriendConversation | null>(null);
+  const [messages, setMessages] = useState<FriendMessage[]>([]);
+  const [body, setBody] = useState("");
+  const [image, setImage] = useState<File | null>(null);
+  const [analysis, setAnalysis] = useState<FriendChatAnalysis | null>(null);
+  const [includeImages, setIncludeImages] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    dialogRef.current?.showModal();
+    return () => dialogRef.current?.close();
+  }, []);
+  useEffect(() => {
+    let active = true;
+    void getOrCreateFriendConversation(friend.friend_user_id).then((item) => {
+      if (active) setConversation(item);
+    }).catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "无法打开私聊"); });
+    return () => { active = false; };
+  }, [friend.friend_user_id]);
+  useEffect(() => {
+    if (!conversation) return;
+    let active = true;
+    const refreshMessages = () => void listFriendMessages(conversation.id).then((items) => { if (active) setMessages(items); }).catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "消息暂时无法加载"); });
+    refreshMessages();
+    const timer = window.setInterval(refreshMessages, 5000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [conversation]);
+
+  async function submitMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!conversation || (!body.trim() && !image)) return;
+    setBusy(true); setError("");
+    try {
+      const sent = image ? await sendFriendMessageImage(conversation.id, image, body.trim()) : await sendFriendMessage(conversation.id, body.trim());
+      setMessages((items) => [...items, sent]); setBody(""); setImage(null);
+      const input = document.getElementById("friend-chat-image-input") as HTMLInputElement | null;
+      if (input) input.value = "";
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "消息发送失败"); }
+    finally { setBusy(false); }
+  }
+
+  async function toggleConsent() {
+    if (!conversation) return;
+    setBusy(true); setError("");
+    try { setConversation(await updateFriendAnalysisConsent(conversation.id, !conversation.self_analysis_consent)); setAnalysis(null); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "同意状态更新失败"); }
+    finally { setBusy(false); }
+  }
+
+  async function runAnalysis() {
+    if (!conversation || !window.confirm(`将最近 10 条私聊${includeImages ? "文字、表情和图片" : "文字和表情"}发送给已配置的模型分析。结果仅供参考，不会自动保存为记忆或修改行程。继续吗？`)) return;
+    setBusy(true); setError(""); setAnalysis(null);
+    try { setAnalysis(await analyzeFriendConversation(conversation.id, includeImages)); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "分析暂时不可用"); }
+    finally { setBusy(false); }
+  }
+
+  return <dialog className="friend-chat-dialog" ref={dialogRef} onCancel={onClose}>
+    <section className="friend-chat-panel">
+      <header className="friend-chat-header"><div><p className="eyebrow">好友私聊</p><h2>{friend.display_name || friend.email.split("@")[0]}</h2></div><button className="moment-dialog-close" aria-label="关闭私聊" onClick={onClose}>×</button></header>
+      <div className="friend-chat-messages" aria-live="polite">{!messages.length ? <p className="social-empty">发送一条消息，开始你们的旅行交流。表情也可以直接发送。</p> : messages.map((item) => <article className={`friend-chat-message ${item.sender_user_id === conversation?.friend_user_id ? "is-friend" : "is-mine"}`} key={item.id}>
+        {item.body && <p>{item.body}</p>}{item.has_media && conversation && <ChatImage conversationId={conversation.id} message={item} />}<time>{new Date(item.created_at).toLocaleString()}</time>
+      </article>)}</div>
+      <form className="friend-chat-compose" onSubmit={(event) => void submitMessage(event)}>
+        <textarea value={body} maxLength={4000} onChange={(event) => setBody(event.target.value)} placeholder="写下消息，或发送表情 🙂" />
+        <div className="friend-chat-compose-actions"><label className="secondary friend-chat-file">添加图片<input id="friend-chat-image-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setImage(event.target.files?.[0] ?? null)} /></label><span>{image?.name}</span><button className="primary" disabled={busy || (!body.trim() && !image)}>{busy ? "处理中…" : "发送"}</button></div>
+      </form>
+      <details className="friend-chat-privacy"><summary>AI 对话分析（需双方同意）</summary>
+        <p>私聊默认不分析。双方分别开启后，你仍需每次手动确认；分析内容仅用于生成当前摘要，不会自动写入记忆或行程。</p>
+        <label className="friend-chat-consent"><input type="checkbox" checked={conversation?.self_analysis_consent ?? false} disabled={!conversation || busy} onChange={() => void toggleConsent()} />我同意分析本私聊</label>
+        <p className="friend-chat-consent-state">对方{conversation?.friend_analysis_consent ? "已同意" : "尚未同意"}</p>
+        {conversation?.self_analysis_consent && conversation.friend_analysis_consent && <><label className="friend-chat-consent"><input type="checkbox" checked={includeImages} onChange={(event) => setIncludeImages(event.target.checked)} />分析最近消息中的图片</label><button className="secondary" disabled={busy} onClick={() => void runAnalysis()}>{busy ? "正在分析…" : "手动分析最近对话"}</button></>}
+        {analysis && <div className="friend-chat-analysis"><strong>交流摘要</strong><p>{analysis.summary}</p><p>文字表现：{analysis.observed_tone}</p>{analysis.travel_preferences.length > 0 && <p>提到的旅行偏好：{analysis.travel_preferences.join("、")}</p>}{analysis.suggested_reply && <p>回复灵感：{analysis.suggested_reply}</p>}{analysis.evidence.length > 0 && <small>依据：{analysis.evidence.join("；")}</small>}</div>}
+      </details>
+      {error && <p className="social-message is-error" role="alert">{error}</p>}
+    </section>
+  </dialog>;
+}
 
 export default function FriendsPage() {
   const [friends, setFriends] = useState<Friendship[]>([]);
@@ -25,7 +148,11 @@ export default function FriendsPage() {
   const [blocked, setBlocked] = useState<Friendship[]>([]);
   const [sharedTrips, setSharedTrips] = useState<SharedTrip[]>([]);
   const [selectedTrip, setSelectedTrip] = useState<SharedTripDetail | null>(null);
-  const [email, setEmail] = useState("");
+  const [chatFriend, setChatFriend] = useState<Friendship | null>(null);
+  const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<FriendSearchResult[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [searchBusy, setSearchBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -49,17 +176,34 @@ export default function FriendsPage() {
 
   useEffect(() => { void load(); }, []);
 
-  async function sendRequest(event: FormEvent<HTMLFormElement>) {
+  async function searchUsers(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSearchBusy(true); setNotice(""); setError(""); setHasSearched(true);
+    try {
+      setSearchResults(await searchFriends(query.trim()));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "搜索暂时不可用");
+    } finally { setSearchBusy(false); }
+  }
+
+  async function sendRequest(profile: FriendSearchResult) {
     setBusy(true); setNotice(""); setError("");
     try {
-      const result = await createFriendRequest(email.trim());
+      const result = await createFriendRequestForUser(profile.user_id);
       setNotice(result.message);
-      setEmail("");
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "申请未能提交");
     } finally { setBusy(false); }
+  }
+
+  function relationshipState(profile: FriendSearchResult) {
+    if (profile.is_self) return "这是你自己的账号";
+    if (friends.some((row) => row.friend_user_id === profile.user_id)) return "已是好友";
+    const request = requests.find((row) => row.friend_user_id === profile.user_id);
+    if (request?.direction === "INCOMING") return "对方已发来申请";
+    if (request) return "申请已发送";
+    return "";
   }
 
   async function handleRequest(row: Friendship, action: "accept" | "decline") {
@@ -109,25 +253,35 @@ export default function FriendsPage() {
     {notice && <p className="social-message" role="status">{notice}</p>}
     <section className="social-card">
       <h2>添加好友</h2>
-      <p>输入对方注册邮箱发送申请。为了保护账户隐私，系统会对所有邮箱显示相同的提交结果。</p>
-      <form className="social-form" onSubmit={sendRequest}>
-        <label>好友邮箱<input type="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="friend@example.com" /></label>
-        <button className="primary" disabled={busy}>发送申请</button>
+      <p>按用户名、昵称搜索，或输入完整邮箱。确认头像和昵称后再发送申请。仅已验证邮箱的账号会出现在结果中。</p>
+      <form className="social-form" onSubmit={(event) => void searchUsers(event)}>
+        <label>搜索用户<input required minLength={2} maxLength={320} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="输入用户名、昵称或完整邮箱" /></label>
+        <button className="primary" disabled={searchBusy || busy}>{searchBusy ? "正在搜索…" : "搜索用户"}</button>
       </form>
+      {hasSearched && <div className="friend-search-results" aria-live="polite">
+        {searchResults.length === 0 ? <p className="social-empty">没有找到匹配的已验证账号。若对方尚未注册或验证邮箱，请让对方完成后再搜索。</p> : <ul className="social-list">{searchResults.map((profile) => {
+          const state = relationshipState(profile);
+          return <li key={profile.user_id}>
+            <SearchAvatar profile={profile} />
+            <div className="friend-search-identity"><strong>{profile.display_name || profile.username}</strong><small>@{profile.username} · {profile.email_hint}</small></div>
+            {state ? <span className="friend-search-state">{state}</span> : <button className="secondary" disabled={busy} onClick={() => void sendRequest(profile)}>{busy ? "正在发送…" : "发送申请"}</button>}
+          </li>;
+        })}</ul>}
+      </div>}
     </section>
     <div className="social-grid">
       <section className="social-card">
         <h2>好友申请 <span className="social-count">{requests.length}</span></h2>
         {loading ? <p className="status">正在加载……</p> : requests.length === 0 ? <p className="social-empty">暂无待处理申请。</p> : <ul className="social-list">{requests.map((row) => <li key={row.id}>
-          <div><strong>{row.email}</strong><small>{row.direction === "INCOMING" ? "对方发来的申请" : "等待对方接受"}</small></div>
+          <div><strong>{row.display_name || row.email.split("@")[0]}</strong><small>{row.email} · {row.direction === "INCOMING" ? "对方发来的申请" : "等待对方接受"}</small></div>
           {row.direction === "INCOMING" ? <div className="social-actions"><button className="primary" disabled={busy} onClick={() => void handleRequest(row, "accept")}>接受</button><button className="secondary" disabled={busy} onClick={() => void handleRequest(row, "decline")}>忽略</button><button className="social-danger" disabled={busy} onClick={() => void handleFriend(row, "block")}>屏蔽</button></div> : null}
         </li>)}</ul>}
       </section>
       <section className="social-card">
         <h2>我的好友 <span className="social-count">{friends.length}</span></h2>
         {loading ? <p className="status">正在加载……</p> : friends.length === 0 ? <p className="social-empty">接受好友申请后，可在旅行设置中授予只读分享。</p> : <ul className="social-list">{friends.map((row) => <li key={row.id}>
-          <div><strong>{row.email}</strong><small>好友 · 不会自动获得旅行访问权</small></div>
-          <div className="social-actions"><button className="secondary" disabled={busy} onClick={() => void handleFriend(row, "remove")}>移除</button><button className="social-danger" disabled={busy} onClick={() => void handleFriend(row, "block")}>屏蔽</button></div>
+          <div><strong>{row.display_name || row.email.split("@")[0]}</strong><small>{row.email} · 不会自动获得旅行访问权</small></div>
+          <div className="social-actions"><button className="secondary" onClick={() => setChatFriend(row)}>私聊</button><button className="secondary" disabled={busy} onClick={() => void handleFriend(row, "remove")}>移除</button><button className="social-danger" disabled={busy} onClick={() => void handleFriend(row, "block")}>屏蔽</button></div>
         </li>)}</ul>}
       </section>
     </div>
@@ -143,5 +297,6 @@ export default function FriendsPage() {
       </div>}
     </section>
     <p className="social-footnote"><Link href="/trips">返回我的旅行</Link></p>
+    {chatFriend && <FriendChatDialog friend={chatFriend} onClose={() => setChatFriend(null)} />}
   </main>;
 }

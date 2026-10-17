@@ -133,5 +133,45 @@ class PlanService:
     async def delete_node(self, plan_id: UUID, node_id: UUID, reason: str | None):
         return await self._revise_node(plan_id, node_id, None, reason)
 
+    async def remove_poi_from_latest(self, trip_id: UUID, poi_id: UUID) -> bool:
+        """Create a latest-plan revision without nodes for a removed wishlist POI."""
+        plans = await self.repository.list_by_trip(trip_id)
+        if not plans:
+            return False
+        source = plans[0]
+        _, rows = await self.repository.get_with_nodes(trip_id, source.id)
+        removed = [node for node, _ in rows if node.poi_id == poi_id]
+        if not removed:
+            return False
+
+        revised = TripPlanModel(
+            trip_id=trip_id,
+            version=source.version + 1,
+            status=source.status,
+            warnings=list(source.warnings),
+        )
+        self.session.add(revised)
+        await self.session.flush()
+        for node, _ in rows:
+            if node.poi_id == poi_id:
+                before = {
+                    "stable_key": str(node.poi_id), "day": str(node.day),
+                    "start_time": str(node.start_time), "end_time": str(node.end_time),
+                    "priority": node.priority, "status": node.status, "note": node.note,
+                }
+                self.session.add(PlanChangeModel(
+                    plan_id=revised.id, change_type="REMOVE", stable_key=str(node.poi_id),
+                    reason_code="USER_EDIT", change_cost=3, before_data=before,
+                    after_data=None, reason="REMOVED_FROM_WISHLIST",
+                ))
+                continue
+            self.session.add(TripPlanNodeModel(
+                plan_id=revised.id, poi_id=node.poi_id, day=node.day,
+                start_time=node.start_time, end_time=node.end_time,
+                priority=node.priority, status=node.status, note=node.note,
+            ))
+        await self.session.flush()
+        return True
+
     async def changes(self, plan_id: UUID):
         return await self.repository.list_changes(plan_id)

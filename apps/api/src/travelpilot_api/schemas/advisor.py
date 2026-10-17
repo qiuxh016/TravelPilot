@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
@@ -65,8 +65,15 @@ class AdvisorSessionContextUpdate(BaseModel):
         return self
 
 
+class AdvisorCandidateSchedule(BaseModel):
+    candidate_id: UUID
+    day: date
+    start_time: time
+
+
 class AdvisorDraftCreate(BaseModel):
     candidate_ids: list[UUID] = Field(min_length=1, max_length=30)
+    schedules: list[AdvisorCandidateSchedule] = Field(min_length=1, max_length=30)
 
 
 class AdvisorConfirm(BaseModel):

@@ -13,6 +13,7 @@ class UserModel(Base):
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
+    username: Mapped[str] = mapped_column(String(24), nullable=False, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
     display_name: Mapped[str] = mapped_column(String(48), nullable=False, default="")
     home_city: Mapped[str] = mapped_column(String(120), nullable=False, default="")

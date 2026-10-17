@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import {
@@ -16,6 +16,8 @@ import {
   type WishlistItem,
 } from "../../../lib/api";
 import { RouteMap } from "../../../components/route-map";
+import { TripImportTool } from "../../../components/trip-import-tool";
+import { TripSharingTool } from "../../../components/trip-sharing-tool";
 
 const paceLabels = ["轻松慢游", "悠闲逛逛", "张弛有度", "高效游览", "行程充实"];
 const categoryLabels: Record<string, string> = { ATTRACTION: "景点", RESTAURANT: "餐厅", CAFE: "咖啡", SHOPPING: "购物", CUSTOM: "其它" };
@@ -33,6 +35,10 @@ export default function TripDetailPage() {
   const [editingTrip, setEditingTrip] = useState(false);
   const [tripSaving, setTripSaving] = useState(false);
   const [tripDeleting, setTripDeleting] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [sharingOpen, setSharingOpen] = useState(false);
+  const closeImport = useCallback(() => setImportOpen(false), []);
+  const closeSharing = useCallback(() => setSharingOpen(false), []);
   const [tripDestination, setTripDestination] = useState("");
   const [tripStartDate, setTripStartDate] = useState("");
   const [tripEndDate, setTripEndDate] = useState("");
@@ -219,7 +225,7 @@ export default function TripDetailPage() {
       setError("");
       await deleteWishlistItem(item.id);
       setWishlist((current) => current.filter((entry) => entry.id !== item.id));
-      setNotice("收藏地点已删除。");
+      setNotice("收藏地点已删除；若它在当前计划中，也已从新版本移除。历史版本仍保留。");
     } catch (err) {
       setError(err instanceof Error ? err.message : "删除收藏地点失败");
     } finally {
@@ -253,8 +259,8 @@ export default function TripDetailPage() {
         <p className="trip-overview-note">把想去的地方收在一起，再慢慢排成适合自己的旅程。</p>
         <div className="trip-overview-actions" aria-label="旅行操作">
           <Link className="primary" href={`/trips/${tripId}/plan`}>规划行程 <span aria-hidden="true">→</span></Link>
-          <Link className="secondary" href={`/trips/${tripId}/import`}>导入攻略</Link>
-          <Link className="secondary" href={`/trips/${tripId}/sharing`}>分享设置</Link>
+          <button className="secondary trip-overview-import-button" type="button" onClick={() => setImportOpen(true)}>导入攻略</button>
+          <button className="secondary trip-overview-import-button" type="button" onClick={() => setSharingOpen(true)}>分享设置</button>
           <button className="trip-overview-edit" type="button" onClick={beginTripEdit}>编辑旅行</button>
           <button className="trip-overview-delete" type="button" onClick={() => void handleTripDelete()} disabled={tripDeleting}>{tripDeleting ? "正在删除…" : "删除旅行"}</button>
         </div>
@@ -310,6 +316,10 @@ export default function TripDetailPage() {
           <button className="primary" type="submit">添加到旅行</button>
         </form>
       </details>
+      {importOpen && <TripImportTool tripId={tripId} onClose={closeImport} onImported={() => {
+        void listWishlist(tripId).then((items) => { setWishlist(items); setNotice("已确认的攻略地点已加入这段旅行。"); }).catch((err) => setError(err instanceof Error ? err.message : "地点列表刷新失败"));
+      }} />}
+      {sharingOpen && <TripSharingTool tripId={tripId} onClose={closeSharing} />}
     </main>
   );
 }

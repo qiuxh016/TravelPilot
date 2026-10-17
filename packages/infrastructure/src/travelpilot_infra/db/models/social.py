@@ -36,6 +36,37 @@ class FriendshipModel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
 
+class FriendConversationModel(Base):
+    __tablename__ = "friend_conversations"
+    __table_args__ = (
+        UniqueConstraint("user_low_id", "user_high_id", name="uq_friend_conversation_pair"),
+        CheckConstraint("user_low_id < user_high_id", name="ck_friend_conversation_ordered_pair"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_low_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_high_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_low_analysis_consent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    user_high_analysis_consent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+
+class FriendMessageModel(Base):
+    __tablename__ = "friend_messages"
+    __table_args__ = (CheckConstraint("length(trim(body)) > 0 OR media_key IS NOT NULL", name="ck_friend_message_content"),)
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    conversation_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("friend_conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    sender_user_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    body: Mapped[str] = mapped_column(String(4000), nullable=False, default="")
+    media_key: Mapped[str | None] = mapped_column(String(500), unique=True)
+    thumbnail_key: Mapped[str | None] = mapped_column(String(500), unique=True)
+    mime_type: Mapped[str | None] = mapped_column(String(80))
+    size_bytes: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), index=True)
+
+
 class TripShareGrantModel(Base):
     __tablename__ = "trip_share_grants"
     __table_args__ = (

@@ -4,16 +4,22 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { listPlans, listWishlist, type Plan, type Trip, type WishlistItem } from "../lib/api";
 import { RouteMap, type RouteMapPoint } from "./route-map";
+import { tripOptionLabel, useTripSelection } from "./trip-selection-context";
 
 export function DashboardJourney({ trips }: { trips: Trip[] }) {
-  const [tripId, setTripId] = useState(trips[0]?.id ?? "");
+  const { selectedTripId, selectTrip } = useTripSelection();
+  const [tripId, setTripId] = useState(selectedTripId || trips[0]?.id || "");
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [activeDay, setActiveDay] = useState("");
   const [selectedStop, setSelectedStop] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const trip = trips.find((item) => item.id === tripId) ?? trips[0];
+  const trip = trips.find((item) => item.id === selectedTripId) ?? trips.find((item) => item.id === tripId) ?? trips[0];
+
+  useEffect(() => {
+    if (selectedTripId && trips.some((item) => item.id === selectedTripId)) setTripId(selectedTripId);
+  }, [selectedTripId, trips]);
 
   useEffect(() => {
     if (!trip?.id) return;
@@ -49,7 +55,7 @@ export function DashboardJourney({ trips }: { trips: Trip[] }) {
       <div><span className="dashboard-kicker">最近的旅程</span><h2>{trip.destination}</h2><p>{trip.start_date} — {trip.end_date}</p></div>
       <div className="dashboard-journey-tools">
         {trips.length > 1 && <label className="sr-only" htmlFor="dashboard-trip-select">切换旅行</label>}
-        {trips.length > 1 && <select id="dashboard-trip-select" value={tripId} onChange={(event) => { setTripId(event.target.value); setSelectedStop(""); }} aria-label="切换旅行">{trips.map((item) => <option key={item.id} value={item.id}>{item.destination} · {item.start_date}</option>)}</select>}
+        {trips.length > 1 && <select id="dashboard-trip-select" value={trip?.id ?? tripId} onChange={(event) => { setTripId(event.target.value); selectTrip(event.target.value); setSelectedStop(""); }} aria-label="切换旅行">{trips.map((item) => <option key={item.id} value={item.id}>{tripOptionLabel(item, trips)}</option>)}</select>}
         <Link href={`/trips/${trip.id}`}>打开旅行 <span aria-hidden="true">↗</span></Link>
       </div>
     </header>

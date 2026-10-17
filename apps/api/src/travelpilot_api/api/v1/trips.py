@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from travelpilot_core.application.trips import TripService
 from travelpilot_infra.db.models.trip import TripModel
+from travelpilot_infra.db.models.plan import TripPlanModel
 from travelpilot_infra.db.models.user import UserModel
 from travelpilot_infra.db.session import get_session
 from travelpilot_infra.providers.weather.open_meteo import WeatherProviderError
@@ -50,14 +51,19 @@ async def create_trip(
 ) -> TripRead:
     service = TripService(session)
 
-    trip = await service.create_trip(
-        destination=payload.destination,
-        start_date=payload.start_date,
-        end_date=payload.end_date,
-        budget=payload.budget,
-        pace_level=payload.pace_level,
-        owner_id=user.id,
-    )
+    try:
+        trip = await service.create_trip(
+            destination=payload.destination,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            budget=payload.budget,
+            pace_level=payload.pace_level,
+            owner_id=user.id,
+        )
+    except ValueError as exc:
+        if str(exc) == "DUPLICATE_TRIP":
+            raise HTTPException(status_code=409, detail="已存在相同目的地和日期的旅行。请切换到已有旅行继续规划。") from exc
+        raise
 
     return TripRead.model_validate(trip)
 
@@ -72,8 +78,11 @@ async def list_trips(
 ) -> list[TripRead]:
     service = TripService(session)
     trips = await service.list_trips(user.id)
-
-    return [TripRead.model_validate(trip) for trip in trips]
+    trip_ids = [trip.id for trip in trips]
+    planned_trip_ids = set((await session.scalars(select(TripPlanModel.trip_id).where(
+        TripPlanModel.trip_id.in_(trip_ids)
+    ).distinct())).all()) if trip_ids else set()
+    return [TripRead.model_validate(trip).model_copy(update={"has_plan": trip.id in planned_trip_ids}) for trip in trips]
 
 
 @router.get(
@@ -110,7 +119,12 @@ async def update_trip(
     service = TripService(session)
 
     changes = payload.model_dump(exclude_unset=True)
-    trip = await service.update_trip(trip_id, user.id, changes)
+    try:
+        trip = await service.update_trip(trip_id, user.id, changes)
+    except ValueError as exc:
+        if str(exc) == "DUPLICATE_TRIP":
+            raise HTTPException(status_code=409, detail="已有一段目的地和日期相同的旅行，不能保存为重复记录。") from exc
+        raise
 
     if trip is None:
         raise HTTPException(status_code=404, detail="Trip not found")

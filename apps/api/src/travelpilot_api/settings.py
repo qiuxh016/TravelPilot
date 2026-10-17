@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from_email: str = ""
     smtp_use_tls: bool = True
+    smtp_use_ssl: bool = False
     maps_provider: str = "fake"
     amap_api_key: str = ""
     maps_timeout_seconds: float = 8

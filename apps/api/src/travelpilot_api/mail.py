@@ -1,6 +1,7 @@
 """Minimal transactional email delivery with a development-only in-memory outbox."""
 import asyncio
 import logging
+import ssl
 import smtplib
 from email.message import EmailMessage
 
@@ -22,9 +23,18 @@ def _send_sync(to_email: str, subject: str, link: str) -> None:
     message["From"] = settings.smtp_from_email
     message["To"] = to_email
     message.set_content(f"请打开以下链接完成操作（有效期有限）：\n\n{link}\n")
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as smtp:
-        if settings.smtp_use_tls:
-            smtp.starttls()
+    if settings.smtp_use_ssl:
+        smtp_connection = smtplib.SMTP_SSL(
+            settings.smtp_host,
+            settings.smtp_port,
+            timeout=15,
+            context=ssl.create_default_context(),
+        )
+    else:
+        smtp_connection = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15)
+    with smtp_connection as smtp:
+        if settings.smtp_use_tls and not settings.smtp_use_ssl:
+            smtp.starttls(context=ssl.create_default_context())
         if settings.smtp_username:
             smtp.login(settings.smtp_username, settings.smtp_password)
         smtp.send_message(message)

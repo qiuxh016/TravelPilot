@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   createMemorySuggestion,
@@ -25,6 +25,7 @@ import {
   type TravelMoment,
   type Trip,
 } from "../../lib/api";
+import { tripOptionLabel, useTripSelection } from "../../components/trip-selection-context";
 
 function PrivatePhoto({ assetId, alt }: { assetId: string; alt: string }) {
   const [src, setSrc] = useState("");
@@ -44,6 +45,7 @@ function PrivatePhoto({ assetId, alt }: { assetId: string; alt: string }) {
 }
 
 export default function MomentsPage() {
+  const { selectedTripId } = useTripSelection();
   const [moments, setMoments] = useState<TravelMoment[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [userId, setUserId] = useState("");
@@ -61,9 +63,11 @@ export default function MomentsPage() {
   const [captions, setCaptions] = useState<Record<string, string>>({});
   const [suggestions, setSuggestions] = useState<Record<string, MemorySuggestion>>({});
   const [loading, setLoading] = useState(true);
+  const [composerOpen, setComposerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const composerDialog = useRef<HTMLDialogElement>(null);
 
   async function load() {
     try {
@@ -75,6 +79,18 @@ export default function MomentsPage() {
   }
 
   useEffect(() => { void load(); }, []);
+
+  useEffect(() => {
+    const dialog = composerDialog.current;
+    if (!dialog) return;
+    if (composerOpen && !dialog.open) dialog.showModal();
+    else if (!composerOpen && dialog.open) dialog.close();
+  }, [composerOpen]);
+
+  function openComposer() {
+    setTripId(selectedTripId);
+    setComposerOpen(true);
+  }
 
   useEffect(() => {
     const urls = photos.map((photo) => URL.createObjectURL(photo));
@@ -103,7 +119,7 @@ export default function MomentsPage() {
         setBody(""); setPhotos([]); await load(); return;
       }
       setBody(""); setTripId(""); setDay(""); setPlaceName(""); setAudience("PRIVATE");
-      setMemoryConsent(false); setPhotos([]); setNotice(audience === "FRIENDS" ? "已发布到好友圈。" : "已保存为仅自己可见。相册照片已自动移除 EXIF/GPS 元数据。");
+      setMemoryConsent(false); setPhotos([]); setComposerOpen(false); setNotice(audience === "FRIENDS" ? "已发布到好友圈，动态已更新。" : "已保存为仅自己可见，动态已更新。相册照片已自动移除 EXIF/GPS 元数据。");
       await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "保存失败"); }
     finally { setBusy(false); }
@@ -208,12 +224,13 @@ export default function MomentsPage() {
   return <main className="shell moments-page">
     <header className="journal-page-head">
       <div><h1>记下旅途，也留住当时的心情。</h1><p>风景会变，心情也会变。有些瞬间值得被认真记下，留给以后的自己。</p></div>
-      <a className="primary" href="#moment-composer">写下这一刻 <span aria-hidden="true">↓</span></a>
+      <button type="button" className="primary" onClick={openComposer}>记录这一刻 <span aria-hidden="true">↗</span></button>
     </header>
     {error && <p className="social-message is-error" role="alert">{error}</p>}
     {notice && <p className="social-message" role="status">{notice}</p>}
+    <dialog className="moment-dialog" ref={composerDialog} onClose={() => setComposerOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setComposerOpen(false); }} aria-labelledby="moment-composer-title">
     <section className="social-card moment-composer" id="moment-composer">
-      <div className="moment-composer-heading"><div><h2>今天有什么想留给以后的自己？</h2><small>可以先写一段话，再选照片和分享范围。照片默认仅自己可见。</small></div></div>
+      <div className="moment-composer-heading"><div><h2 id="moment-composer-title">今天有什么想留给以后的自己？</h2><small>写好后选择仅自己可见或发布到好友圈。照片默认仅自己可见。</small></div><button type="button" className="moment-dialog-close" onClick={() => setComposerOpen(false)} aria-label="关闭记录窗口">×</button></div>
       <form className="moment-form" onSubmit={publish}>
         <div className="moment-editor-grid">
         <label className="moment-story-field">写下旅行感受<textarea required minLength={1} maxLength={4000} value={body} onChange={(event) => setBody(event.target.value)} placeholder="今天有什么想留给以后的自己？" rows={6} /></label>
@@ -224,7 +241,7 @@ export default function MomentsPage() {
         </div>
         </div>
         <div className="moment-fields">
-          <label>关联旅行（可选）<select value={tripId} onChange={(event) => setTripId(event.target.value)}><option value="">不关联旅行</option>{trips.map((trip) => <option key={trip.id} value={trip.id}>{trip.destination} · {trip.start_date}</option>)}</select></label>
+          <label>关联旅行（可选）<select value={tripId} onChange={(event) => setTripId(event.target.value)}><option value="">不关联旅行</option>{trips.map((trip) => <option key={trip.id} value={trip.id}>{tripOptionLabel(trip, trips)}</option>)}</select></label>
           <label>日期<input type="date" value={day} onChange={(event) => setDay(event.target.value)} /></label>
           <label>地点<input maxLength={160} value={placeName} onChange={(event) => setPlaceName(event.target.value)} placeholder="可选" /></label>
           <label>分享范围<select value={audience} onChange={(event) => setAudience(event.target.value as "PRIVATE" | "FRIENDS")}><option value="PRIVATE">仅自己（默认）</option><option value="FRIENDS">好友圈</option></select></label>
@@ -232,8 +249,9 @@ export default function MomentsPage() {
         <div className="moment-publish-line"><div><label className="moment-consent"><input type="checkbox" checked={memoryConsent} disabled={!tripId} onChange={(event) => setMemoryConsent(event.target.checked)} />允许从这条文字中提取旅行记忆建议</label><small className="moment-help">{tripId ? "确认后的记忆可用于之后的行程建议；照片不会用于识别心情。" : "关联一趟旅行后，可选择将文字整理成记忆建议。"}</small></div><button className="primary" disabled={busy}>{busy ? "正在保存……" : audience === "FRIENDS" ? "保存并分享给好友" : "保存这段记忆"}</button></div>
       </form>
     </section>
+    </dialog>
     <div className="moments-heading"><h2>动态</h2><Link href="/friends">管理好友与分享权限 →</Link></div>
-    {loading ? <p className="status">正在加载旅行动态……</p> : moments.length === 0 ? <section className="journal-empty-visual"><img src="/images/journey-dawn.webp" alt="清晨山湖的旅行灵感图" /><div><span>还没有旅行记录</span><h2>每一次出发，<br />都是一段独一无二的故事。</h2><p>从今天开始，把走过的路、遇到的人和当时的心情，慢慢留在这里。</p><a className="primary" href="#moment-composer">写下第一段旅行记录 <span aria-hidden="true">→</span></a></div></section> : <div className="moment-feed">{moments.map((moment) => {
+    {loading ? <p className="status">正在加载旅行动态……</p> : moments.length === 0 ? <section className="journal-empty-visual"><img src="/images/journey-dawn.webp" alt="清晨山湖的旅行灵感图" /><div><span>还没有旅行记录</span><h2>每一次出发，<br />都是一段独一无二的故事。</h2><p>从今天开始，把走过的路、遇到的人和当时的心情，慢慢留在这里。</p><button className="primary" type="button" onClick={openComposer}>写下第一段旅行记录 <span aria-hidden="true">→</span></button></div></section> : <div className="moment-feed">{moments.map((moment) => {
       const own = moment.owner_user_id === userId;
       return <article className="moment-card" key={moment.id}>
         <header className="moment-header"><div className="moment-avatar" aria-hidden="true">{moment.author_email.slice(0, 1).toUpperCase()}</div><div><strong>{own ? "我" : moment.author_email}</strong><small>{moment.created_at.replace("T", " ").slice(0, 16)} · {own ? moment.audience === "PRIVATE" ? "仅自己可见" : "好友可见" : "好友分享"}</small></div>{own && <button className="social-danger" disabled={busy} onClick={() => void removeMoment(moment)}>删除</button>}</header>

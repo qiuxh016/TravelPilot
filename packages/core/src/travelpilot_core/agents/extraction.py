@@ -19,6 +19,7 @@ class PlaceMention(BaseModel):
 class Extraction(BaseModel):
     places: list[PlaceMention] = Field(max_length=20)
     search_queries: list[str] = Field(default_factory=list, max_length=5)
+    intent: Literal["schedule", "recommend", "search", "modify", "preference", "general"] = "general"
     pace_adjustment: Literal["slower", "faster", "none"] = "none"
     token_usage: int = Field(default=0, exclude=True, ge=0)
     output_tokens: int = Field(default=0, exclude=True, ge=0)
@@ -69,6 +70,18 @@ def _json_content(content: object) -> str:
 
 def fallback_extract(text: str) -> Extraction:
     """Conservative local fallback: suggestions always require user confirmation."""
+    if any(term in text for term in ("时间怎么安排", "时间如何安排", "安排时间", "调整时间", "优化时间", "排一下时间", "路线怎么排", "怎么排比较合适")):
+        intent = "schedule"
+    elif any(term in text for term in ("推荐", "热门", "人气", "有什么好玩", "有什么值得去")):
+        intent = "recommend"
+    elif any(term in text for term in ("加入", "想去", "搜索", "找一下", "查一下")):
+        intent = "search"
+    elif any(term in text for term in ("不要", "移除", "删除", "删掉", "保留", "调整", "轻松一点", "紧凑一点")):
+        intent = "modify"
+    elif any(term in text for term in ("喜欢", "偏好", "预算", "同行", "不喜欢", "不想")):
+        intent = "preference"
+    else:
+        intent = "general"
     aliases = {"熊猫": "成都大熊猫繁育研究基地", "宽窄巷子": "宽窄巷子", "武侯祠": "武侯祠"}
     names = [name for needle, name in aliases.items() if needle in text]
     for segment in re.split(r"[，。、;；和及与]|还有|以及", text):
@@ -116,7 +129,7 @@ def fallback_extract(text: str) -> Extraction:
     ))[:5]
     if any(query in search_queries for query in ("川菜", "火锅")):
         search_queries = [query for query in search_queries if query != "美食"]
-    return Extraction(places=mentions, search_queries=search_queries, pace_adjustment=pace_adjustment)
+    return Extraction(places=mentions, search_queries=search_queries, intent=intent, pace_adjustment=pace_adjustment)
 
 
 async def extract_places(
@@ -136,7 +149,7 @@ async def extract_places(
                 "response_format": {"type": "json_object"},
                 "max_tokens": min(800, token_budget),
                 "messages": [
-                    {"role": "system", "content": "Interpret explicit travel-planning intent. Return json only, for example {\"places\":[],\"search_queries\":[],\"pace_adjustment\":\"none\"}. Return a JSON object with places: [{name,category,suggestion,confidence,action,evidence}], search_queries (up to 5 short map keywords for positively stated interest categories, such as food or museums), and pace_adjustment (slower, faster, or none). Each confidence must be a JSON number from 0 to 1, never a descriptive label; evidence must be a short verbatim substring of the input or null. action must be add, remove, or mention. Use remove only when the user clearly asks to remove/avoid that place; use add when they clearly want to visit it; otherwise mention. Change pace and search categories only when explicitly requested; never search for a category the user rejects. Extract real place names only, never invent places or interests, and return at most 20 places.\n" + additional_instructions[:4000]},
+                    {"role": "system", "content": "Interpret the user's travel-planning intent. Return JSON only, for example {\"intent\":\"schedule\",\"places\":[],\"search_queries\":[],\"pace_adjustment\":\"none\"}. intent must be one of schedule (ask to arrange/review time or route for known trip places), recommend (ask for suggestions/popular places), search (name/category to search), modify (add/remove/keep/change existing choices or pace), preference (state preferences/constraints), general (other). Return places: [{name,category,suggestion,confidence,action,evidence}], search_queries (up to 5 short map keywords for positively stated interest categories, such as food or museums), and pace_adjustment (slower, faster, or none). Each confidence must be a JSON number from 0 to 1, never a descriptive label; evidence must be a short verbatim substring of the input or null. action must be add, remove, or mention. Use remove only when the user clearly asks to remove/avoid that place; use add when they clearly want to visit it; otherwise mention. Change pace and search categories only when explicitly requested; never search for a category the user rejects. Extract real place names only, never invent places or interests, and return at most 20 places.\n" + additional_instructions[:4000]},
                     {"role": "user", "content": text[:8000]},
                 ],
                 "temperature": 0,

@@ -45,6 +45,9 @@ async def compose_advisor_reply(
                                 "Explain that candidates still need user selection. Ask at most one useful "
                                 "question when a required condition is missing. Do not claim a plan was "
                                 "saved or changed; confirmation is a separate user action."
+                                " When the user asks how to schedule or optimize time and current_plan is supplied, "
+                                "discuss those existing stops directly; do not ask them to name places already in the plan. "
+                                "Describe a generated schedule as a proposal that needs confirmation."
                             ),
                         },
                         {"role": "user", "content": json.dumps(facts, ensure_ascii=False)},

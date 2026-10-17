@@ -8,10 +8,11 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from travelpilot_core.application.trips import find_duplicate_trip, lock_trip_owner
 from travelpilot_core.agents.advisor_reply import compose_advisor_reply
 from travelpilot_core.agents.extraction import Extraction, extract_places, fallback_extract
 from travelpilot_core.agents.runtime import AgentRuntime
-from travelpilot_core.engines.optimizer.itinerary import Candidate, build_itinerary
+from travelpilot_core.engines.optimizer.itinerary import Candidate, Visit, build_itinerary
 from travelpilot_core.ports.tool_schemas import GetDistanceMatrixInput, SearchPlacesInput
 from travelpilot_core.ports.tools import ToolFailure, ToolSpec
 from travelpilot_infra.db.models.advisor import (
@@ -107,8 +108,157 @@ async def _read_session(session: AsyncSession, row: AdvisorSessionModel) -> Advi
     })
 
 
+async def _refresh_trip_snapshot(db: AsyncSession, row: AdvisorSessionModel) -> dict:
+    """Refresh the agent's trip observations before it decides on an action."""
+    context = dict(row.context or {})
+    if not row.trip_id:
+        return context
+    trip = await db.scalar(select(TripModel).where(
+        TripModel.id == row.trip_id, TripModel.owner_id == row.owner_id,
+    ))
+    if trip is None:
+        return context
+    latest_plan = await db.scalar(select(TripPlanModel).where(
+        TripPlanModel.trip_id == trip.id,
+    ).order_by(TripPlanModel.version.desc()).limit(1))
+    plan_rows = (await db.execute(
+        select(TripPlanNodeModel, PoiModel)
+        .join(PoiModel, PoiModel.id == TripPlanNodeModel.poi_id)
+        .where(TripPlanNodeModel.plan_id == latest_plan.id)
+        .order_by(TripPlanNodeModel.day, TripPlanNodeModel.start_time)
+    )).all() if latest_plan else []
+
+    existing_candidates = {
+        str(candidate.get("existing_poi_id")): candidate
+        for candidate in row.candidates if candidate.get("existing_poi_id")
+    }
+    plan_candidates = []
+    stops = []
+    for node, poi in plan_rows:
+        previous = existing_candidates.get(str(poi.id), {})
+        candidate = {
+            **previous,
+            "id": previous.get("id") or str(uuid4()),
+            "provider": poi.provider or "local", "provider_id": poi.provider_id or str(poi.id),
+            "existing_poi_id": str(poi.id), "in_current_plan": True,
+            "name": poi.name, "address": poi.address, "category": poi.category,
+            "latitude": float(poi.latitude), "longitude": float(poi.longitude),
+            "duration_min": poi.suggested_duration_min, "opening_hours": poi.opening_hours,
+            "confidence": previous.get("confidence", 0.5), "suggestion": previous.get("suggestion"),
+        }
+        plan_candidates.append(candidate)
+        stops.append({
+            "candidate_id": candidate["id"], "poi_id": str(poi.id), "name": poi.name,
+            "day": node.day.isoformat(), "start_time": node.start_time.isoformat(),
+            "end_time": node.end_time.isoformat(), "priority": node.priority,
+            "status": node.status, "note": node.note,
+        })
+
+    plan_poi_ids = {candidate["existing_poi_id"] for candidate in plan_candidates}
+    other_candidates = [
+        {**candidate, "in_current_plan": False}
+        for candidate in row.candidates
+        if not candidate.get("existing_poi_id")
+        or str(candidate.get("existing_poi_id")) not in plan_poi_ids
+    ]
+    row.candidates = [*other_candidates, *plan_candidates]
+    selected_ids = [candidate["id"] for candidate in plan_candidates]
+    previous_plan = context.get("current_plan") or {}
+    if previous_plan.get("version") != (latest_plan.version if latest_plan else None):
+        context["revision"] = int(context.get("revision", 0)) + 1
+    if set(context.get("selected_candidate_ids", [])) != set(selected_ids):
+        context["selected_candidate_ids"] = selected_ids
+        context["revision"] = int(context.get("revision", 0)) + 1
+    context["current_plan"] = {
+        "id": str(latest_plan.id), "version": latest_plan.version,
+        "status": latest_plan.status, "warnings": latest_plan.warnings, "stops": stops,
+    } if latest_plan else None
+    row.destination = trip.destination
+    row.start_date = trip.start_date
+    row.end_date = trip.end_date
+    row.budget = trip.budget
+    row.pace_level = trip.pace_level
+    current_trip_snapshot = {
+        "destination": trip.destination,
+        "start_date": trip.start_date.isoformat() if trip.start_date else None,
+        "end_date": trip.end_date.isoformat() if trip.end_date else None,
+        "budget": str(trip.budget) if trip.budget is not None else None,
+        "pace_level": trip.pace_level,
+    }
+    if context.get("base_trip") != current_trip_snapshot:
+        context["base_trip"] = current_trip_snapshot
+        context["revision"] = int(context.get("revision", 0)) + 1
+    context["planning_state"] = _planning_state(row)
+    row.context = context
+    return context
+
+
 def _normalized_place_name(value: str) -> str:
     return re.sub(r"[^\w\u4e00-\u9fff]", "", value.casefold())
+
+
+def _map_popularity_score(metadata: dict | None) -> float | None:
+    """Use provider supplied rating/importance without inventing popularity."""
+    if not isinstance(metadata, dict):
+        return None
+    business = metadata.get("biz_ext")
+    value = business.get("rating") if isinstance(business, dict) else None
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return None
+    if 0 <= score <= 10:
+        return score
+    return None
+
+
+def _explicit_schedule_hint(content: str, start_date: date | None, end_date: date | None) -> tuple[str | None, str | None]:
+    """Extract only dates/times stated explicitly; never infer a default visit time."""
+    day = None
+    iso_date = re.search(r"(?<!\d)(20\d{2}-\d{1,2}-\d{1,2})(?!\d)", content)
+    month_day = re.search(r"(?:(20\d{2})年)?(\d{1,2})月(\d{1,2})[日号]", content)
+    day_index = re.search(r"第\s*(\d{1,2})\s*天", content)
+    if iso_date:
+        try:
+            parsed = date.fromisoformat(iso_date.group(1))
+            if (not start_date or parsed >= start_date) and (not end_date or parsed <= end_date):
+                day = parsed.isoformat()
+        except ValueError:
+            pass
+    elif month_day and start_date:
+        try:
+            parsed = date(int(month_day.group(1) or start_date.year), int(month_day.group(2)), int(month_day.group(3)))
+            if not end_date or start_date <= parsed <= end_date:
+                day = parsed.isoformat()
+        except ValueError:
+            pass
+    elif day_index and start_date:
+        offset = int(day_index.group(1)) - 1
+        candidate_day = date.fromordinal(start_date.toordinal() + offset)
+        if end_date and candidate_day <= end_date:
+            day = candidate_day.isoformat()
+    time_match = re.search(r"(?<!\d)([01]?\d|2[0-3])[:：]([0-5]\d)(?!\d)", content)
+    visit_time = f"{int(time_match.group(1)):02d}:{time_match.group(2)}" if time_match else None
+    if visit_time is None:
+        chinese_time = re.search(r"(上午|早上|中午|下午|晚上)\s*(\d{1,2})\s*(?:点|时)(?:\s*(\d{1,2})\s*分?)?", content)
+        if chinese_time:
+            hour = int(chinese_time.group(2))
+            period = chinese_time.group(1)
+            if period in ("下午", "晚上") and 1 <= hour < 12:
+                hour += 12
+            elif period == "中午" and hour < 11:
+                hour += 12
+            visit_time = f"{hour:02d}:{int(chinese_time.group(3) or 0):02d}"
+    return day, visit_time
+
+
+def _clock_minutes(value: time) -> int:
+    return value.hour * 60 + value.minute
+
+
+def _is_schedule_recommendation_request(content: str) -> bool:
+    phrases = ("时间怎么安排", "时间如何安排", "安排时间比较", "安排得比较合适", "优化时间", "重新排时间", "排一下时间", "时间分配", "行程怎么排", "路线怎么排")
+    return any(phrase in content for phrase in phrases)
 
 
 def _planning_state(row: AdvisorSessionModel) -> dict:
@@ -272,6 +422,7 @@ def _search_tool_runtime(maps) -> AgentRuntime:
                 "name": place.name, "address": place.address, "category": place.category,
                 "latitude": place.latitude, "longitude": place.longitude,
                 "duration_min": place.suggested_duration_min, "opening_hours": place.opening_hours,
+                "popularity_score": _map_popularity_score(place.raw_metadata),
             } for place in places],
         }
 
@@ -712,13 +863,20 @@ async def send_message(
             return await _read_session(db, row)
     if row.status != "ACTIVE":
         raise HTTPException(409, detail="已确认的会话不能继续修改")
+    await _refresh_trip_snapshot(db, row)
     db.add(AdvisorMessageModel(session_id=row.id, owner_id=user.id, role="user", content=content,
                                idempotency_key=idempotency_key))
     try:
         extraction, model_fallback = await _extract_advisor_intent(content)
         allowed_search_queries = _allowed_interest_queries(content, extraction.search_queries)
+        stated_interest_queries = list(allowed_search_queries)
+        recommendation_requested = extraction.intent == "recommend" or any(
+            term in content for term in ("推荐地点", "推荐一些地点", "推荐几个地方", "热门地点", "人气景点", "热度高")
+        )
+        if recommendation_requested:
+            allowed_search_queries = list(dict.fromkeys([*allowed_search_queries, "景点", "美食"]))[:5]
         if (
-            allowed_search_queries or extraction.pace_adjustment != "none"
+            stated_interest_queries or extraction.pace_adjustment != "none"
             or any(term in content for term in ("偏好", "喜欢", "不喜欢", "不要", "希望", "不想"))
         ):
             row.preference_text = (row.preference_text + "\n" + content).strip()[-4000:]
@@ -733,7 +891,7 @@ async def send_message(
             for mention in extraction.places if mention.action != "remove"
         ]
         requests.extend(
-            (query, 0.55, f"按你提到的“{query}”偏好搜索", False)
+            (query, 0.55, ("按地图服务当前排序检索的热门候选" if recommendation_requested else f"按你提到的“{query}”偏好搜索"), False)
             for query in allowed_search_queries
             if query.casefold() not in {mention.name.casefold() for mention in extraction.places}
         )
@@ -755,6 +913,7 @@ async def send_message(
                     "latitude": place["latitude"], "longitude": place["longitude"],
                     "duration_min": place["duration_min"], "opening_hours": place["opening_hours"],
                     "confidence": confidence, "suggestion": suggestion,
+                    "popularity_score": place.get("popularity_score"),
                     "verification_status": search_result["status"], "verified_at": search_result["retrieved_at"],
                 }
                 if not any(c["provider"] == candidate["provider"] and c["provider_id"] == candidate["provider_id"] for c in row.candidates):
@@ -767,19 +926,110 @@ async def send_message(
                             *context.get("selected_candidate_ids", []), candidate["id"],
                         })
                         context["revision"] = int(context.get("revision", 0)) + 1
-        if found:
+        if recommendation_requested and found:
+            found.sort(key=lambda item: (item.get("popularity_score") is not None,
+                                         item.get("popularity_score") or 0), reverse=True)
+            row.candidates = sorted(row.candidates, key=lambda item: (
+                item.get("popularity_score") is not None, item.get("popularity_score") or 0
+            ), reverse=True)
+        schedule_target = None
+        if len(extraction.places) == 1:
+            mention_name = _normalized_place_name(extraction.places[0].name)
+            exact = [candidate for candidate in found if _normalized_place_name(candidate["name"]) == mention_name]
+            if len(exact) == 1:
+                schedule_target = exact[0]
+        elif len(found) == 1:
+            schedule_target = found[0]
+        if schedule_target is not None:
+            explicit_day, explicit_time = _explicit_schedule_hint(content, row.start_date, row.end_date)
+            if explicit_day:
+                schedule_target["explicit_day"] = explicit_day
+            if explicit_time:
+                schedule_target["explicit_start_time"] = explicit_time
+        schedule_suggestions = []
+        schedule_recommendation_requested = bool(
+            row.trip_id and (extraction.intent == "schedule" or _is_schedule_recommendation_request(content))
+        )
+        schedule_recommendation_error = None
+        schedule_runtime = None
+        if schedule_recommendation_requested:
+            current_plan = context.get("current_plan") or {}
+            existing_stops = current_plan.get("stops", [])
+            plan_poi_ids = {str(stop.get("poi_id")) for stop in existing_stops if stop.get("poi_id")}
+            schedule_candidates = [candidate for candidate in row.candidates
+                                   if candidate.get("in_current_plan") and str(candidate.get("existing_poi_id")) in plan_poi_ids]
+            if not schedule_candidates:
+                schedule_recommendation_error = "当前已确认计划中没有可重新排程的地点。"
+            elif not row.start_date or not row.end_date:
+                schedule_recommendation_error = "当前旅行缺少日期，暂时无法为已确认地点推荐分日安排。"
+            elif len(schedule_candidates) > 29:
+                schedule_recommendation_error = "地点数量超过路线距离核验上限，请先减少本次排程地点。"
+            else:
+                planner_candidates = [Candidate(
+                    poi_id=UUID(candidate["id"]), name=candidate["name"],
+                    latitude=float(candidate["latitude"]), longitude=float(candidate["longitude"]),
+                    duration_min=max(15, int(candidate.get("duration_min", 60))), priority=3,
+                    interest_score=float(candidate.get("confidence", 0.5)),
+                    opening_hours=candidate.get("opening_hours"), note=candidate.get("suggestion"),
+                ) for candidate in schedule_candidates]
+                recommendation_matrix = None
+                try:
+                    if len(planner_candidates) > 1:
+                        schedule_runtime = _distance_tool_runtime(maps)
+                        result = await schedule_runtime.call("get_distance_matrix", {
+                            "points": [(candidate.latitude, candidate.longitude) for candidate in planner_candidates],
+                        })
+                        recommendation_matrix = result["durations_min"]
+                    proposed_visits, proposed_warnings = build_itinerary(
+                        row.start_date, row.end_date, planner_candidates, recommendation_matrix,
+                        buffer_min=90 if row.pace_level <= 2 else 60,
+                        transfer_buffer_min=15,
+                        max_pois_per_day={1: 3, 2: 4, 3: 5, 4: 6, 5: 6}[row.pace_level],
+                    )
+                    if len(proposed_visits) != len(planner_candidates):
+                        schedule_recommendation_error = "现有地点无法全部放入当前日期和节奏；我没有静默删点，请增加旅行天数或调整节奏后再试。"
+                    else:
+                        schedule_suggestions = [{
+                            "candidate_id": str(visit.candidate.poi_id),
+                            "day": visit.day.isoformat(),
+                            "start_time": visit.start_time.strftime("%H:%M"),
+                        } for visit in proposed_visits]
+                        selected_plan_ids = [candidate["id"] for candidate in schedule_candidates]
+                        preselected_candidate_ids = selected_plan_ids
+                        if set(context.get("selected_candidate_ids", [])) != set(selected_plan_ids):
+                            context["selected_candidate_ids"] = selected_plan_ids
+                            context["revision"] = int(context.get("revision", 0)) + 1
+                except (ToolFailure, MapsProviderError, ValueError) as exc:
+                    schedule_recommendation_error = "暂时无法取得可靠的地点间交通时间，未生成自动排程建议。"
+        if schedule_suggestions:
+            version = current_plan.get("version", "当前")
+            reply = f"我读取了当前计划 v{version} 中已确认的 {len(schedule_candidates)} 个地点，并结合地图交通时间和地图建议游览时长排出一版时间建议。它只是待确认草案；检查路线和空档后，点击“确认并保存行程”才会生成新计划。"
+        elif found:
             names = "、".join(c["name"] for c in found[:8])
-            reply = f"地图服务核对到这些候选：{names}。请在候选清单中选择想去的地点，再生成行程草案。"
+            reply = f"地图服务核对到这些候选：{names}。请先选择想去的地点，并为每个地点确认日期和开始时间。"
+            if recommendation_requested:
+                reply += "候选按地图服务返回顺序整理；只有地图提供评分时才会按评分辅助排序，不能把它当作全网热度。你更偏爱自然风景、历史文化、美食还是亲子活动？"
             if search_failures:
                 reply += " 部分地图查询暂时失败，以上候选仅来自成功的查询。"
+        elif not row.destination and row.mode == "discover":
+            has_preferences = bool(row.preference_text.strip())
+            planning_inputs = (row.context or {}).get("planning_inputs", {})
+            missing_city_compare = []
+            if not str(planning_inputs.get("origin", "")).strip():
+                missing_city_compare.append("出发地")
+            if not row.start_date or not row.end_date:
+                missing_city_compare.append("旅行日期")
+            if not has_preferences:
+                reply = "可以从一点偏好开始，不用一次想完整。你更想看自然风景、吃本地美食、逛历史街区，还是去海边放松？也可以直接说预算或同行人。"
+            else:
+                reply = "我先记下了你的想法。"
+                if missing_city_compare:
+                    reply += f"要根据地图证据比较城市，还需要{ '和'.join(missing_city_compare) }。"
+                reply += "你可以补充这些条件，或者先告诉我想考虑的城市，我就按偏好搜索具体地点。"
         elif not row.destination:
-            reply = "已记录你的兴趣。请先在旅行条件中填写目的地城市或区域，我再按这些偏好搜索地图候选。"
-        elif not row.destination:
-            reply = (
-                "我已记下你刚才的旅行偏好。目前还没有目的地，"
-                "我不能根据地图核验结果可靠地推荐城市。你可以先告诉我考虑中的城市，"
-                "或补充出发地和旅行天数，我再帮你筛选地点并比较行程。"
-            )
+            reply = "我已记下你的想法。先告诉我想去的城市或区域；如果还没确定，可以说说偏好的风景、吃住预算和旅行天数，我会先问最关键的一项，再一起缩小范围。"
+        elif schedule_recommendation_requested:
+            reply = schedule_recommendation_error or "我读取了当前旅行，但暂时无法生成时间建议；请检查日期和地图路线服务后重试。"
         elif searched_requests and search_failures:
             reply = "地图服务暂时不可用，这轮未能核验地点。你的偏好已保留，可以稍后重试。"
         elif searched_requests:
@@ -806,10 +1056,13 @@ async def send_message(
                 "preferences": row.preference_text[-1200:],
                 "confirmed_personal_memories": (row.context or {}).get("personal_memories", []),
                 "planning_inputs": (row.context or {}).get("planning_inputs", {}),
+                "current_plan": context.get("current_plan"),
+                "schedule_recommendation_requested": schedule_recommendation_requested,
                 "missing_required": context.get("planning_state", {}).get("missing_required", []),
                 "adjustments_applied": adjustments,
                 "verified_candidates": [{
-                    "name": item["name"], "address": item["address"], "category": item["category"],
+                "name": item["name"], "address": item["address"], "category": item["category"],
+                "popularity_score": item.get("popularity_score"),
                     "provider": item["provider"], "verification_status": item["verification_status"],
                 } for item in found[:8]],
                 "search_requests_without_results": searched_requests if not found else 0,
@@ -825,6 +1078,10 @@ async def send_message(
             reply = composed.reply
             if composed.follow_up_question:
                 reply += "\n" + composed.follow_up_question
+            if recommendation_requested and not stated_interest_queries and not composed.follow_up_question:
+                reply += "\n你更偏爱自然风景、历史文化、美食还是亲子活动？"
+        if schedule_suggestions:
+            reply = f"我读取了当前计划中已确认的 {len(schedule_suggestions)} 个地点，并结合地图交通时间和地图建议游览时长排出一版时间建议。它只是待确认草案；检查路线和空档后，点击“确认并保存行程”才会生成新计划。"
         elif model_fallback:
             reply += " 模型暂时不可用，本轮使用本地规则识别明确提及的地点；请核对地图候选。"
         llm_output_tokens = extraction.output_tokens + reply_output_tokens
@@ -847,6 +1104,17 @@ async def send_message(
     db.add(AdvisorMessageModel(session_id=row.id, owner_id=user.id, role="assistant", content=reply,
                                payload={
                                    "candidate_ids": preselected_candidate_ids,
+                                   "intent": extraction.intent,
+                                   "agent_action": (
+                                       "SCHEDULE_PLAN" if schedule_suggestions else
+                                       "SCHEDULE_BLOCKED" if schedule_recommendation_requested else
+                                       "RECOMMEND_PLACES" if recommendation_requested and searched_requests else
+                                       "SEARCH_PLACES" if searched_requests else
+                                       "UPDATE_DRAFT_SELECTION" if adjustments else
+                                       "ASK_CLARIFICATION"
+                                   ),
+                                   "action": "SCHEDULE_PROPOSAL" if schedule_suggestions else None,
+                                   "schedule_suggestions": schedule_suggestions,
                                    "response_source": response_source,
                                    "extraction_source": "TEMPLATE" if model_fallback or not settings.llm_api_key or not settings.llm_model else "MODEL",
                                    "model_fallback_reason": "EXTRACTION_FAILED" if model_fallback else None,
@@ -855,13 +1123,19 @@ async def send_message(
                                    "llm_input_tokens": llm_input_tokens,
                                    "llm_output_tokens": llm_output_tokens,
                                    "tool_calls": [{key: call[key] for key in ("tool", "status", "latency_ms", "error_code")}
-                                                  for call in search_runtime.calls],
+                                                  for call in [*search_runtime.calls, *(schedule_runtime.calls if schedule_runtime else [])]],
                                }))
     for call in search_runtime.calls:
         db.add(AdvisorRunEventModel(
             owner_id=user.id, session_id=row.id, phase="tool", operation=call["tool"],
             status=call["status"], duration_ms=call["latency_ms"], error_code=call["error_code"],
             metadata_json={"result_count": len((call.get("output_data") or {}).get("places", []))},
+        ))
+    for call in schedule_runtime.calls if schedule_runtime else []:
+        db.add(AdvisorRunEventModel(
+            owner_id=user.id, session_id=row.id, phase="tool", operation=call["tool"],
+            status=call["status"], duration_ms=call["latency_ms"], error_code=call["error_code"],
+            metadata_json={"point_count": len((call.get("input_data") or {}).get("points", []))},
         ))
     db.add(AdvisorRunEventModel(
         owner_id=user.id, session_id=row.id, phase="interpretation", operation="send_message",
@@ -917,6 +1191,12 @@ async def create_draft(
                       for message in _hard_limit_conflicts(candidate, planning_memories)]
     if hard_conflicts:
         raise HTTPException(409, detail="；".join(hard_conflicts))
+    schedule_by_id = {str(item.candidate_id): item for item in payload.schedules}
+    selected_ids = {str(item["id"]) for item in selected}
+    if len(schedule_by_id) != len(payload.schedules) or set(schedule_by_id) != selected_ids:
+        raise HTTPException(400, detail="每个已选地点都需要且只能设置一个日期和开始时间")
+    if any(not row.start_date <= item.day <= row.end_date for item in payload.schedules):
+        raise HTTPException(400, detail="地点日期必须在旅行日期范围内")
     planner_candidates = [Candidate(
         poi_id=UUID(item["id"]), name=item["name"], latitude=float(item["latitude"]),
         longitude=float(item["longitude"]), duration_min=max(15, int(item["duration_min"])),
@@ -999,10 +1279,68 @@ async def create_draft(
         except MapsProviderError as exc:
             raise HTTPException(503, detail="交通时间服务暂时不可用") from exc
     max_per_day = {1: 3, 2: 4, 3: 5, 4: 6, 5: 6}[row.pace_level]
-    visits, warnings = build_itinerary(row.start_date, row.end_date, planner_candidates, matrix,
-                                       buffer_min=90 if row.pace_level <= 2 else 60,
-                                       max_pois_per_day=max_per_day,
-                                       start_travel_min=start_travel_min)
+    warnings = []
+    planner_by_id = {str(item.poi_id): item for item in planner_candidates}
+    visits = []
+    for candidate_id, schedule in schedule_by_id.items():
+        candidate = planner_by_id[candidate_id]
+        start_min = _clock_minutes(schedule.start_time)
+        end_min = start_min + candidate.duration_min
+        if start_min < 6 * 60 or end_min > 23 * 60:
+            raise HTTPException(400, detail=f"{candidate.name} 的开始时间或预计游览时长超出 06:00–23:00 可规划范围")
+        closing = (candidate.opening_hours or {}).get("close")
+        if closing:
+            try:
+                close_time = time.fromisoformat(str(closing))
+                if end_min > _clock_minutes(close_time):
+                    warnings.append(f"阻断：{candidate.name} 的预计结束时间晚于地图营业时间")
+            except ValueError:
+                warnings.append(f"{candidate.name} 的营业时间格式无法核验")
+        else:
+            warnings.append(f"{candidate.name} 的营业时间没有可核验数据")
+        visits.append(Visit(candidate, schedule.day, schedule.start_time,
+                            time(end_min // 60, end_min % 60)))
+    visits.sort(key=lambda item: (item.day, item.start_time, item.candidate.name))
+    daily_counts: dict[date, list[Visit]] = {}
+    for visit in visits:
+        daily_counts.setdefault(visit.day, []).append(visit)
+    for day, day_visits in daily_counts.items():
+        if len(day_visits) > max_per_day:
+            warnings.append(f"阻断：{day} 有 {len(day_visits)} 个地点，超过当前节奏建议上限 {max_per_day} 个")
+        for previous, current in zip(day_visits, day_visits[1:]):
+            previous_index = next(i for i, candidate in enumerate(planner_candidates) if candidate.poi_id == previous.candidate.poi_id)
+            current_index = next(i for i, candidate in enumerate(planner_candidates) if candidate.poi_id == current.candidate.poi_id)
+            travel_min = (matrix[previous_index][current_index] if matrix is not None else
+                          max(5, round((((previous.candidate.latitude-current.candidate.latitude)**2 + ((previous.candidate.longitude-current.candidate.longitude)*.86)**2)**.5) * 111 * 2.5)))
+            if _clock_minutes(previous.end_time) + travel_min + 15 > _clock_minutes(current.start_time):
+                warnings.append(f"阻断：{previous.candidate.name} 到 {current.candidate.name} 的预计游览、交通和 15 分钟换乘缓冲冲突（交通约 {travel_min} 分钟）")
+            elif travel_min >= 90:
+                warnings.append(f"{previous.candidate.name} 到 {current.candidate.name} 距离较远，地图估算交通约 {travel_min} 分钟，请确认路线是否合适")
+        for previous, current in zip(day_visits, day_visits[1:]):
+            gap = _clock_minutes(current.start_time) - _clock_minutes(previous.end_time)
+            if gap >= 180:
+                warnings.append(f"{day} {previous.end_time.strftime('%H:%M')}–{current.start_time.strftime('%H:%M')} 有约 {gap // 60} 小时空档，可安排休息或补充地点")
+        meal_terms = ("餐饮", "餐厅", "餐馆", "美食", "小吃", "火锅", "饭店", "快餐", "restaurant", "food")
+        lunch_covered = any(11 * 60 <= _clock_minutes(visit.start_time) < 14 * 60
+                            and any(term in f"{visit.candidate.name} {visit.candidate.category}".casefold() for term in meal_terms)
+                            for visit in day_visits)
+        dinner_covered = any(17 * 60 <= _clock_minutes(visit.start_time) < 20 * 60
+                             and any(term in f"{visit.candidate.name} {visit.candidate.category}".casefold() for term in meal_terms)
+                             for visit in day_visits)
+        if not lunch_covered:
+            warnings.append(f"{day} 尚未明确安排午餐")
+        if not dinner_covered:
+            warnings.append(f"{day} 尚未明确安排晚餐")
+    scheduled_days = set(daily_counts)
+    for offset in range((row.end_date - row.start_date).days + 1):
+        trip_day = date.fromordinal(row.start_date.toordinal() + offset)
+        if trip_day not in scheduled_days:
+            warnings.append(f"{trip_day} 尚无已选安排，整天空档由你决定如何使用")
+    category_text = " ".join(f"{item['name']} {item['category']}" for item in selected).casefold()
+    if not any(term in category_text for term in ("酒店", "宾馆", "旅馆", "民宿", "住宿", "hotel", "hostel")):
+        warnings.append("住宿尚未纳入本次地点草案；请另行确认酒店或民宿")
+    if transport_provenance["status"] not in ("VERIFIED", "SIMULATED"):
+        warnings.append("地点间交通时间尚未核验")
     warnings.extend(origin_warnings)
     if start_travel_min is not None and visits:
         first_day_visits = [visit for visit in visits if visit.day == row.start_date]
@@ -1156,6 +1494,9 @@ async def confirm_draft(
         raise HTTPException(409, detail="草案版本已变化，请刷新后确认最新版本")
     if not row.draft.get("stops"):
         raise HTTPException(409, detail="草案中没有可保存的已安排地点")
+    blockers = [warning for warning in row.draft.get("warnings", []) if str(warning).startswith("阻断：")]
+    if blockers:
+        raise HTTPException(409, detail="行程存在时间或交通冲突，请调整地点时间后重新生成：" + "；".join(blockers))
     context = row.context or {"revision": 0, "selected_candidate_ids": [], "current_plan": None, "confirmed_memories": []}
     if row.draft.get("context_revision", 0) != context.get("revision", 0):
         raise HTTPException(409, detail="对话偏好或地点清单已变化，请重新生成草案")
@@ -1184,6 +1525,13 @@ async def confirm_draft(
     else:
         if not row.start_date or not row.end_date:
             raise HTTPException(400, detail="行程日期缺失")
+        await lock_trip_owner(db, user.id)
+        duplicate = await find_duplicate_trip(db, user.id, row.destination, row.start_date, row.end_date)
+        if duplicate is not None:
+            raise HTTPException(
+                409,
+                detail="已有一段目的地和日期相同的旅行。请在顶部切换到已有旅行，再关联它继续规划。",
+            )
         trip = TripModel(owner_id=user.id, destination=row.destination, start_date=row.start_date,
                          end_date=row.end_date, budget=row.budget, pace_level=row.pace_level, status="DRAFT")
         db.add(trip)

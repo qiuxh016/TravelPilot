@@ -35,7 +35,7 @@ class AmapProvider:
 
     def _place(self, item):
         longitude, latitude = (float(value) for value in item["location"].split(","))
-        return Place("amap", item["id"], item["name"], item.get("address"), "CUSTOM", latitude, longitude, raw_metadata=item)
+        return Place("amap", item["id"], item["name"], item.get("address"), item.get("type") or "CUSTOM", latitude, longitude, raw_metadata=item)
 
     async def search_place(self, keyword, city=None):
         data = await self._get("/place/text", keywords=keyword, city=city or "", offset=20)

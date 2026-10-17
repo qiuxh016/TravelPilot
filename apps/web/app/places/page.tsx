@@ -5,6 +5,7 @@ import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { addWishlistItem, listTrips, searchPlaces, type Place, type Trip } from "../../lib/api";
 import { RouteMap } from "../../components/route-map";
+import { tripOptionLabel, useTripSelection } from "../../components/trip-selection-context";
 
 const categories = ["全部", "景点", "餐饮", "咖啡", "购物"];
 const categoryNames: Record<string, string> = {
@@ -13,10 +14,12 @@ const categoryNames: Record<string, string> = {
 
 function PlacesContent() {
   const queryTripId = useSearchParams().get("tripId") ?? "";
+  const { selectedTripId, selectTrip: selectGlobalTrip } = useTripSelection();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [tripId, setTripId] = useState(queryTripId);
+  const [exploreMode, setExploreMode] = useState<"trip" | "free">(queryTripId ? "trip" : "free");
   const [keyword, setKeyword] = useState("");
-  const [city, setCity] = useState("成都");
+  const [city, setCity] = useState("");
   const [places, setPlaces] = useState<Place[]>([]);
   const [category, setCategory] = useState("全部");
   const [showAll, setShowAll] = useState(false);
@@ -28,10 +31,42 @@ function PlacesContent() {
     void listTrips().then((rows) => {
       if (!active) return;
       setTrips(rows);
-      setTripId((current) => current || queryTripId || rows[0]?.id || "");
+      if (queryTripId) {
+        const linkedTrip = rows.find((trip) => trip.id === queryTripId);
+        if (linkedTrip) { setTripId(linkedTrip.id); setCity(linkedTrip.destination); setExploreMode("trip"); }
+      }
     }).catch((error) => { if (active) setMessage(error instanceof Error ? error.message : "旅行列表暂时无法加载"); });
     return () => { active = false; };
   }, [queryTripId]);
+
+  useEffect(() => {
+    if (queryTripId) return;
+    setTripId(selectedTripId);
+    if (selectedTripId) {
+      const trip = trips.find((item) => item.id === selectedTripId);
+      if (trip) { setCity(trip.destination); setExploreMode("trip"); }
+    } else setExploreMode("free");
+  }, [selectedTripId, queryTripId, trips]);
+
+  const selectedTrip = trips.find((trip) => trip.id === tripId);
+
+  function selectTrip(value: string) {
+    setTripId(value);
+    selectGlobalTrip(value);
+    const trip = trips.find((item) => item.id === value);
+    if (trip) setCity(trip.destination);
+  }
+
+  function selectExploreMode(next: "trip" | "free") {
+    setExploreMode(next);
+    if (next === "trip") {
+      const trip = trips.find((item) => item.id === (selectedTripId || tripId));
+      if (trip) { setTripId(trip.id); setCity(trip.destination); selectGlobalTrip(trip.id); }
+    } else {
+      setTripId("");
+      selectGlobalTrip("");
+    }
+  }
 
   async function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -46,7 +81,7 @@ function PlacesContent() {
   }
 
   async function add(place: Place) {
-    if (!tripId) { setMessage("先创建一段旅行，再把地点放进收藏。"); return; }
+    if (!tripId) { setMessage("地点可以自由探索；若想收藏，请先在右侧选择一段旅行。"); return; }
     setBusy(true); setMessage("");
     try {
       await addWishlistItem(tripId, {
@@ -74,10 +109,23 @@ function PlacesContent() {
     </header>
 
     <section className="places-search-panel" aria-label="搜索地点">
+      <div className="places-mode-heading"><div><span className="places-overline">从哪里开始</span><strong>选择探索方式</strong></div></div>
+      <div className="places-explore-modes" role="group" aria-label="选择探索方式">
+        <button type="button" className={exploreMode === "trip" ? "is-selected" : ""} aria-pressed={exploreMode === "trip"} onClick={() => selectExploreMode("trip")}>
+          <span className="places-mode-icon" aria-hidden="true">↗</span><span><strong>从一段旅行探索</strong><small>使用旅行目的地，地点直接收藏到这段旅行</small></span>
+        </button>
+        <button type="button" className={exploreMode === "free" ? "is-selected" : ""} aria-pressed={exploreMode === "free"} onClick={() => selectExploreMode("free")}>
+          <span className="places-mode-icon" aria-hidden="true">⌖</span><span><strong>自由探索城市</strong><small>输入任意城市搜索，之后可选择是否收藏</small></span>
+        </button>
+      </div>
+      {exploreMode === "trip" ? <div className="places-selected-trip">
+        <label><span>选择旅行</span><select aria-label="选择要探索的旅行" value={tripId} onChange={(event) => selectTrip(event.target.value)}><option value="">选择一段旅行</option>{trips.map((trip) => <option value={trip.id} key={trip.id}>{tripOptionLabel(trip, trips)}</option>)}</select></label>
+        {selectedTrip ? <p>正在探索 <strong>{selectedTrip.destination}</strong> · {selectedTrip.start_date} 至 {selectedTrip.end_date}。搜索到的地点会收藏到这段旅行。</p> : trips.length ? <p>请选择一段旅行，地点探索会自动使用它的目的地。</p> : <p>还没有旅行。你可以<Link href="/trips/new">创建一段旅行</Link>，也可以切换到自由探索。</p>}
+      </div> : <p className="places-free-note">自由输入城市，不需要先创建旅行。想收藏结果时，可以在地图旁选择收藏目标。</p>}
       <form className="places-search-form" onSubmit={search}>
         <label><span>我想找</span><input aria-label="关键词" required value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="例如：适合看日落的地方" /></label>
-        <label className="places-city-field"><span>城市</span><input aria-label="城市" value={city} onChange={(event) => setCity(event.target.value)} /></label>
-        <button className="primary" disabled={busy}>{busy ? "正在寻找…" : "开始探索"}<span aria-hidden="true">⌕</span></button>
+        {exploreMode === "free" ? <label className="places-city-field"><span>探索城市</span><input aria-label="探索城市" required value={city} onChange={(event) => setCity(event.target.value)} placeholder="例如：成都、厦门" /></label> : <label className="places-city-field"><span>旅行目的地</span><input aria-label="旅行目的地" value={selectedTrip?.destination ?? "请先选择旅行"} readOnly /></label>}
+        <button className="primary" disabled={busy || !city.trim() || (exploreMode === "trip" && !tripId)}>{busy ? "正在寻找…" : "开始探索"}<span aria-hidden="true">⌕</span></button>
       </form>
       <div className="places-search-foot"><span>地点来自地图搜索结果</span><span>收藏前可先在地图上查看位置</span></div>
     </section>
@@ -94,10 +142,10 @@ function PlacesContent() {
         {visiblePlaces.length > 8 && <button type="button" className="places-show-more" onClick={() => setShowAll((current) => !current)}>{showAll ? "收起地点" : `再看 ${visiblePlaces.length - 8} 个地点`} <span aria-hidden="true">{showAll ? "↑" : "↓"}</span></button>}
       </div>
       <aside className="places-map-column">
-        <label className="places-trip-select"><span>收藏到哪段旅行</span><select aria-label="选择旅行" value={tripId} onChange={(event) => setTripId(event.target.value)}><option value="">暂不选择</option>{trips.map((trip) => <option value={trip.id} key={trip.id}>{trip.destination} · {trip.start_date}</option>)}</select></label>
+        {exploreMode === "free" && <label className="places-trip-select"><span>收藏到哪段旅行（选填）</span><select aria-label="选择收藏目标旅行" value={tripId} onChange={(event) => setTripId(event.target.value)}><option value="">暂不收藏</option>{trips.map((trip) => <option value={trip.id} key={trip.id}>{tripOptionLabel(trip, trips)}</option>)}</select></label>}
         {trips.length === 0 && <div className="places-create-trip"><p>还没有旅行可以收藏。</p><Link href="/trips/new">创建一段旅行 <span aria-hidden="true">↗</span></Link></div>}
         <RouteMap title="地点分布" points={points} disclaimer="地图展示当前筛选结果的位置，不代表游览路线。" />
-        <small className="places-map-note">地图数据：高德地图。点击地点卡片旁的收藏后，它会出现在所选旅行中。</small>
+        <small className="places-map-note">地图数据：高德地图。自由探索无需关联旅行；选择收藏目标后，收藏的地点会加入对应旅行。</small>
       </aside>
     </section>
   </main>;

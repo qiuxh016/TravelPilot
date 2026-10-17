@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { getAccountAvatarBlob, getCurrentUser, type AccountUser } from "../lib/api";
+import { getAccountAvatarBlob, getCurrentUser, listTrips, type AccountUser, type Trip } from "../lib/api";
+import { TripSelectionProvider, tripOptionLabel } from "./trip-selection-context";
 
 type Theme = "light" | "dark";
 
@@ -26,7 +27,9 @@ function NavIcon({ name }: { name: string }) {
 
 export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [tripId, setTripId] = useState("");
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [theme, setTheme] = useState<Theme>("light");
   const [user, setUser] = useState<AccountUser | null>(null);
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -57,19 +60,26 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    void listTrips().then((rows) => { if (active) setTrips(rows); }).catch(() => { if (active) setTrips([]); });
+    return () => { active = false; };
+  }, [pathname]);
+
+  useEffect(() => {
     const routeTripSegment = pathname.match(/^\/trips\/([^/]+)/)?.[1] ?? "";
     const routeTripId = routeTripSegment === "new" ? "" : routeTripSegment;
     const queryTripId = new URLSearchParams(window.location.search).get("tripId") ?? "";
-    const rememberedTripId = window.localStorage.getItem("travelpilot_last_trip_id") ?? "";
-    const selectedTripId = routeTripId || queryTripId || rememberedTripId;
+    const rememberedTripId = window.localStorage.getItem("travelpilot_selected_trip_id") ?? window.localStorage.getItem("travelpilot_last_trip_id") ?? "";
+    const contextualTripId = routeTripId || queryTripId;
+    const selectedTripId = contextualTripId || (trips.some((trip) => trip.id === rememberedTripId) ? rememberedTripId : "");
     setTripId(selectedTripId);
-    if (routeTripId) window.localStorage.setItem("travelpilot_last_trip_id", routeTripId);
+    window.localStorage.setItem("travelpilot_selected_trip_id", selectedTripId);
 
     const savedTheme = window.localStorage.getItem("travelpilot_theme");
     const initialTheme: Theme = savedTheme === "dark" ? "dark" : "light";
     setTheme(initialTheme);
     document.documentElement.dataset.theme = initialTheme;
-  }, [pathname]);
+  }, [pathname, trips]);
 
   const paths = useMemo(() => {
     const tripPath = tripId ? `/trips/${tripId}` : "/trips";
@@ -98,6 +108,22 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
     window.localStorage.setItem("travelpilot_theme", nextTheme);
   }
 
+  function selectTrip(nextTripId: string) {
+    setTripId(nextTripId);
+    window.localStorage.setItem("travelpilot_selected_trip_id", nextTripId);
+    const routeMatch = pathname.match(/^\/trips\/([^/]+)(?:\/(plan|events|memory|import|sharing))?$/);
+    if (routeMatch && routeMatch[1] !== "new") {
+      router.push(nextTripId ? `/trips/${nextTripId}${routeMatch[2] ? `/${routeMatch[2]}` : ""}` : "/places");
+      return;
+    }
+    if (pathname === "/places") {
+      router.replace(nextTripId ? `/places?tripId=${encodeURIComponent(nextTripId)}` : "/places");
+    }
+    if (pathname === "/advisor" && !new URLSearchParams(window.location.search).has("sessionId")) {
+      router.replace(nextTripId ? `/advisor?tripId=${encodeURIComponent(nextTripId)}` : "/advisor");
+    }
+  }
+
   const links = [
     { key: "trips", label: "我的旅行", href: "/trips", icon: "trips" },
     { key: "create", label: "创建旅行", href: "/trips/new", icon: "create" },
@@ -112,7 +138,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
     { key: "account", label: "账户与隐私", href: "/account", icon: "account" },
   ];
 
-  return <div className="workspace-layout">
+  return <TripSelectionProvider value={{ trips, selectedTripId: tripId, selectTrip }}><div className="workspace-layout">
     <aside className="workspace-sidebar" aria-label="主导航">
       <Link className="workspace-brand" href="/trips"><span className="brand-mark">T</span><span>TravelPilot</span></Link>
       <nav className="workspace-links">
@@ -142,11 +168,11 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
       </div>
     </aside>
     <div className="workspace-main">
-      <div className="workspace-topbar"><Link className="workspace-account-link" href="/account" aria-label="打开账号设置">
+      <div className="workspace-topbar"><label className="workspace-trip-switch"><span>当前旅行</span><select aria-label="切换当前旅行" value={tripId} onChange={(event) => selectTrip(event.target.value)}><option value="">自由探索</option>{trips.map((trip) => <option key={trip.id} value={trip.id}>{tripOptionLabel(trip, trips)}</option>)}</select></label><Link className="workspace-account-link" href="/account" aria-label="打开账号设置">
         <span className="workspace-account-copy"><strong>{user?.display_name || user?.email?.split("@")[0] || "我的账号"}</strong><small>账号设置</small></span>
         <span className="workspace-account-avatar">{avatarUrl ? <img src={avatarUrl} alt="" /> : <span>{(user?.display_name || user?.email || "旅").slice(0, 1).toUpperCase()}</span>}</span>
       </Link></div>
       {children}
     </div>
-  </div>;
+  </div></TripSelectionProvider>;
 }
