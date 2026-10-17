@@ -1,11 +1,12 @@
+import asyncio
 import hashlib
 import logging
 import re
 import secrets
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from redis.asyncio import Redis
@@ -65,6 +66,12 @@ from travelpilot_api.auth import (
     verify_password,
 )
 from travelpilot_api.mail import latest_development_email, send_action_email
+from travelpilot_api.media_storage import (
+    normalize_image,
+    read_media,
+    remove_media_keys,
+    write_image,
+)
 from travelpilot_api.rate_limit import (
     consume_email_send_budget,
     enforce_ip_rate_limit,
@@ -118,7 +125,22 @@ class UserRead(BaseModel):
     id: UUID
     email: str
     created_at: datetime
+    display_name: str = ""
+    home_city: str = ""
+    bio: str = ""
+    has_avatar: bool = False
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserProfileUpdate(BaseModel):
+    display_name: str = Field(min_length=1, max_length=48)
+    home_city: str = Field(default="", max_length=120)
+    bio: str = Field(default="", max_length=240)
+
+    @field_validator("display_name", "home_city", "bio")
+    @classmethod
+    def strip_profile_text(cls, value: str) -> str:
+        return value.strip()
 
 
 class SessionRead(BaseModel):
@@ -134,7 +156,8 @@ async def _issue_session(user: UserModel, session: AsyncSession) -> tuple[str, S
     session.add(UserSessionModel(user_id=user.id, token_hash=token_digest(token), expires_at=expires_at))
     await session.commit()
     await session.refresh(user)
-    return token, SessionRead(expires_at=expires_at, user=user)
+    user_read = UserRead.model_validate(user).model_copy(update={"has_avatar": bool(user.avatar_key)})
+    return token, SessionRead(expires_at=expires_at, user=user_read)
 
 
 async def _create_email_token(user: UserModel, purpose: str, session: AsyncSession) -> str | None:
@@ -371,7 +394,94 @@ async def logout(request: Request,
 
 @router.get("/auth/me", response_model=UserRead)
 async def me(user: UserModel = Depends(get_current_user)):
-    return user
+    return UserRead.model_validate(user).model_copy(update={"has_avatar": bool(user.avatar_key)})
+
+
+@router.get("/account/profile", response_model=UserRead)
+async def read_profile(user: UserModel = Depends(get_current_user)):
+    return UserRead.model_validate(user).model_copy(update={"has_avatar": bool(user.avatar_key)})
+
+
+@router.patch("/account/profile", response_model=UserRead)
+async def update_profile(
+    payload: UserProfileUpdate,
+    session: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
+):
+    if not payload.display_name:
+        raise HTTPException(422, detail="昵称不能为空")
+    user.display_name = payload.display_name
+    user.home_city = payload.home_city
+    user.bio = payload.bio
+    await session.commit()
+    await session.refresh(user)
+    return UserRead.model_validate(user).model_copy(update={"has_avatar": bool(user.avatar_key)})
+
+
+@router.post("/account/avatar", response_model=UserRead)
+async def update_avatar(
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
+):
+    if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(415, detail="头像仅支持 JPEG、PNG 或 WebP 图片")
+    if file.size is not None and file.size > min(settings.media_max_upload_bytes, 5 * 1024 * 1024):
+        raise HTTPException(413, detail="头像不能超过 5 MB")
+    content = await file.read(min(settings.media_max_upload_bytes, 5 * 1024 * 1024) + 1)
+    if not content or len(content) > min(settings.media_max_upload_bytes, 5 * 1024 * 1024):
+        raise HTTPException(413, detail="头像为空或超过 5 MB")
+    try:
+        original, thumbnail, extension, mime_type = await asyncio.to_thread(
+            normalize_image, content, file.content_type
+        )
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+    avatar_id = uuid4()
+    try:
+        avatar_key, thumbnail_key = await asyncio.to_thread(
+            write_image, user.id, avatar_id, extension, original, thumbnail
+        )
+    except OSError as exc:
+        logger.exception("avatar_write_failed owner_id=%s", user.id)
+        raise HTTPException(503, detail="头像保存失败，请稍后重试") from exc
+    old_keys = [key for key in (user.avatar_key, user.avatar_thumbnail_key) if key]
+    user.avatar_key = avatar_key
+    user.avatar_thumbnail_key = thumbnail_key
+    user.avatar_mime_type = mime_type
+    try:
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        remove_media_keys([avatar_key, thumbnail_key])
+        raise
+    await session.refresh(user)
+    remove_media_keys(old_keys)
+    return UserRead.model_validate(user).model_copy(update={"has_avatar": True})
+
+
+@router.get("/account/avatar")
+async def read_avatar(user: UserModel = Depends(get_current_user)):
+    if not user.avatar_thumbnail_key or not user.avatar_mime_type:
+        raise HTTPException(404, detail="尚未设置头像")
+    try:
+        content = await asyncio.to_thread(read_media, user.avatar_thumbnail_key)
+    except Exception as exc:
+        logger.exception("avatar_read_failed owner_id=%s", user.id)
+        raise HTTPException(503, detail="头像暂时无法读取") from exc
+    return Response(content, media_type=user.avatar_mime_type, headers={
+        "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+    })
+
+
+@router.delete("/account/avatar", status_code=204)
+async def delete_avatar(user: UserModel = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
+    keys = [key for key in (user.avatar_key, user.avatar_thumbnail_key) if key]
+    user.avatar_key = None
+    user.avatar_thumbnail_key = None
+    user.avatar_mime_type = None
+    await session.commit()
+    remove_media_keys(keys)
 
 
 @router.get("/account/export")
@@ -468,7 +578,8 @@ async def export_account(user: UserModel = Depends(get_current_user),
     return {
         "format": "travelpilot-account-export-v1",
         "exported_at": datetime.now(UTC),
-        "user": {"email": user.email, "created_at": user.created_at},
+        "user": {"email": user.email, "created_at": user.created_at,
+                 "display_name": user.display_name, "home_city": user.home_city, "bio": user.bio},
         "trips": [encode(trip) for trip in trips],
         "data": {name: [encode(row) for row in rows] for name, rows in grouped.items()},
         "advisor_sessions": [encode(item) for item in advisor_sessions],
@@ -480,6 +591,7 @@ async def delete_account(response: Response, user: UserModel = Depends(get_curre
                          session: AsyncSession = Depends(get_session)):
     media_keys = (await session.execute(select(MomentMediaModel.object_key, MomentMediaModel.thumbnail_key)
                                         .where(MomentMediaModel.owner_user_id == user.id))).all()
+    avatar_keys = [key for key in (user.avatar_key, user.avatar_thumbnail_key) if key]
     await session.execute(delete(UserModel).where(UserModel.id == user.id))
     # User-entered POIs have no provider and are not shared; remove only those
     # that became unreferenced after the account's Trips cascaded away.
@@ -489,8 +601,7 @@ async def delete_account(response: Response, user: UserModel = Depends(get_curre
     )
     await session.execute(delete(PoiModel).where(PoiModel.provider.is_(None), ~still_used))
     await session.commit()
-    from travelpilot_api.media_storage import remove_media_keys
-    remove_media_keys([key for pair in media_keys for key in pair])
+    remove_media_keys([*avatar_keys, *(key for pair in media_keys for key in pair)])
     clear_session_cookies(response)
     response.status_code = 204
     return response

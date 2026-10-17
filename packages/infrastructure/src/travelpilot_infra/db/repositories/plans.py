@@ -18,13 +18,16 @@ class PlanRepository:
         )
         return int(value or 0) + 1
 
-    async def create(self, plan: TripPlanModel, nodes: list[TripPlanNodeModel]) -> TripPlanModel:
+    async def create(self, plan: TripPlanModel, nodes: list[TripPlanNodeModel], *, commit: bool = True) -> TripPlanModel:
         self.session.add(plan)
         await self.session.flush()
         for node in nodes:
             node.plan_id = plan.id
         self.session.add_all(nodes)
-        await self.session.commit()
+        if commit:
+            await self.session.commit()
+        else:
+            await self.session.flush()
         await self.session.refresh(plan)
         return plan
 

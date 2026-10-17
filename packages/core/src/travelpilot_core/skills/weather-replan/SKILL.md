@@ -2,6 +2,9 @@
 name: 天气变化重排
 version: 1.0.0
 description: 根据已获取的天气数据，为受影响日期提出局部替代草案。
+applies_to: weather_replan
+requires: verified_weather
+excludes: simulated_weather
 ---
 
 # 天气变化重排

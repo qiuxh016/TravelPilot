@@ -1,0 +1,69 @@
+{
+  "evaluation_id": "user_add_slot_feasibility_v1",
+  "scope": "deterministic synthetic scheduling; existing nodes remain fixed",
+  "cases": [
+    {
+      "id": "insert-before-fixed-booking",
+      "effective_at": "2026-10-17T11:00:00+08:00",
+      "existing": [{"id": "fixed", "start": "14:00", "end": "15:00", "status": "FIXED"}],
+      "candidate": {"duration_min": 45, "open": "09:00", "close": "20:00"},
+      "routes": {"candidate->fixed": 10},
+      "expected": {"reason_code": "ADDED", "start": "11:00", "fixed_preserved": true}
+    },
+    {
+      "id": "respect-incoming-travel-and-buffer",
+      "effective_at": "2026-10-17T10:00:00+08:00",
+      "existing": [{"id": "prior", "start": "10:00", "end": "11:00"}],
+      "candidate": {"duration_min": 45, "open": "09:00", "close": "20:00"},
+      "routes": {"prior->candidate": 15},
+      "expected": {"reason_code": "ADDED", "start": "11:35"}
+    },
+    {
+      "id": "unknown-route-is-not-zero",
+      "effective_at": "2026-10-17T10:00:00+08:00",
+      "existing": [{"id": "prior", "start": "10:00", "end": "11:00"}],
+      "candidate": {"duration_min": 45, "open": "09:00", "close": "20:00"},
+      "routes": {},
+      "expected": {"reason_code": "ROUTE_TIME_UNKNOWN"}
+    },
+    {
+      "id": "route-and-buffer-conflict-around-fixed-node",
+      "effective_at": "2026-10-17T18:00:00+08:00",
+      "existing": [{"id": "fixed", "start": "19:00", "end": "19:30", "status": "FIXED"}],
+      "candidate": {"duration_min": 60, "open": "09:00", "close": "20:00"},
+      "routes": {"candidate->fixed": 30, "fixed->candidate": 30},
+      "expected": {"reason_code": "TIME_OR_ROUTE_CONFLICT", "fixed_preserved": true}
+    },
+    {
+      "id": "closed-before-trip-window-ends",
+      "effective_at": "2026-10-17T18:00:00+08:00",
+      "existing": [],
+      "candidate": {"duration_min": 60, "open": "09:00", "close": "18:30"},
+      "routes": {},
+      "expected": {"reason_code": "CLOSED_AT_SLOT"}
+    },
+    {
+      "id": "unknown-opening-hours",
+      "effective_at": "2026-10-17T11:00:00+08:00",
+      "existing": [],
+      "candidate": {"duration_min": 60, "open": null, "close": null},
+      "routes": {},
+      "expected": {"reason_code": "OPENING_HOURS_UNKNOWN"}
+    },
+    {
+      "id": "daily-capacity",
+      "effective_at": "2026-10-17T15:00:00+08:00",
+      "existing": [
+        {"id": "p1", "start": "09:00", "end": "10:00"},
+        {"id": "p2", "start": "10:30", "end": "11:30"},
+        {"id": "p3", "start": "12:00", "end": "13:00"},
+        {"id": "p4", "start": "13:30", "end": "14:00"},
+        {"id": "p5", "start": "14:30", "end": "15:00"},
+        {"id": "p6", "start": "15:30", "end": "16:00"}
+      ],
+      "candidate": {"duration_min": 45, "open": "09:00", "close": "20:00"},
+      "routes": {},
+      "expected": {"reason_code": "DAILY_CAPACITY"}
+    }
+  ]
+}

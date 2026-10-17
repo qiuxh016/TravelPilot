@@ -4,8 +4,16 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from travelpilot_api.api.v1.advisor import _hard_limit_conflicts
+from travelpilot_core.agents.extraction import fallback_extract
 from travelpilot_core.engines.impact_analysis.replan import Node, plan_diff, replan
 from travelpilot_core.engines.optimizer.itinerary import Candidate, build_itinerary
+from travelpilot_core.skills import (
+    check_skill_applicability,
+    load_skill,
+    select_skill,
+    select_skill_decision,
+)
 from travelpilot_infra.providers.maps.cached import CachedMapsProvider
 
 from tests.evaluation.metrics.metrics import summarize
@@ -37,7 +45,10 @@ async def test_fixed_scenario(case):
     elif kind == "event":
         when = datetime(2026, 10, 1, 9, tzinfo=UTC)
         nodes = [Node(uuid4(), f"地点{index}", "ATTRACTION", when.date(),
-                      time(10 + index), time(11 + index), 3) for index in range(2)]
+                      time(10 + index), time(11 + index), 3,
+                      environment_profile={"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"},
+                                           "source": "TEST", "confidence": 1})
+                 for index in range(2)]
         payload = {"poi_id": str(nodes[0].poi_id)} if case["event_type"] == "POI_CANCELLED" else {}
         revised, _ = replan(nodes, case["event_type"], when, payload)
         operations = {change["operation"] for change in plan_diff(nodes, revised, case["event_type"])}
@@ -51,6 +62,35 @@ async def test_fixed_scenario(case):
         for _ in range(2):
             with pytest.raises(RuntimeError, match=case["expect_error"]):
                 await cache.get_route((30, 104), (31, 105))
+    elif kind == "interest":
+        result = fallback_extract(case["text"])
+        assert case.get("expect_query") in result.search_queries if "expect_query" in case else True
+        assert case.get("reject_query") not in result.search_queries if "reject_query" in case else True
+    elif kind == "memory":
+        memory = {"constraint_type": "HARD_LIMIT", "text": case["memory"]}
+        conflicts = _hard_limit_conflicts(
+            {"name": case["candidate"], "category": case["category"]}, [memory]
+        )
+        assert bool(conflicts) is case["expect_conflict"]
+    elif kind == "skill":
+        slug = "content-import" if case["task"] == "content_import" else "weather-replan"
+        skill = load_skill(slug)
+        context = {"task": case["task"], **case["context"]}
+        decision = check_skill_applicability(skill, context)
+        selection = select_skill_decision(case["task"], context=context)
+        assert decision.applicable is case["expect_selected"]
+        assert selection.applicability == decision
+        assert (selection.skill is not None) is decision.applicable
+        if not decision.applicable:
+            record = selection.to_record()
+            assert record["selected"] is False
+            assert record["reason_code"] == case["expect_reason"]
+            assert record["missing_requirements"] == list(decision.missing_requirements)
+            assert record["matched_exclusions"] == list(decision.matched_exclusions)
+        if decision.applicable:
+            assert select_skill(case["task"], context=context).name == case["expect_skill"]
+        else:
+            assert decision.reason_code == case["expect_reason"]
 
 
 def test_metric_denominators_and_costs():
@@ -61,3 +101,37 @@ def test_metric_denominators_and_costs():
     assert result["tool_success_rate"] == 0.5
     assert result["changed_node_count"] == 2
     assert result["change_cost"] == 5
+    assert result["p95_latency_ms"] == 50
+
+
+def test_skill_loader_rejects_unpinned_version(tmp_path, monkeypatch):
+    import travelpilot_core.skills as skills_module
+
+    skill_dir = tmp_path / "content-import"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: Test\nversion: 2.0.0\ndescription: test\n"
+        "applies_to: content_import\nrequires: user_content\nexcludes: provider_unavailable\n---\nbody\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(skills_module, "_SKILLS_ROOT", tmp_path)
+    with pytest.raises(ValueError, match="not pinned"):
+        skills_module.load_skill("content-import")
+
+
+def test_origin_leg_selects_and_delays_first_day_stop():
+    first = candidate(1, 45)
+    second = candidate(2, 45)
+    visits, warnings = build_itinerary(
+        date(2026, 10, 1), date(2026, 10, 1), [first, second],
+        [[0, 5], [5, 0]], start_travel_min=[75, 15],
+    )
+    assert not warnings
+    assert visits[0].candidate == second
+    assert visits[0].start_time == time(9, 15)
+
+
+def test_origin_leg_rejects_mismatched_estimates():
+    with pytest.raises(ValueError, match="start travel estimates"):
+        build_itinerary(date(2026, 10, 1), date(2026, 10, 1), [candidate(1, 45)],
+                        start_travel_min=[])

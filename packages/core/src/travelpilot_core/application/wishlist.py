@@ -33,6 +33,7 @@ class WishlistService:
         self,
         trip_id: UUID,
         payload: WishlistCreate,
+        environment_profile: dict | None = None,
     ) -> tuple[WishlistItemModel, PoiModel]:
         """为指定 Trip 创建一个 WishlistItem。"""
 
@@ -70,6 +71,7 @@ class WishlistService:
             notes=payload.notes,
             source_type=payload.source_type,
             source_url=payload.source_url,
+            environment_profile=environment_profile,
         )
 
         self.session.add(item)
@@ -140,6 +142,8 @@ class WishlistService:
         self,
         item_id: UUID,
         payload: WishlistUpdate,
+        environment_profile: dict | None = None,
+        update_environment_profile: bool = False,
     ) -> tuple[WishlistItemModel, PoiModel] | None:
         """修改收藏的优先级、兴趣分数和备注。"""
 
@@ -153,9 +157,12 @@ class WishlistService:
         changes = payload.model_dump(
             exclude_unset=True,
         )
+        changes.pop("environment_profile", None)
 
         for field, value in changes.items():
             setattr(item, field, value)
+        if update_environment_profile:
+            item.environment_profile = environment_profile
 
         await self.session.flush()
         await self.session.commit()

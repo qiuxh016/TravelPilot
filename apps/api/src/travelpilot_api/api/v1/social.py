@@ -45,7 +45,7 @@ def _friend_read(row: FriendshipModel, actor_id: UUID, other: UserModel) -> Frie
         "INCOMING" if row.status == "PENDING" else "NONE"
     )
     return FriendshipRead(
-        id=row.id, friend_user_id=other.id, email=other.email, status=row.status,
+        id=row.id, friend_user_id=other.id, email=other.email, display_name=other.display_name, status=row.status,
         direction=direction, created_at=row.created_at,
     )
 

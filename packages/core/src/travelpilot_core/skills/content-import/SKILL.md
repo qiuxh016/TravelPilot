@@ -2,6 +2,9 @@
 name: 攻略导入
 version: 1.0.0
 description: 从用户提供的文字或 OCR 文本中提取地点候选，并保留可核对的原文证据。
+applies_to: content_import
+requires: user_content
+excludes: provider_unavailable
 ---
 
 # 攻略导入

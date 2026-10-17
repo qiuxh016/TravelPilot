@@ -119,7 +119,8 @@ async function request<T>(
   return response.json() as Promise<T>;
 }
 
-export type AuthSession = { expires_at: string; user: { id: string; email: string; created_at: string } };
+export type AccountUser = { id: string; email: string; created_at: string; display_name: string; home_city: string; bio: string; has_avatar: boolean };
+export type AuthSession = { expires_at: string; user: AccountUser };
 export type AuthNotice = { message: string };
 export const register = (email: string, password: string, invite_code?: string) => request<AuthNotice>("/api/v1/auth/register", { method: "POST", body: JSON.stringify({ email, password, invite_code }) });
 export const login = (email: string, password: string) => request<AuthSession>("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
@@ -130,9 +131,25 @@ export const confirmPasswordReset = (token: string, password: string) => request
 export const logout = () => request<void>("/api/v1/auth/logout", { method: "POST" });
 export const exportAccount = () => request<Record<string, unknown>>("/api/v1/account/export");
 export const deleteAccount = () => request<void>("/api/v1/account", { method: "DELETE" });
-export const getCurrentUser = () => request<AuthSession["user"]>("/api/v1/auth/me", {
+export const getCurrentUser = () => request<AccountUser>("/api/v1/auth/me", {
   signal: AbortSignal.timeout(10_000),
 });
+export const getAccountProfile = () => request<AccountUser>("/api/v1/account/profile");
+export const updateAccountProfile = (input: Pick<AccountUser, "display_name" | "home_city" | "bio">) =>
+  request<AccountUser>("/api/v1/account/profile", { method: "PATCH", body: JSON.stringify(input) });
+export const uploadAccountAvatar = (file: File) => {
+  const form = new FormData(); form.append("file", file);
+  return request<AccountUser>("/api/v1/account/avatar", { method: "POST", body: form });
+};
+export const deleteAccountAvatar = () => request<void>("/api/v1/account/avatar", { method: "DELETE" });
+export async function getAccountAvatarBlob(): Promise<string> {
+  const csrf = typeof document === "undefined" ? "" : document.cookie.split("; ").find((item) => item.startsWith("travelpilot_csrf="))?.split("=").slice(1).join("=") ?? "";
+  const response = await fetch(`${API_URL}/api/v1/account/avatar`, {
+    credentials: "include", headers: { ...(csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {}) },
+  });
+  if (!response.ok) throw await parseError(response);
+  return URL.createObjectURL(await response.blob());
+}
 
 export async function listTrips(): Promise<Trip[]> {
   return request<Trip[]>("/api/v1/trips");
@@ -251,18 +268,33 @@ export type WishlistItem = {
   address: string | null; latitude: number; longitude: number;
   suggested_duration_min: number; priority: number; interest_score: number | null;
   notes: string | null; source_type: string; source_url: string | null;
+  environment_profile: EnvironmentProfile | null;
+};
+export type EnvironmentProfile = {
+  exposure: "INDOOR" | "OUTDOOR" | "MIXED" | "UNKNOWN";
+  sensitivity: Partial<Record<"RAIN" | "WIND" | "HEAT" | "COLD" | "SNOW" | "STORM", "LOW" | "MODERATE" | "HIGH" | "UNKNOWN">>;
+  source: "USER" | "PROVIDER" | "EDITORIAL" | "INFERRED" | "UNKNOWN";
+  confidence: number; evidence?: string | null;
 };
 export type WishlistInput = {
   name: string; category: string; address?: string | null;
   latitude: number; longitude: number; suggested_duration_min: number;
   priority?: number; notes?: string | null; source_type?: string;
+  environment_profile?: {
+    exposure: EnvironmentProfile["exposure"];
+    sensitivity?: EnvironmentProfile["sensitivity"];
+    evidence?: string | null;
+  } | null;
 };
 export const listWishlist = (tripId: string) => request<WishlistItem[]>(`/api/v1/trips/${tripId}/wishlist`);
 export const addWishlistItem = (tripId: string, input: WishlistInput) =>
   request<WishlistItem>(`/api/v1/trips/${tripId}/wishlist`, {
     method: "POST", body: JSON.stringify(input),
   });
-export type WishlistUpdateInput = { priority?: number; interest_score?: number | null; notes?: string | null };
+export type WishlistUpdateInput = {
+  priority?: number; interest_score?: number | null; notes?: string | null;
+  environment_profile?: WishlistInput["environment_profile"];
+};
 export const updateWishlistItem = (itemId: string, input: WishlistUpdateInput) =>
   request<WishlistItem>(`/api/v1/wishlist/${itemId}`, {
     method: "PATCH", body: JSON.stringify(input),
@@ -317,7 +349,7 @@ export const confirmCandidates = (contentId: string, candidateIds: string[]) =>
     method: "POST", body: JSON.stringify({ candidate_ids: candidateIds }),
   });
 
-export type TripEvent = { id: string; trip_id: string; event_type: string; effective_at: string; payload: Record<string, unknown>; created_at: string };
+export type TripEvent = { id: string; trip_id: string; event_type: string; effective_at: string; effective_timezone_offset_minutes: number; payload: Record<string, unknown>; created_at: string };
 export type PlanDiff = { stable_key: string; operation: string; reason_code: string; before: Record<string, unknown> | null; after: Record<string, unknown> | null; change_cost: number };
 export type ReplanResult = { run_id: string; plan: Plan; diff: PlanDiff[] };
 export const createEvent = (tripId: string, eventType: string, effectiveAt: string, payload: Record<string, unknown>) =>
@@ -345,7 +377,7 @@ export const updateUserMemory = (id: string, input: { category?: string; text?: 
   request<UserPreferenceMemory>(`/api/v1/account/memories/${id}`, { method: "PATCH", body: JSON.stringify(input) });
 export const deleteUserMemory = (id: string) => request<void>(`/api/v1/account/memories/${id}`, { method: "DELETE" });
 
-export type Friendship = { id: string; friend_user_id: string; email: string; status: "PENDING" | "ACCEPTED" | "BLOCKED"; direction: "INCOMING" | "OUTGOING" | "NONE"; created_at: string };
+export type Friendship = { id: string; friend_user_id: string; email: string; display_name: string; status: "PENDING" | "ACCEPTED" | "BLOCKED"; direction: "INCOMING" | "OUTGOING" | "NONE"; created_at: string };
 export type TripShare = { id: string; trip_id: string; grantee_user_id: string; email: string; scope: "TRIP_SUMMARY" | "TRIP_AND_PLAN"; created_at: string };
 export type SharedTrip = { id: string; destination: string; start_date: string; end_date: string; scope: "TRIP_SUMMARY" | "TRIP_AND_PLAN"; owner_email: string };
 export type SharedTripDetail = SharedTrip & { plan_version: number | null; plan_nodes: { name: string; day: string; start_time: string; end_time: string; status: string }[] };

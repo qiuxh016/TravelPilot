@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 from travelpilot_api.main import app
 from travelpilot_core.agents.extraction import fallback_extract
-from travelpilot_core.agents.runtime import AgentRuntime
+from travelpilot_core.agents.runtime import AgentRuntime, redact_tool_trace
 from travelpilot_core.engines.impact_analysis.replan import Node, plan_diff, replan
 from travelpilot_core.ports.tools import ToolFailure, ToolSpec
 from travelpilot_infra.providers.maps.amap import AmapProvider
@@ -19,6 +19,7 @@ def test_openapi_exposes_week_three_and_four_routes():
     assert "/api/v1/trips/{trip_id}/content" in paths
     assert "/api/v1/trips/{trip_id}/replan-runs" in paths
     assert "/api/v1/trips/{trip_id}/feedback" in paths
+    assert "/api/v1/advisor/sessions/{session_id}/destinations" in paths
 
 
 def test_fallback_extraction_requires_confirmation():
@@ -30,7 +31,9 @@ def test_fallback_extraction_requires_confirmation():
 def test_replan_freezes_other_days_and_fixed_nodes():
     day = datetime(2026, 10, 1, 10, tzinfo=UTC)
     first = Node(uuid4(), "宽窄巷子", "ATTRACTION", day.date(), time(9), time(10), 3)
-    second = Node(uuid4(), "熊猫基地", "ATTRACTION", day.date(), time(11), time(13), 3)
+    second = Node(uuid4(), "熊猫基地", "ATTRACTION", day.date(), time(11), time(13), 3,
+                  environment_profile={"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"},
+                                       "source": "USER", "confidence": 1})
     fixed = Node(uuid4(), "预约", "ATTRACTION", day.date(), time(14), time(15), 3, "FIXED")
     next_day = Node(uuid4(), "后一天", "ATTRACTION", day.date().replace(day=2), time(11), time(13), 3)
     result, warnings = replan([first, second, fixed, next_day], "WEATHER_CHANGE", day, {})
@@ -65,7 +68,7 @@ async def test_amap_matrix_has_one_row_per_origin():
     async def fake_get(path, **params):
         destination = params["destination"]
         return {"results": [{"duration": "0" if origin == destination else "600"}
-                            for origin in params["origins"].split(";")]}
+                            for origin in params["origins"].split("|")]}
 
     provider._get = fake_get
     matrix = await provider.get_distance_matrix([(30, 104), (31, 105)])
@@ -93,3 +96,33 @@ async def test_agent_rejects_unknown_tool_and_records_retry_failure():
         await runtime.call("slow", {"value": 1})
     assert len(traces) == 2
     assert all(trace["error_code"] == "TOOL_TIMEOUT" for trace in traces)
+
+
+def test_tool_trace_redacts_personal_queries_and_coordinates():
+    import json
+
+    safe = redact_tool_trace({
+        "tool": "search_places", "status": "SUCCEEDED", "latency_ms": 12,
+        "input_data": {"keyword": "用户私密地点", "city": "成都"},
+        "output_data": {"status": "VERIFIED", "places": [{"name": "私密地点", "latitude": 30.1}]},
+    })
+
+    encoded = json.dumps(safe, ensure_ascii=False)
+    assert "用户私密地点" not in encoded and "私密地点" not in encoded and "成都" not in encoded
+    assert safe["input_data"]["query_length"] == len("用户私密地点")
+    assert safe["output_data"]["places_count"] == 1
+
+
+def test_tool_trace_preserves_runtime_attempt_metadata_without_raw_arguments():
+    safe = redact_tool_trace({
+        "tool": "search_places", "status": "FAILED", "latency_ms": 20,
+        "input_data": {"keyword": "我的私密地点"}, "output_data": None,
+        "error_code": "TOOL_RETRYABLE_FAILURE", "logical_step": 2, "attempt": 3,
+        "tool_attempts_total": 7, "retryable": True,
+    })
+
+    assert safe["logical_step"] == 2
+    assert safe["attempt"] == 3
+    assert safe["tool_attempts_total"] == 7
+    assert safe["retryable"] is True
+    assert "keyword" not in safe["input_data"]

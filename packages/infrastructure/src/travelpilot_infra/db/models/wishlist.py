@@ -3,6 +3,7 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -54,6 +55,11 @@ class WishlistItemModel(Base):
 
     source_url: Mapped[str | None] = mapped_column(
         String(1000),
+        nullable=True,
+    )
+
+    environment_profile: Mapped[dict | None] = mapped_column(
+        JSONB,
         nullable=True,
     )
 

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from travelpilot_core.agents.extraction import extract_places
-from travelpilot_core.skills import select_skill
+from travelpilot_core.skills import select_skill_decision
 from travelpilot_infra.db.models.poi import PoiModel
 from travelpilot_infra.db.models.trip import TripModel
 from travelpilot_infra.db.models.wishlist import WishlistItemModel
@@ -79,6 +79,7 @@ async def _read(session: AsyncSession, content_id: UUID) -> ContentRead:
         id=source.id, trip_id=source.trip_id, content_type=source.content_type,
         text=source.text, status=source.status, error=source.error,
         skill_name=source.skill_name, skill_version=source.skill_version, token_usage=source.token_usage,
+        skill_applicability=source.skill_applicability,
         created_at=source.created_at, entities=result,
     )
 
@@ -93,7 +94,16 @@ async def create_content(trip_id: UUID, payload: ContentCreate,
     await session.flush()
     session.add(ContentItemModel(source_id=source.id, text=payload.text, kind="TEXT"))
     try:
-        skill = select_skill("content_import")
+        selection = select_skill_decision(
+            "content_import",
+            context={
+                "task": "content_import",
+                "user_content": bool(payload.text.strip()),
+                "provider_unavailable": False,
+            },
+        )
+        skill = selection.skill
+        source.skill_applicability = selection.to_record()
         if skill:
             source.skill_name, source.skill_version = skill.name, skill.version
         extraction = await extract_places(payload.text, api_key=settings.llm_api_key,

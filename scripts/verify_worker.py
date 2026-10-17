@@ -1,7 +1,9 @@
 """Verify queue → worker process → versioned replan with isolated Redis."""
 
 import asyncio
+import secrets
 import sys
+from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
 import httpx
@@ -22,7 +24,26 @@ async def run():
     poi_ids: set[UUID] = set()
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                  base_url="http://testserver") as client:
+        identity = secrets.token_hex(8)
+        auth_response = await client.post("/api/v1/auth/register", json={
+            "email": f"verify-worker-{identity}@example.invalid", "password": "travelpilot-test-2026",
+        })
+        assert auth_response.status_code == 202, auth_response.text
+        email = f"verify-worker-{identity}@example.invalid"
+        mailbox = await client.get(f"/api/v1/auth/dev-mailbox/{email}")
+        verification_token = parse_qs(urlparse(mailbox.json()["link"]).query)["token"][0]
+        verified = await client.post("/api/v1/auth/verify-email", json={"token": verification_token})
+        assert verified.status_code == 200, verified.text
+        logged_in = await client.post("/api/v1/auth/login", json={"email": email, "password": "travelpilot-test-2026"})
+        auth = {
+            "session": logged_in.cookies["travelpilot_session"],
+            "csrf": logged_in.cookies["travelpilot_csrf"],
+        }
         async def call(method, path, **kwargs):
+            headers = kwargs.setdefault("headers", {})
+            headers["Cookie"] = f"travelpilot_session={auth['session']}; travelpilot_csrf={auth['csrf']}"
+            if method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+                headers["X-CSRF-Token"] = auth["csrf"]
             response = await client.request(method, path, **kwargs)
             if response.is_error:
                 raise AssertionError(f"{method} {path}: {response.status_code} {response.text[:500]}")
@@ -62,8 +83,7 @@ async def run():
             assert plans[0]["version"] == 2
             print("WORKER FLOW OK: Redis queue → worker process → Plan v2")
         finally:
-            if trip_id:
-                await call("DELETE", f"/api/v1/trips/{trip_id}")
+            await call("DELETE", "/api/v1/account")
             if poi_ids:
                 async with AsyncSessionFactory() as session:
                     await session.execute(delete(PoiModel).where(PoiModel.id.in_(poi_ids)))

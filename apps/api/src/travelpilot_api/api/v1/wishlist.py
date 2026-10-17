@@ -8,6 +8,7 @@ from travelpilot_infra.db.models.wishlist import WishlistItemModel
 from travelpilot_infra.db.session import get_session
 
 from travelpilot_api.dependencies import get_owned_trip, get_owned_wishlist_item
+from travelpilot_api.schemas.environment import user_profile
 from travelpilot_api.schemas.wishlist import (
     WishlistCreate,
     WishlistRead,
@@ -46,6 +47,7 @@ def to_wishlist_read(item, poi) -> WishlistRead:
         notes=item.notes,
         source_type=item.source_type,
         source_url=item.source_url,
+        environment_profile=item.environment_profile or poi.environment_profile,
     )
 
 
@@ -68,6 +70,7 @@ async def create_wishlist_item(
         item, poi = await service.create_item(
             trip_id=trip_id,
             payload=payload,
+            environment_profile=user_profile(payload.environment_profile),
         )
     except ValueError as error:
         raise HTTPException(
@@ -122,6 +125,8 @@ async def update_wishlist_item(
     result = await service.update_item(
         item_id=item_id,
         payload=payload,
+        environment_profile=user_profile(payload.environment_profile),
+        update_environment_profile="environment_profile" in payload.model_fields_set,
     )
 
     if result is None:

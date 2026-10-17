@@ -42,6 +42,8 @@ export default function TripDetailPage() {
   const [wishlistPriority, setWishlistPriority] = useState("3");
   const [wishlistInterest, setWishlistInterest] = useState("");
   const [wishlistNotes, setWishlistNotes] = useState("");
+  const [wishlistExposure, setWishlistExposure] = useState<"UNKNOWN" | "INDOOR" | "OUTDOOR" | "MIXED">("UNKNOWN");
+  const [wishlistRainSensitivity, setWishlistRainSensitivity] = useState<"UNKNOWN" | "LOW" | "MODERATE" | "HIGH">("UNKNOWN");
   const [wishlistSavingId, setWishlistSavingId] = useState<string | null>(null);
 
   const [name, setName] = useState("");
@@ -52,6 +54,8 @@ export default function TripDetailPage() {
   const [duration, setDuration] = useState("60");
   const [priority, setPriority] = useState("3");
   const [notes, setNotes] = useState("");
+  const [weatherExposure, setWeatherExposure] = useState<"UNKNOWN" | "INDOOR" | "OUTDOOR" | "MIXED">("UNKNOWN");
+  const [rainSensitivity, setRainSensitivity] = useState<"UNKNOWN" | "LOW" | "MODERATE" | "HIGH">("UNKNOWN");
 
   async function loadData() {
     try {
@@ -97,6 +101,10 @@ export default function TripDetailPage() {
         suggested_duration_min: Number(duration),
         priority: Number(priority),
         notes,
+        environment_profile: weatherExposure === "UNKNOWN" && rainSensitivity === "UNKNOWN" ? undefined : {
+          exposure: weatherExposure,
+          sensitivity: rainSensitivity === "UNKNOWN" ? {} : { RAIN: rainSensitivity },
+        },
       });
 
       setName("");
@@ -106,6 +114,8 @@ export default function TripDetailPage() {
       setDuration("60");
       setPriority("3");
       setNotes("");
+      setWeatherExposure("UNKNOWN");
+      setRainSensitivity("UNKNOWN");
 
       await loadData();
     } catch (err) {
@@ -172,6 +182,8 @@ export default function TripDetailPage() {
     setWishlistPriority(String(item.priority));
     setWishlistInterest(item.interest_score == null ? "" : String(item.interest_score));
     setWishlistNotes(item.notes ?? "");
+    setWishlistExposure(item.environment_profile?.exposure ?? "UNKNOWN");
+    setWishlistRainSensitivity(item.environment_profile?.sensitivity.RAIN ?? "UNKNOWN");
     setError("");
     setNotice("");
   }
@@ -185,6 +197,10 @@ export default function TripDetailPage() {
         priority: Number(wishlistPriority),
         interest_score: wishlistInterest === "" ? null : Number(wishlistInterest),
         notes: wishlistNotes,
+        environment_profile: wishlistExposure === "UNKNOWN" && wishlistRainSensitivity === "UNKNOWN" ? null : {
+          exposure: wishlistExposure,
+          sensitivity: wishlistRainSensitivity === "UNKNOWN" ? {} : { RAIN: wishlistRainSensitivity },
+        },
       });
       setEditingWishlistId(null);
       setNotice("收藏信息已保存。");
@@ -269,6 +285,8 @@ export default function TripDetailPage() {
             {editingWishlistId === item.id ? <form className="trip-place-edit" onSubmit={(event) => void handleWishlistUpdate(event, item.id)}>
               <label>优先级：{wishlistPriority}<input type="range" min="1" max="5" value={wishlistPriority} onChange={(event) => setWishlistPriority(event.target.value)} /></label>
               <label>兴趣分<input type="number" min="0" max="1" step="0.1" value={wishlistInterest} onChange={(event) => setWishlistInterest(event.target.value)} placeholder="选填" /></label>
+              <label>室内外<select value={wishlistExposure} onChange={(event) => setWishlistExposure(event.target.value as typeof wishlistExposure)}><option value="UNKNOWN">未知</option><option value="INDOOR">室内</option><option value="OUTDOOR">室外</option><option value="MIXED">混合</option></select></label>
+              <label>雨天敏感度<select value={wishlistRainSensitivity} onChange={(event) => setWishlistRainSensitivity(event.target.value as typeof wishlistRainSensitivity)}><option value="UNKNOWN">未知</option><option value="LOW">低</option><option value="MODERATE">中</option><option value="HIGH">高</option></select></label>
               <label>备注<textarea value={wishlistNotes} onChange={(event) => setWishlistNotes(event.target.value)} /></label>
               <div><button className="primary" type="submit" disabled={wishlistSavingId === item.id}>{wishlistSavingId === item.id ? "保存中…" : "保存"}</button><button className="secondary" type="button" onClick={() => setEditingWishlistId(null)} disabled={wishlistSavingId === item.id}>取消</button></div>
             </form> : <div className="trip-place-actions"><button type="button" onClick={() => beginWishlistEdit(item)}>编辑</button><button type="button" onClick={() => void handleWishlistDelete(item)} disabled={wishlistSavingId === item.id}>{wishlistSavingId === item.id ? "处理中…" : "移除"}</button></div>}
@@ -285,6 +303,8 @@ export default function TripDetailPage() {
           <label>纬度<input required type="number" step="any" value={latitude} onChange={(event) => setLatitude(event.target.value)} placeholder="30.7300" /></label>
           <label>经度<input required type="number" step="any" value={longitude} onChange={(event) => setLongitude(event.target.value)} placeholder="104.1400" /></label>
           <label>建议游玩分钟数<input required type="number" min="1" value={duration} onChange={(event) => setDuration(event.target.value)} /></label>
+          <label>室内外属性<select value={weatherExposure} onChange={(event) => setWeatherExposure(event.target.value as typeof weatherExposure)}><option value="UNKNOWN">未知</option><option value="INDOOR">室内</option><option value="OUTDOOR">室外</option><option value="MIXED">室内外混合</option></select></label>
+          <label>雨天敏感程度<select value={rainSensitivity} onChange={(event) => setRainSensitivity(event.target.value as typeof rainSensitivity)}><option value="UNKNOWN">未知</option><option value="LOW">低</option><option value="MODERATE">中</option><option value="HIGH">高</option></select></label>
           <label>优先级：{priority}<input type="range" min="1" max="5" value={priority} onChange={(event) => setPriority(event.target.value)} /></label>
           <label className="trip-manual-notes">备注<textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="例如：上午去，避开人流" /></label>
           <button className="primary" type="submit">添加到旅行</button>

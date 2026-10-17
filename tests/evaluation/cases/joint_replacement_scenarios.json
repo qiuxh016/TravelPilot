@@ -1,0 +1,61 @@
+{
+  "evaluation_id": "joint_weather_replacement_v1",
+  "dataset_version": 1,
+  "description": "Synthetic assignment trap comparing sequential greedy selection with bounded joint search.",
+  "cases": [
+    {
+      "id": "reserve-best-candidate-for-later-slot",
+      "removed": [
+        {"key": "lost-1", "start": "12:00", "end": "13:00"},
+        {"key": "lost-2", "start": "15:00", "end": "16:00"}
+      ],
+      "scheduled": [
+        {"key": "following", "start": "18:00", "end": "19:00"}
+      ],
+      "candidates": ["a", "b"],
+      "routes": [
+        {"from": "a", "to": "following", "minutes": 10},
+        {"from": "b", "to": "following", "minutes": 1},
+        {"from": "a", "to": "b", "minutes": 1},
+        {"from": "b", "to": "a", "minutes": 20}
+      ],
+      "expected_joint_assignment": ["a", "b"],
+      "expected_greedy_assignment": ["b", "a"],
+      "expected_narrow_beam_assignment": ["b", "a"],
+      "expected_narrow_beam_route_cost_min": 30
+    },
+    {
+      "id": "multi-day-single-candidate-conflict",
+      "removed": [
+        {"key": "lost-day-1", "day": "2026-10-01", "start": "12:00", "end": "13:00"},
+        {"key": "lost-day-2", "day": "2026-10-02", "start": "12:00", "end": "13:00"}
+      ],
+      "scheduled": [],
+      "candidates": ["only-option"],
+      "routes": [],
+      "expected_joint_assignment": ["only-option", null],
+      "expected_joint_reasons": ["OK", "CANDIDATE_CONFLICT"],
+      "expected_greedy_assignment": ["only-option", null],
+      "expected_selected_count": 1
+    },
+    {
+      "id": "avoid-low-value-long-detour",
+      "removed": [
+        {"key": "lost-low-priority", "start": "10:00", "end": "11:00", "priority": 1}
+      ],
+      "scheduled": [
+        {"key": "following", "start": "18:00", "end": "19:00"}
+      ],
+      "candidates": [
+        {"key": "far", "priority": 1, "interest_score": 0.5}
+      ],
+      "routes": [
+        {"from": "far", "to": "following", "minutes": 50}
+      ],
+      "expected_joint_assignment": [null],
+      "expected_greedy_assignment": ["far"],
+      "expected_selected_count": 0,
+      "expected_joint_reason": "OBJECTIVE_TRADEOFF"
+    }
+  ]
+}

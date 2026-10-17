@@ -1,0 +1,93 @@
+{
+  "baseline_id": "weather_aware_replan_v2",
+  "dataset_version": 2,
+  "description": "Synthetic deterministic cases documenting current rule-based core replan behavior. Results are not a measure of real-world itinerary quality.",
+  "cases": [
+    {
+      "id": "weather-removes-only-verified-sensitive-outdoor",
+      "event_type": "WEATHER_CHANGE",
+      "effective_at": "2026-10-01T12:00:00+08:00",
+      "payload": {"condition": "RAIN"},
+      "nodes": [
+        {"key": "park", "category": "ATTRACTION", "day": "2026-10-01", "start": "13:00", "end": "15:00", "priority": 3, "environment_profile": {"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"}, "source": "EDITORIAL", "confidence": 0.9}},
+        {"key": "museum", "category": "ATTRACTION", "day": "2026-10-01", "start": "15:30", "end": "17:00", "priority": 4, "environment_profile": {"exposure": "INDOOR", "sensitivity": {"RAIN": "LOW"}, "source": "EDITORIAL", "confidence": 0.9}},
+        {"key": "dinner", "category": "RESTAURANT", "day": "2026-10-01", "start": "18:00", "end": "19:00", "priority": 2, "environment_profile": {"exposure": "INDOOR", "sensitivity": {"RAIN": "LOW"}, "source": "PROVIDER", "confidence": 0.9}},
+        {"key": "morning", "category": "ATTRACTION", "day": "2026-10-01", "start": "09:00", "end": "10:00", "priority": 3},
+        {"key": "next-day", "category": "ATTRACTION", "day": "2026-10-02", "start": "13:00", "end": "15:00", "priority": 3},
+        {"key": "reserved", "category": "ATTRACTION", "day": "2026-10-01", "start": "16:00", "end": "17:00", "priority": 5, "status": "RESERVED", "environment_profile": {"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"}, "source": "USER", "confidence": 1}}
+      ],
+      "expected_removed": ["park"],
+      "expected_preserved": ["dinner", "morning", "next-day", "reserved"]
+    },
+    {
+      "id": "fatigue-removes-low-priority-half",
+      "event_type": "USER_FATIGUE",
+      "effective_at": "2026-10-01T09:00:00+08:00",
+      "payload": {},
+      "nodes": [
+        {"key": "low-1", "category": "ATTRACTION", "day": "2026-10-01", "start": "10:00", "end": "11:00", "priority": 1},
+        {"key": "low-2", "category": "MUSEUM", "day": "2026-10-01", "start": "11:30", "end": "12:30", "priority": 2},
+        {"key": "high-1", "category": "PARK", "day": "2026-10-01", "start": "14:00", "end": "15:00", "priority": 5},
+        {"key": "reserved", "category": "ATTRACTION", "day": "2026-10-01", "start": "16:00", "end": "17:00", "priority": 1, "status": "RESERVED"}
+      ],
+      "expected_removed": ["low-1"],
+      "expected_preserved": ["low-2", "high-1", "reserved"]
+    },
+    {
+      "id": "cancel-target-only",
+      "event_type": "POI_CANCELLED",
+      "effective_at": "2026-10-01T09:00:00+08:00",
+      "payload": {"target_key": "cancelled"},
+      "nodes": [
+        {"key": "cancelled", "category": "MUSEUM", "day": "2026-10-01", "start": "10:00", "end": "11:00", "priority": 3},
+        {"key": "other", "category": "PARK", "day": "2026-10-01", "start": "12:00", "end": "13:00", "priority": 3}
+      ],
+      "expected_removed": ["cancelled"],
+      "expected_preserved": ["other"]
+    },
+    {
+      "id": "delay-only-after-effective-time",
+      "event_type": "TIME_DELAY",
+      "effective_at": "2026-10-01T12:00:00+08:00",
+      "payload": {"delay_min": 30},
+      "nodes": [
+        {"key": "morning", "category": "PARK", "day": "2026-10-01", "start": "10:00", "end": "11:00", "priority": 3},
+        {"key": "afternoon", "category": "MUSEUM", "day": "2026-10-01", "start": "13:00", "end": "14:00", "priority": 3},
+        {"key": "reserved", "category": "RESTAURANT", "day": "2026-10-01", "start": "15:00", "end": "16:00", "priority": 3, "status": "RESERVED"},
+        {"key": "next-day", "category": "PARK", "day": "2026-10-02", "start": "13:00", "end": "14:00", "priority": 3}
+      ],
+      "expected_moved": ["afternoon"],
+      "expected_preserved": ["morning", "next-day", "reserved"]
+    },
+    {
+      "id": "reservation-change-fixes-target",
+      "event_type": "RESERVATION_CHANGE",
+      "effective_at": "2026-10-01T09:00:00+08:00",
+      "payload": {"target_key": "booked", "start_time": "14:00", "end_time": "15:00"},
+      "nodes": [
+        {"key": "booked", "category": "ATTRACTION", "day": "2026-10-01", "start": "11:00", "end": "12:00", "priority": 3}
+      ],
+      "expected_fixed": ["booked"]
+    },
+    {
+      "id": "delay-overflow-removes-node",
+      "event_type": "TIME_DELAY",
+      "effective_at": "2026-10-01T18:00:00+08:00",
+      "payload": {"delay_min": 90},
+      "nodes": [
+        {"key": "late", "category": "RESTAURANT", "day": "2026-10-01", "start": "19:00", "end": "20:00", "priority": 4}
+      ],
+      "expected_removed": ["late"]
+    },
+    {
+      "id": "weather-unknown-profile-kept",
+      "event_type": "WEATHER_CHANGE",
+      "effective_at": "2026-10-01T12:00:00+08:00",
+      "payload": {"condition": "RAIN"},
+      "nodes": [
+        {"key": "unknown-attraction", "category": "ATTRACTION", "day": "2026-10-01", "start": "13:00", "end": "14:00", "priority": 3}
+      ],
+      "expected_preserved": ["unknown-attraction"]
+    }
+  ]
+}

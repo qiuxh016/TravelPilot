@@ -18,7 +18,8 @@ class PlanService:
         self.session = session
         self.repository = PlanRepository(session)
 
-    async def generate(self, trip_id: UUID, maps=None, constraints: dict | None = None) -> TripPlanModel:
+    async def generate(self, trip_id: UUID, maps=None, constraints: dict | None = None,
+                       *, commit: bool = True) -> TripPlanModel:
         trip = await self.session.get(TripModel, trip_id)
         if trip is None:
             raise LookupError("Trip not found")
@@ -55,7 +56,7 @@ class PlanService:
             start_time=visit.start_time, end_time=visit.end_time,
             priority=visit.candidate.priority, status="PLANNED", note=visit.candidate.note,
         ) for visit in visits]
-        return await self.repository.create(plan, nodes)
+        return await self.repository.create(plan, nodes, commit=commit)
 
     async def list(self, trip_id: UUID):
         return await self.repository.list_by_trip(trip_id)

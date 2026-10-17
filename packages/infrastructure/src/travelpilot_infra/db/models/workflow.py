@@ -3,7 +3,16 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -25,6 +34,7 @@ class ContentSourceModel(Base):
     error: Mapped[str | None] = mapped_column(Text)
     skill_name: Mapped[str | None] = mapped_column(String(80))
     skill_version: Mapped[str | None] = mapped_column(String(24))
+    skill_applicability: Mapped[dict | None] = mapped_column(JSONB)
     token_usage: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
@@ -78,10 +88,13 @@ class WorkflowRunModel(Base):
 
 class AgentRunModel(Base):
     __tablename__ = "agent_runs"
+    __table_args__ = (UniqueConstraint("trip_id", "idempotency_key", name="uq_agent_run_trip_idempotency"),)
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     trip_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("trips.id", ondelete="CASCADE"), index=True)
     agent: Mapped[str] = mapped_column(String(50), nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(80))
     status: Mapped[str] = mapped_column(String(32), nullable=False)
+    input_data: Mapped[dict | None] = mapped_column(JSONB)
     output_data: Mapped[dict | None] = mapped_column(JSONB)
     error: Mapped[str | None] = mapped_column(Text)
     token_usage: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -106,6 +119,9 @@ class TripEventModel(Base):
     trip_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("trips.id", ondelete="CASCADE"), index=True)
     event_type: Mapped[str] = mapped_column(String(40), nullable=False)
     effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    effective_timezone_offset_minutes: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=480, server_default="480"
+    )
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 

@@ -16,6 +16,7 @@ class FriendshipRead(BaseModel):
     id: UUID
     friend_user_id: UUID
     email: str
+    display_name: str = ""
     status: str
     direction: str
     created_at: datetime

@@ -4,6 +4,8 @@ Run from the repository root after `alembic upgrade head`.
 """
 
 import asyncio
+import secrets
+from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
 import httpx
@@ -18,7 +20,26 @@ async def run():
     created_pois: set[UUID] = set()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        identity = secrets.token_hex(8)
+        auth_response = await client.post("/api/v1/auth/register", json={
+            "email": f"verify-{identity}@example.invalid", "password": "travelpilot-test-2026",
+        })
+        assert auth_response.status_code == 202, auth_response.text
+        email = f"verify-{identity}@example.invalid"
+        mailbox = await client.get(f"/api/v1/auth/dev-mailbox/{email}")
+        verification_token = parse_qs(urlparse(mailbox.json()["link"]).query)["token"][0]
+        verified = await client.post("/api/v1/auth/verify-email", json={"token": verification_token})
+        assert verified.status_code == 200, verified.text
+        logged_in = await client.post("/api/v1/auth/login", json={"email": email, "password": "travelpilot-test-2026"})
+        auth = {
+            "session": logged_in.cookies["travelpilot_session"],
+            "csrf": logged_in.cookies["travelpilot_csrf"],
+        }
         async def call(method, path, **kwargs):
+            headers = kwargs.setdefault("headers", {})
+            headers["Cookie"] = f"travelpilot_session={auth['session']}; travelpilot_csrf={auth['csrf']}"
+            if method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+                headers["X-CSRF-Token"] = auth["csrf"]
             response = await client.request(method, path, **kwargs)
             if response.is_error:
                 raise AssertionError(f"{method} {path}: {response.status_code} {response.text[:500]}")
@@ -43,6 +64,16 @@ async def run():
             wishlist = await call("GET", f"/api/v1/trips/{trip_id}/wishlist")
             assert len(wishlist) >= 2
             created_pois.update(UUID(item["poi_id"]) for item in wishlist)
+            # Weather replanning now needs an explicit profile; seed this isolated
+            # verification trip rather than relying on category-based assumptions.
+            for item in wishlist:
+                await call("PATCH", f"/api/v1/wishlist/{item['id']}", json={
+                    "environment_profile": {
+                        "exposure": "OUTDOOR",
+                        "sensitivity": {"RAIN": "HIGH"},
+                        "evidence": "Synthetic live-flow verification fixture",
+                    },
+                })
 
             first = await call("POST", f"/api/v1/trips/{trip_id}/plan-runs")
             second = await call("POST", f"/api/v1/trips/{trip_id}/plan-runs")
@@ -57,6 +88,8 @@ async def run():
                                    json={"event_id": event["id"]})
             assert replanned["plan"]["version"] == 3
             assert any(change["operation"] == "REMOVE" for change in replanned["diff"])
+            assert any("天气敏感地点已移出" in warning
+                       for warning in replanned["plan"]["warnings"])
             persisted_diff = await call("GET", f"/api/v1/trips/{trip_id}/plans/{replanned['plan']['id']}/diff")
             assert any(change["operation"] == "REMOVE" and change["reason_code"] == "WEATHER_CHANGE"
                        for change in persisted_diff)
@@ -88,8 +121,7 @@ async def run():
             assert len(latest["nodes"]) == len(edited["nodes"]) - 1
             print("LIVE FLOW OK: content → wishlist → plan versions → event → diff → memory → agent → immutable edits")
         finally:
-            if trip_id:
-                await call("DELETE", f"/api/v1/trips/{trip_id}")
+            await call("DELETE", "/api/v1/account")
             if created_pois:
                 async with AsyncSessionFactory() as session:
                     await session.execute(delete(PoiModel).where(PoiModel.id.in_(created_pois)))

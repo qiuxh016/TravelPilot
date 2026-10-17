@@ -3,7 +3,7 @@ import math
 import httpx
 from travelpilot_core.ports.maps import Place, Route
 
-from .errors import MapsConfigurationError, MapsUpstreamError
+from .errors import MapsConfigurationError, MapsRetryableError, MapsUpstreamError
 
 
 class AmapProvider:
@@ -19,6 +19,14 @@ class AmapProvider:
                 response = await client.get(self.base_url + path, params={**params, "key": self.api_key, "output": "json"})
                 response.raise_for_status()
                 data = response.json()
+        except httpx.TimeoutException as exc:
+            raise MapsRetryableError("地图服务请求超时") from exc
+        except httpx.TransportError as exc:
+            raise MapsRetryableError("地图服务暂时不可用") from exc
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 429 or exc.response.status_code >= 500:
+                raise MapsRetryableError("地图服务暂时不可用") from exc
+            raise MapsUpstreamError("地图服务返回错误") from exc
         except (httpx.HTTPError, ValueError) as exc:
             raise MapsUpstreamError("地图服务暂时不可用") from exc
         if data.get("status") != "1":

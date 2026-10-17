@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 EVENT_TYPES = {"WEATHER_CHANGE", "USER_FATIGUE", "POI_CANCELLED", "TIME_DELAY", "USER_ADD", "RESERVATION_CHANGE"}
+WEATHER_CONDITIONS = {"RAIN", "WIND", "HEAT", "COLD", "SNOW", "STORM"}
 
 
 class EventCreate(BaseModel):
@@ -28,6 +29,10 @@ class EventCreate(BaseModel):
 
     @model_validator(mode="after")
     def valid_payload(self):
+        if self.event_type == "WEATHER_CHANGE":
+            condition = self.payload.get("condition", "RAIN")
+            if condition not in WEATHER_CONDITIONS:
+                raise ValueError("payload.condition must be a supported weather condition")
         if self.event_type in {"POI_CANCELLED", "USER_ADD", "RESERVATION_CHANGE"}:
             try:
                 UUID(str(self.payload.get("poi_id", "")))
@@ -44,6 +49,7 @@ class EventRead(EventCreate):
     id: UUID
     trip_id: UUID
     created_at: datetime
+    effective_timezone_offset_minutes: int = 480
     model_config = {"from_attributes": True}
 
 

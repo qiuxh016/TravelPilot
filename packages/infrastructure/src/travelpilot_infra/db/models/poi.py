@@ -68,3 +68,8 @@ class PoiModel(Base):
         JSONB,
         nullable=True,
     )
+
+    environment_profile: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )

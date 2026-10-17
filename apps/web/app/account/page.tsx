@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { AccountProfilePanel } from "../../components/account-profile-panel";
 import { createUserMemory, deleteAccount, deleteUserMemory, exportAccount, getUserMemorySettings, listUserMemories, logout, setUserMemorySettings, updateUserMemory, type UserPreferenceMemory } from "../../lib/api";
 
 export default function AccountPage() {
@@ -101,6 +102,8 @@ export default function AccountPage() {
     </header>
 
     {notice && <p className={`account-notice${notice.error ? " is-error" : ""}`} role={notice.error ? "alert" : "status"}>{notice.text}</p>}
+
+    <AccountProfilePanel />
 
     <section className="account-section account-memory" aria-labelledby="memory-title">
       <div className="account-section-heading">

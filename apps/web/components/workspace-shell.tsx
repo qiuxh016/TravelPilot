@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { getAccountAvatarBlob, getCurrentUser, type AccountUser } from "../lib/api";
 
 type Theme = "light" | "dark";
 
@@ -27,6 +28,33 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [tripId, setTripId] = useState("");
   const [theme, setTheme] = useState<Theme>("light");
+  const [user, setUser] = useState<AccountUser | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+    const refreshProfile = async (event?: Event) => {
+      const updated = (event as CustomEvent<{ user?: AccountUser }> | undefined)?.detail?.user;
+      try {
+        const current = updated ?? await getCurrentUser();
+        if (!active) return;
+        setUser(current);
+        if (current.has_avatar) {
+          const next = await getAccountAvatarBlob();
+          if (!active) { URL.revokeObjectURL(next); return; }
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          objectUrl = next; setAvatarUrl(next);
+        } else {
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          objectUrl = ""; setAvatarUrl("");
+        }
+      } catch { /* Keep the account shortcut available even if profile details cannot load. */ }
+    };
+    void refreshProfile();
+    window.addEventListener("travelpilot:profile-updated", refreshProfile);
+    return () => { active = false; window.removeEventListener("travelpilot:profile-updated", refreshProfile); if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, []);
 
   useEffect(() => {
     const routeTripSegment = pathname.match(/^\/trips\/([^/]+)/)?.[1] ?? "";
@@ -113,6 +141,12 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     </aside>
-    <div className="workspace-main">{children}</div>
+    <div className="workspace-main">
+      <div className="workspace-topbar"><Link className="workspace-account-link" href="/account" aria-label="打开账号设置">
+        <span className="workspace-account-copy"><strong>{user?.display_name || user?.email?.split("@")[0] || "我的账号"}</strong><small>账号设置</small></span>
+        <span className="workspace-account-avatar">{avatarUrl ? <img src={avatarUrl} alt="" /> : <span>{(user?.display_name || user?.email || "旅").slice(0, 1).toUpperCase()}</span>}</span>
+      </Link></div>
+      {children}
+    </div>
   </div>;
 }

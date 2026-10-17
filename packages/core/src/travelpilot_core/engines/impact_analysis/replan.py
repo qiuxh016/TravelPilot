@@ -14,6 +14,7 @@ class Node:
     priority: int
     status: str = "PLANNED"
     note: str | None = None
+    environment_profile: dict | None = None
 
     @property
     def stable_key(self) -> str:
@@ -26,6 +27,26 @@ def _minutes(value: time) -> int:
 
 def _clock(value: int) -> time:
     return time(value // 60, value % 60)
+
+
+def _weather_impact(node: Node, payload: dict) -> str:
+    """Return REMOVE, KEEP, or UNKNOWN without guessing from POI category."""
+    profile = node.environment_profile or {}
+    exposure = str(profile.get("exposure", "UNKNOWN")).upper()
+    condition = str(payload.get("condition", "RAIN")).upper()
+    sensitivity_map = profile.get("sensitivity", {})
+    if isinstance(sensitivity_map, dict):
+        sensitivity = str(sensitivity_map.get(condition, "UNKNOWN")).upper()
+    else:
+        sensitivity = str(sensitivity_map).upper()
+
+    if exposure == "INDOOR" or sensitivity == "LOW":
+        return "KEEP"
+    if exposure not in {"OUTDOOR", "MIXED"} or sensitivity == "UNKNOWN":
+        return "UNKNOWN"
+    if sensitivity == "HIGH":
+        return "REMOVE"
+    return "KEEP"
 
 
 def affected(node: Node, effective_at: datetime) -> bool:
@@ -54,9 +75,15 @@ def replan(nodes: list[Node], event_type: str, effective_at: datetime,
         if event_type == "POI_CANCELLED" and node.stable_key == target:
             warnings.append(f"地点取消：{node.name}")
             continue
-        if event_type == "WEATHER_CHANGE" and node.category == "ATTRACTION":
-            warnings.append(f"天气影响室外地点：{node.name}")
-            continue
+        if event_type == "WEATHER_CHANGE":
+            impact = _weather_impact(node, payload)
+            if impact == "REMOVE":
+                warnings.append(f"天气敏感地点已移出：{node.name}")
+                continue
+            if impact == "UNKNOWN":
+                warnings.append(f"天气属性未知，暂时保留：{node.name}")
+            elif (node.environment_profile or {}).get("exposure") == "MIXED":
+                warnings.append(f"混合室内外地点暂时保留：{node.name}")
         if event_type == "USER_FATIGUE" and node.stable_key in fatigue_remove:
             warnings.append(f"减少疲劳负担：{node.name}")
             continue

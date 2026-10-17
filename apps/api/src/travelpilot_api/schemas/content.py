@@ -50,6 +50,7 @@ class ContentRead(BaseModel):
     error: str | None
     skill_name: str | None = None
     skill_version: str | None = None
+    skill_applicability: dict | None = None
     token_usage: int = 0
     created_at: datetime
     entities: list[EntityRead]

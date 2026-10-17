@@ -8,3 +8,7 @@ class MapsConfigurationError(MapsProviderError):
 
 class MapsUpstreamError(MapsProviderError):
     pass
+
+
+class MapsRetryableError(MapsUpstreamError):
+    """A transient transport or upstream status failure safe to retry."""

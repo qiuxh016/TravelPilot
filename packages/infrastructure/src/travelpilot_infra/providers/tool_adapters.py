@@ -11,6 +11,8 @@ from travelpilot_core.ports.tool_schemas import (
 )
 from travelpilot_core.ports.tools import ToolSpec
 
+from travelpilot_infra.providers.maps.errors import MapsProviderError, MapsRetryableError
+
 
 def map_tool_specs(maps) -> list[ToolSpec]:
     async def search(args: SearchPlacesInput):
@@ -30,9 +32,13 @@ def map_tool_specs(maps) -> list[ToolSpec]:
         return {"status": "UNAVAILABLE", "city": args.city, "day": args.day}
 
     return [
-        ToolSpec("search_places", SearchPlacesInput, search),
-        ToolSpec("get_place_detail", GetPlaceDetailInput, detail),
-        ToolSpec("get_route", GetRouteInput, route),
+        ToolSpec("search_places", SearchPlacesInput, search, retryable_exceptions=(MapsRetryableError,),
+                 non_retryable_exceptions=(MapsProviderError,)),
+        ToolSpec("get_place_detail", GetPlaceDetailInput, detail, retryable_exceptions=(MapsRetryableError,),
+                 non_retryable_exceptions=(MapsProviderError,)),
+        ToolSpec("get_route", GetRouteInput, route, retryable_exceptions=(MapsRetryableError,),
+                 non_retryable_exceptions=(MapsProviderError,)),
         ToolSpec("get_weather", GetWeatherInput, weather),
-        ToolSpec("get_distance_matrix", GetDistanceMatrixInput, matrix),
+        ToolSpec("get_distance_matrix", GetDistanceMatrixInput, matrix,
+                 retryable_exceptions=(MapsRetryableError,), non_retryable_exceptions=(MapsProviderError,)),
     ]

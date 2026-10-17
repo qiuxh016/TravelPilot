@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from travelpilot_api.schemas.environment import EnvironmentProfileInput, EnvironmentProfileRead
+
 
 class WishlistCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
@@ -16,12 +18,14 @@ class WishlistCreate(BaseModel):
     notes: str | None = None
     source_type: str = Field(default="MANUAL", max_length=50)
     source_url: str | None = None
+    environment_profile: EnvironmentProfileInput | None = None
 
 
 class WishlistUpdate(BaseModel):
     priority: int | None = Field(default=None, ge=1, le=5)
     interest_score: Decimal | None = Field(default=None, ge=0, le=1)
     notes: str | None = None
+    environment_profile: EnvironmentProfileInput | None = None
 
 
 class WishlistRead(BaseModel):
@@ -39,6 +43,7 @@ class WishlistRead(BaseModel):
     notes: str | None
     source_type: str
     source_url: str | None
+    environment_profile: EnvironmentProfileRead | None
 
     model_config = {
         "from_attributes": True,

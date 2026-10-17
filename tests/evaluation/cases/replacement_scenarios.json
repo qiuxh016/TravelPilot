@@ -1,0 +1,78 @@
+{
+  "evaluation_id": "weather_replacement_search_v1",
+  "dataset_version": 1,
+  "description": "Synthetic cases for local weather replacement feasibility and route-aware selection.",
+  "cases": [
+    {
+      "id": "select-lowest-route-cost",
+      "removed": {"key": "rainy-park", "start": "14:00", "end": "15:00"},
+      "scheduled": [
+        {"key": "previous", "start": "12:00", "end": "13:00"},
+        {"key": "following", "start": "16:00", "end": "17:00"}
+      ],
+      "candidates": [
+        {"key": "slow", "duration_min": 45, "priority": 5, "opening_hours": {"open": "09:00", "close": "20:00"}, "environment_profile": {"exposure": "INDOOR", "source": "EDITORIAL"}},
+        {"key": "fast", "duration_min": 45, "priority": 3, "opening_hours": {"open": "09:00", "close": "20:00"}, "environment_profile": {"exposure": "INDOOR", "source": "USER"}}
+      ],
+      "routes": [
+        {"from": "previous", "to": "slow", "minutes": 20}, {"from": "slow", "to": "following", "minutes": 20},
+        {"from": "previous", "to": "fast", "minutes": 5}, {"from": "fast", "to": "following", "minutes": 5}
+      ],
+      "expected_candidate": "fast",
+      "expected_reason": "OK"
+    },
+    {
+      "id": "reject-closed-at-slot",
+      "removed": {"key": "rainy-park", "start": "14:00", "end": "15:00"},
+      "scheduled": [],
+      "candidates": [
+        {"key": "closed-museum", "duration_min": 45, "priority": 4, "opening_hours": {"open": "09:00", "close": "14:30"}, "environment_profile": {"exposure": "INDOOR"}}
+      ],
+      "routes": [],
+      "expected_candidate": null,
+      "expected_reason": "CLOSED_AT_SLOT"
+    },
+    {
+      "id": "reject-route-buffer-conflict",
+      "removed": {"key": "rainy-park", "start": "14:00", "end": "14:30"},
+      "scheduled": [
+        {"key": "previous", "start": "12:00", "end": "13:00"},
+        {"key": "following", "start": "15:00", "end": "16:00"}
+      ],
+      "candidates": [
+        {"key": "too-far", "duration_min": 30, "priority": 4, "opening_hours": {"open": "09:00", "close": "20:00"}, "environment_profile": {"exposure": "INDOOR"}}
+      ],
+      "routes": [
+        {"from": "previous", "to": "too-far", "minutes": 0}, {"from": "too-far", "to": "following", "minutes": 15}
+      ],
+      "expected_candidate": null,
+      "expected_reason": "TIME_OR_ROUTE_CONFLICT"
+    },
+    {
+      "id": "reject-daily-capacity",
+      "removed": {"key": "rainy-park", "start": "16:00", "end": "17:00"},
+      "scheduled": [
+        {"key": "s1", "start": "09:00", "end": "10:00"}, {"key": "s2", "start": "10:00", "end": "11:00"},
+        {"key": "s3", "start": "11:00", "end": "12:00"}, {"key": "s4", "start": "12:00", "end": "13:00"},
+        {"key": "s5", "start": "13:00", "end": "14:00"}, {"key": "s6", "start": "14:00", "end": "15:00"}
+      ],
+      "candidates": [
+        {"key": "indoor", "duration_min": 30, "priority": 4, "opening_hours": {"open": "09:00", "close": "20:00"}, "environment_profile": {"exposure": "INDOOR"}}
+      ],
+      "routes": [],
+      "expected_candidate": null,
+      "expected_reason": "DAILY_CAPACITY"
+    },
+    {
+      "id": "reject-unknown-weather-profile",
+      "removed": {"key": "rainy-park", "start": "14:00", "end": "15:00"},
+      "scheduled": [],
+      "candidates": [
+        {"key": "unknown-place", "duration_min": 30, "priority": 4, "opening_hours": {"open": "09:00", "close": "20:00"}, "environment_profile": null}
+      ],
+      "routes": [],
+      "expected_candidate": null,
+      "expected_reason": "WEATHER_PROFILE"
+    }
+  ]
+}

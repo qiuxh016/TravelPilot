@@ -12,6 +12,8 @@ def summarize(records: Iterable[dict]) -> dict:
     total = len(records)
     changes = [record.get("changed_nodes", 0) for record in records]
     costs = [record.get("change_cost", 0) for record in records]
+    latencies = sorted(max(0, int(record.get("latency_ms", 0))) for record in records)
+    p95_latency_ms = latencies[max(0, int(len(latencies) * 0.95 + 0.999999) - 1)] if latencies else 0
     return {
         "plan_success_rate": ratio(sum(record.get("plan_success", False) for record in records), total),
         "constraint_violation_rate": ratio(sum(record.get("constraint_violations", 0) for record in records), total),
@@ -22,6 +24,7 @@ def summarize(records: Iterable[dict]) -> dict:
                                    sum(record.get("tool_calls", 0) for record in records)),
         "changed_node_count": sum(changes),
         "change_cost": sum(costs),
-        "latency_ms": sum(record.get("latency_ms", 0) for record in records),
+        "latency_ms": sum(latencies),
+        "p95_latency_ms": p95_latency_ms,
         "token_cost": sum(record.get("token_cost", 0) for record in records),
     }
