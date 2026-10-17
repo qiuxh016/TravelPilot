@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from travelpilot_core.agents.planner import decide_preferences
-from travelpilot_core.agents.runtime import AgentResult, AgentRuntime
+from travelpilot_core.agents.runtime import AgentResult, AgentRuntime, redact_tool_trace
 from travelpilot_core.application.plans import PlanService
 from travelpilot_core.ports.tool_schemas import GetTripContextInput
 from travelpilot_core.ports.tools import ToolFailure, ToolSpec
@@ -18,7 +18,7 @@ from travelpilot_infra.providers.maps.errors import MapsProviderError
 from travelpilot_infra.providers.tool_adapters import map_tool_specs
 
 from travelpilot_api.api.v1.plans import to_read
-from travelpilot_api.dependencies import get_maps_provider
+from travelpilot_api.dependencies import get_maps_provider, get_owned_trip
 from travelpilot_api.settings import settings
 
 router = APIRouter(tags=["agents"])
@@ -30,9 +30,8 @@ class PlannerRequest(BaseModel):
 
 @router.post("/trips/{trip_id}/agent-plan-runs")
 async def run_planner_agent(trip_id: UUID, payload: PlannerRequest,
-                            session: AsyncSession = Depends(get_session), maps=Depends(get_maps_provider)):
-    if await session.get(TripModel, trip_id) is None:
-        raise HTTPException(404, detail="Trip not found")
+                            session: AsyncSession = Depends(get_session), maps=Depends(get_maps_provider),
+                            _trip: TripModel = Depends(get_owned_trip)):
     run = AgentRunModel(trip_id=trip_id, agent="planner", status="RUNNING", token_usage=0)
     session.add(run)
     await session.commit()
@@ -49,7 +48,7 @@ async def run_planner_agent(trip_id: UUID, payload: PlannerRequest,
                 "preference": payload.preference, "memories": [memory.text for memory in memories]}
 
     async def trace(data: dict) -> None:
-        session.add(ToolCallModel(run_id=run.id, **data))
+        session.add(ToolCallModel(run_id=run.id, **redact_tool_trace(data)))
         await session.commit()
 
     runtime = AgentRuntime([ToolSpec("get_trip_context", GetTripContextInput, get_context),

@@ -55,7 +55,7 @@ export default function PlanPage() {
             <span className="plan-stop-time">{node.start_time.slice(0, 5)}<small>{node.end_time.slice(0, 5)}</small></span><span className="plan-stop-rail"><i>{index + 1}</i></span><span className="plan-stop-content"><strong>{node.name}</strong><small>{node.status} · 优先级 {node.priority}</small>{node.note && <p>{node.note}</p>}</span><span className="plan-stop-open">地图 ↗</span>
           </button>)}</div> : <p className="status">这一天还没有安排地点。</p>}
         </section>
-        <div className="plan-map-column"><RouteMap title="今天的地点地图" points={routePoints} selectedPointId={selectedStop} disclaimer="点击左侧行程可选中地点；地图上的编号对应游览顺序。" onSelect={setSelectedStop} />
+        <div className="plan-map-column"><RouteMap title="今天的地点地图" points={routePoints} selectedPointId={selectedStop} disclaimer="点击左侧行程可选中地点；地图上的编号对应游览顺序。" onSelect={setSelectedStop} showDrivingRoute={routePoints.length > 1} />
           {routePoints.length < dayNodes.length && <p className="plan-map-note">有 {dayNodes.length - routePoints.length} 个地点暂缺坐标，无法显示在地图上。可在地点收藏中补充坐标。</p>}
         </div>
       </div>

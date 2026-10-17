@@ -8,7 +8,7 @@ class PlaceRead(BaseModel):
 class RouteRequest(BaseModel):
     origin:tuple[float,float]; destination:tuple[float,float]
 class RouteRead(BaseModel):
-    distance_m:int; duration_min:int; provider:str
+    distance_m:int; duration_min:int; provider:str; polyline:list[tuple[float,float]]=Field(default_factory=list)
 class MatrixRequest(BaseModel):
     points:list[tuple[float,float]]=Field(min_length=2,max_length=30)
 class MatrixRead(BaseModel):
@@ -16,3 +16,4 @@ class MatrixRead(BaseModel):
 class StaticMapRequest(BaseModel):
     points:list[tuple[float,float]]=Field(min_length=1,max_length=10)
     selected_index:int=Field(default=0,ge=0,le=9)
+    route_path:list[tuple[float,float]]|None=Field(default=None,max_length=5000)

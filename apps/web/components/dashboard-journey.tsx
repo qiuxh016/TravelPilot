@@ -55,7 +55,7 @@ export function DashboardJourney({ trips }: { trips: Trip[] }) {
     </header>
     <div className="dashboard-journey-body">
       <div className="dashboard-map-area">
-        <RouteMap title={plan ? "这一天的路线" : "收藏地点地图"} points={points} selectedPointId={selectedStop} disclaimer="地图来自高德地图；连线表示游览顺序。" onSelect={setSelectedStop} />
+        <RouteMap title={plan ? "这一天的路线" : "收藏地点地图"} points={points} selectedPointId={selectedStop} disclaimer={plan ? "地点按当日计划顺序排列。" : "标记展示已收藏地点的位置，不代表路线。"} onSelect={setSelectedStop} showDrivingRoute={Boolean(plan && points.length > 1)} />
       </div>
       <aside className="dashboard-agenda">
         <div className="dashboard-agenda-head">

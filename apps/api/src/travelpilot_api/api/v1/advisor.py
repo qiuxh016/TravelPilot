@@ -1,37 +1,82 @@
 import re
 from datetime import UTC, date, datetime, time
 from decimal import Decimal
+from time import perf_counter
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from travelpilot_core.agents.extraction import extract_places
+from travelpilot_core.agents.advisor_reply import compose_advisor_reply
+from travelpilot_core.agents.extraction import Extraction, extract_places, fallback_extract
+from travelpilot_core.agents.runtime import AgentRuntime
 from travelpilot_core.engines.optimizer.itinerary import Candidate, build_itinerary
-from travelpilot_infra.db.models.advisor import AdvisorMessageModel, AdvisorSessionModel
+from travelpilot_core.ports.tool_schemas import GetDistanceMatrixInput, SearchPlacesInput
+from travelpilot_core.ports.tools import ToolFailure, ToolSpec
+from travelpilot_infra.db.models.advisor import (
+    AdvisorMessageModel,
+    AdvisorRunEventModel,
+    AdvisorSessionModel,
+)
 from travelpilot_infra.db.models.plan import TripPlanModel, TripPlanNodeModel
 from travelpilot_infra.db.models.plan_change import PlanChangeModel
 from travelpilot_infra.db.models.poi import PoiModel
 from travelpilot_infra.db.models.trip import TripModel
 from travelpilot_infra.db.models.user import UserModel
 from travelpilot_infra.db.models.wishlist import WishlistItemModel
-from travelpilot_infra.db.models.workflow import MemoryModel
+from travelpilot_infra.db.models.workflow import (
+    MemoryModel,
+    UserMemorySettingsModel,
+    UserPreferenceMemoryModel,
+)
 from travelpilot_infra.db.session import get_session
 from travelpilot_infra.providers.maps.errors import MapsProviderError
+from travelpilot_infra.providers.weather.open_meteo import WeatherProviderError
 
 from travelpilot_api.auth import get_current_user
-from travelpilot_api.dependencies import get_maps_provider
+from travelpilot_api.dependencies import get_maps_provider, get_weather_provider
+from travelpilot_api.rate_limit import enforce_identity_rate_limit, get_rate_limit_redis
 from travelpilot_api.schemas.advisor import (
     AdvisorConfirm,
     AdvisorConfirmRead,
     AdvisorDraftCreate,
     AdvisorMessageCreate,
+    AdvisorRuntimeStatus,
+    AdvisorSessionContextUpdate,
     AdvisorSessionCreate,
     AdvisorSessionRead,
 )
 from travelpilot_api.settings import settings
 
 router = APIRouter(prefix="/advisor", tags=["advisor"])
+
+
+@router.get("/status", response_model=AdvisorRuntimeStatus)
+async def advisor_runtime_status(_user: UserModel = Depends(get_current_user)):
+    configured = bool(settings.llm_api_key.strip() and settings.llm_model.strip())
+    return AdvisorRuntimeStatus(
+        llm_status="CONFIGURED" if configured else "NOT_CONFIGURED",
+        model_name=settings.llm_model.strip() if configured else None,
+        output_token_limit=settings.llm_max_tokens_per_turn,
+    )
+
+
+async def _extract_advisor_intent(content: str) -> tuple[Extraction, bool]:
+    """Prefer grounded model extraction, but preserve the turn with local fallback."""
+    try:
+        extraction = await extract_places(
+            content,
+            api_key=settings.llm_api_key,
+            model=settings.llm_model,
+            base_url=settings.llm_base_url,
+            token_budget=max(128, settings.llm_max_tokens_per_turn * 2 // 3),
+        )
+        return extraction, False
+    except RuntimeError:
+        if not settings.llm_api_key or not settings.llm_model:
+            raise
+        return fallback_extract(content), True
 
 
 async def _owned_session(session: AsyncSession, session_id: UUID, owner_id: UUID, *, lock: bool = False):
@@ -62,13 +107,219 @@ async def _read_session(session: AsyncSession, row: AdvisorSessionModel) -> Advi
     })
 
 
-def _apply_existing_adjustments(row: AdvisorSessionModel, content: str) -> tuple[dict, list[str]]:
+def _normalized_place_name(value: str) -> str:
+    return re.sub(r"[^\w\u4e00-\u9fff]", "", value.casefold())
+
+
+def _planning_state(row: AdvisorSessionModel) -> dict:
+    existing_trip = row.trip_id is not None
+    default_source = "existing_trip" if existing_trip else "session_input"
+    sources = (row.context or {}).get("slot_sources", {})
+    planning_inputs = (row.context or {}).get("planning_inputs", {})
+
+    def slot(name: str, value):
+        source = sources.get(name, default_source)
+        missing = value is None or value == "" or value == []
+        return {
+            "value": value.isoformat() if hasattr(value, "isoformat") else value,
+            "source": source if not missing else None,
+            "confidence": 1.0 if not missing else 0.0,
+            "status": "known" if not missing else "missing",
+        }
+
+    slots = {
+        "destination": slot("destination", row.destination.strip() or None),
+        "start_date": slot("start_date", row.start_date),
+        "end_date": slot("end_date", row.end_date),
+        "budget": slot("budget", str(row.budget) if row.budget is not None else None),
+        "pace_level": slot("pace_level", row.pace_level),
+        "preferences": slot("preferences", row.preference_text.strip() or None),
+        "origin": slot("origin", planning_inputs.get("origin", "").strip() or None),
+        "companions": slot("companions", planning_inputs.get("companions", [])),
+        "hard_constraints": slot("hard_constraints", planning_inputs.get("hard_constraints", [])),
+    }
+    required = ("destination", "start_date", "end_date")
+    return {
+        "slots": slots,
+        "missing_required": [name for name in required if slots[name]["status"] == "missing"],
+        "unresolved_questions": [
+            {"slot": name, "question": {
+                "destination": "你想去哪个城市或区域？",
+                "start_date": "旅行从哪一天开始？",
+                "end_date": "旅行到哪一天结束？",
+            }[name]}
+            for name in required if slots[name]["status"] == "missing"
+        ],
+    }
+
+
+_INTEREST_TERMS = {
+    "美食": ("美食", "吃", "餐厅", "餐馆", "火锅", "川菜", "小吃", "咖啡"),
+    "博物馆": ("博物馆", "展馆", "艺术馆"),
+    "公园": ("公园", "绿地", "自然风景"),
+    "购物": ("购物", "商场", "买东西"),
+    "夜生活": ("夜生活", "酒吧", "夜店"),
+    "历史景点": ("历史", "古迹", "古建筑", "遗址"),
+}
+
+# This bounded seed list limits provider calls. Recommendations are ranked only
+# from live map evidence; the list itself is not presented as evidence.
+_DESTINATION_CITIES = ("成都", "杭州", "西安", "厦门", "青岛", "长沙")
+_DESTINATION_INTERESTS = {
+    "自然与公园": ("公园", ("自然", "公园", "户外", "徒步", "山水", "风景")),
+    "地方美食": ("美食", ("美食", "吃", "餐厅", "小吃", "火锅", "美食")),
+    "历史街区": ("历史古迹", ("历史", "古迹", "古建筑", "老街", "文化")),
+    "海滨休闲": ("海滨", ("海边", "海滨", "海岛", "沙滩", "看海")),
+}
+
+
+def _destination_queries(preferences: str, hard_constraints: list[str]) -> list[tuple[str, str]]:
+    folded = preferences.casefold()
+    excluded = " ".join(hard_constraints).casefold()
+    result = []
+    for label, (query, terms) in _DESTINATION_INTERESTS.items():
+        if any(term in folded for term in terms) and not any(
+            marker + term in folded or marker + term in excluded
+            for marker in ("不喜欢", "不想", "不要", "不去", "别去", "避免", "不", "别") for term in terms
+        ):
+            result.append((label, query))
+    return result[:2]
+
+
+def _allowed_interest_queries(content: str, queries: list[str]) -> list[str]:
+    """Drop model-suggested search categories contradicted by explicit user intent."""
+    positive = content.casefold()
+    rejected = set()
+    for category, terms in _INTEREST_TERMS.items():
+        if any(term in positive for term in terms) and any(
+            marker + term in positive
+            for marker in ("不想", "不要", "不喜欢", "不爱", "避开", "不去")
+            for term in terms
+        ):
+            rejected.add(category)
+    result = []
+    for query in queries:
+        query = query.strip()[:100]
+        if not query:
+            continue
+        if any(query == category and category in rejected for category in rejected):
+            continue
+        if any(query in terms for category, terms in _INTEREST_TERMS.items() if category in rejected):
+            continue
+        result.append(query)
+    return list(dict.fromkeys(result))
+
+
+def _hard_limit_conflicts(candidate: dict, memories: list[dict]) -> list[str]:
+    candidate_text = f"{candidate.get('name', '')} {candidate.get('category', '')}".casefold()
+    known_categories = {
+        "博物馆": ("博物馆", "museum", "展馆", "art gallery"),
+        "酒吧与夜店": ("酒吧", "夜店", "bar", "nightclub"),
+        "购物": ("购物", "商场", "shopping", "mall"),
+        "动物园": ("动物园", "zoo"),
+        "宗教场所": ("寺", "教堂", "清真寺", "temple", "church"),
+    }
+    conflicts = []
+    for memory in memories:
+        text = str(memory.get("text", ""))
+        folded = text.casefold()
+        if memory.get("constraint_type") != "HARD_LIMIT":
+            continue
+        if not any(marker in folded for marker in ("不去", "不喜欢", "不想", "不要", "避开", "禁止", "不能")):
+            continue
+        for terms in known_categories.values():
+            if any(term in folded for term in terms) and any(term.casefold() in candidate_text for term in terms):
+                conflicts.append(f"{candidate.get('name')} 与已确认限制“{text}”冲突")
+                break
+    return conflicts
+
+
+async def _active_personal_memories(db: AsyncSession, owner_id: UUID) -> list[dict]:
+    settings_row = await db.get(UserMemorySettingsModel, owner_id)
+    if settings_row is None or not settings_row.enabled:
+        return []
+    now = datetime.now(UTC)
+    memories = (await db.scalars(select(UserPreferenceMemoryModel).where(
+        UserPreferenceMemoryModel.owner_id == owner_id,
+        UserPreferenceMemoryModel.confirmed.is_(True),
+        (UserPreferenceMemoryModel.expires_at.is_(None) | (UserPreferenceMemoryModel.expires_at > now)),
+    ).order_by(UserPreferenceMemoryModel.updated_at.desc()).limit(10))).all()
+    return [{
+        "id": str(memory.id), "category": memory.category, "text": memory.text[:240],
+        "constraint_type": memory.constraint_type,
+    } for memory in memories]
+
+
+async def _empty_trace(_: dict) -> None:
+    return None
+
+
+def _search_tool_runtime(maps) -> AgentRuntime:
+    async def search(arguments: SearchPlacesInput) -> dict:
+        try:
+            places = await maps.search_place(arguments.keyword, arguments.city)
+        except MapsProviderError as exc:
+            raise ToolFailure("MAPS_PROVIDER_UNAVAILABLE") from exc
+        status = (
+            "SIMULATED" if any(place.provider == "fake" for place in places)
+            else "VERIFIED" if places else "NO_RESULTS"
+        )
+        return {
+            "status": status,
+            "retrieved_at": datetime.now(UTC).isoformat(),
+            "places": [{
+                "provider": place.provider, "provider_id": place.provider_id,
+                "name": place.name, "address": place.address, "category": place.category,
+                "latitude": place.latitude, "longitude": place.longitude,
+                "duration_min": place.suggested_duration_min, "opening_hours": place.opening_hours,
+            } for place in places],
+        }
+
+    return AgentRuntime(
+        [ToolSpec("search_places", SearchPlacesInput, search, timeout_seconds=settings.maps_timeout_seconds,
+                  retry_limit=0)],
+        _empty_trace,
+        max_steps=25,
+    )
+
+
+def _distance_tool_runtime(maps) -> AgentRuntime:
+    async def distance_matrix(arguments: GetDistanceMatrixInput) -> dict:
+        try:
+            durations = await maps.get_distance_matrix(arguments.points)
+        except MapsProviderError as exc:
+            raise ToolFailure("MAPS_PROVIDER_UNAVAILABLE") from exc
+        provider = getattr(maps, "provider", maps)
+        provider_name = type(provider).__name__
+        simulated = provider_name.casefold().startswith("fake")
+        source = "Local simulated maps" if simulated else "AMap Web Service" if provider_name == "AmapProvider" else provider_name
+        return {
+            "durations_min": durations,
+            "status": "SIMULATED" if simulated else "VERIFIED",
+            "source": source,
+            "retrieved_at": datetime.now(UTC).isoformat(),
+        }
+
+    return AgentRuntime(
+        [ToolSpec("get_distance_matrix", GetDistanceMatrixInput, distance_matrix,
+                  timeout_seconds=settings.maps_timeout_seconds, retry_limit=0)],
+        _empty_trace,
+        max_steps=1,
+    )
+
+
+def _apply_existing_adjustments(
+    row: AdvisorSessionModel, content: str, extraction: Extraction | None = None,
+) -> tuple[dict, list[str]]:
     context = dict(row.context or {})
     selected = set(context.get("selected_candidate_ids", []))
     original_selected = set(selected)
     messages: list[str] = []
     negative_terms = ("不要", "不去", "不想去", "移除", "删掉", "删除", "去掉", "取消", "排除")
     positive_terms = ("保留", "还要去", "仍想去", "继续去", "安排", "加入", "想去", "要去")
+    structured_actions = {
+        mention.name: mention.action for mention in (extraction.places if extraction else [])
+    }
     for candidate in row.candidates:
         name = candidate["name"]
         position = content.find(name)
@@ -82,13 +333,17 @@ def _apply_existing_adjustments(row: AdvisorSessionModel, content: str) -> tuple
         nearby_end = min(clause_end, position + len(name) + 24)
         nearby = content[nearby_start:nearby_end]
         center = position - nearby_start
-        negative_found = any(re.search(term, nearby) for term in negative_terms)
+        structured_action = structured_actions.get(name)
+        negative_found = structured_action == "remove" or any(re.search(term, nearby) for term in negative_terms)
         intents = [
             (abs((match.start() + len(term)) - center), "positive")
             for term in positive_terms
             for match in re.finditer(term, nearby)
         ]
-        intent = "negative" if negative_found else min(intents, default=(0, "none"), key=lambda item: item[0])[1]
+        intent = "negative" if negative_found else (
+            "positive" if structured_action == "add" else
+            min(intents, default=(0, "none"), key=lambda item: item[0])[1]
+        )
         if intent == "negative":
             if candidate["id"] in selected:
                 selected.remove(candidate["id"])
@@ -99,10 +354,13 @@ def _apply_existing_adjustments(row: AdvisorSessionModel, content: str) -> tuple
 
     lower_pace = ("轻松一点", "轻松一些", "慢一点", "慢一些", "松一点", "多休息", "多留休息", "休息时间", "少安排", "别太赶", "不要太赶", "减少安排")
     higher_pace = ("紧凑一点", "快一点", "多安排", "安排紧凑", "节奏快")
-    if any(term in content for term in lower_pace) and row.pace_level > 1:
+    pace_adjustment = extraction.pace_adjustment if extraction else "none"
+    wants_slower = pace_adjustment == "slower" or any(term in content for term in lower_pace)
+    wants_faster = pace_adjustment == "faster" or any(term in content for term in higher_pace)
+    if wants_slower and row.pace_level > 1:
         row.pace_level -= 1
         messages.append(f"已将节奏调整为 {row.pace_level}/5")
-    elif any(term in content for term in higher_pace) and row.pace_level < 5:
+    elif wants_faster and row.pace_level < 5:
         row.pace_level += 1
         messages.append(f"已将节奏调整为 {row.pace_level}/5")
 
@@ -126,6 +384,7 @@ async def create_session(
         ))
         if trip is None:
             raise HTTPException(404, detail="旅行不存在")
+    personal_memories = await _active_personal_memories(db, user.id)
     row = AdvisorSessionModel(
         owner_id=user.id,
         trip_id=trip.id if trip else None,
@@ -139,6 +398,16 @@ async def create_session(
     )
     db.add(row)
     await db.flush()
+    row.context = {
+        "revision": 0, "selected_candidate_ids": [], "personal_memories": personal_memories,
+        "slot_sources": {
+            "origin": "session_input", "companions": "session_input", "hard_constraints": "session_input",
+        },
+        "planning_inputs": {
+            "origin": payload.origin.strip(), "companions": payload.companions,
+            "hard_constraints": payload.hard_constraints,
+        },
+    }
     if trip:
         current_plan = await db.scalar(select(TripPlanModel).where(
             TripPlanModel.trip_id == trip.id,
@@ -194,6 +463,12 @@ async def create_session(
         row.context = {
             "revision": 0,
             "base_pace_level": trip.pace_level,
+            "base_trip": {
+                "destination": trip.destination, "start_date": trip.start_date.isoformat(),
+                "end_date": trip.end_date.isoformat(),
+                "budget": str(trip.budget) if trip.budget is not None else None,
+                "pace_level": trip.pace_level,
+            },
             "selected_candidate_ids": [item["candidate_id"] for item in plan_stops],
             "current_plan": {
                 "id": str(current_plan.id), "version": current_plan.version,
@@ -204,13 +479,74 @@ async def create_session(
                 "id": str(memory.id), "type": memory.memory_type, "text": memory.text,
                 "importance": memory.importance, "confidence": memory.confidence,
             } for memory in confirmed_memories],
+            "personal_memories": row.context.get("personal_memories", []),
+            "planning_inputs": row.context.get("planning_inputs", {}),
+            "slot_sources": row.context.get("slot_sources", {}),
         }
+    row.context = {**(row.context or {}), "planning_state": _planning_state(row)}
     welcome = (
         "已载入你自己的旅行上下文。告诉我想保留、增加或调整的地点；我会先核对地点，再生成待确认草案。"
         if trip else
-        "会话已创建。告诉我想去的具体地点或偏好；我会用地图服务核验地点。日期、预算和节奏会作为排程约束。"
+        ("先告诉我偏好的旅行方式；如果还没确定城市和日期，可以稍后在旅行条件中补充。补齐后我会用地图核验候选，再生成待确认草案。"
+         if payload.mode == "discover" else
+         "会话已创建。告诉我想去的具体地点或偏好；我会用地图服务核验地点。日期、预算和节奏会作为排程约束。")
     )
     db.add(AdvisorMessageModel(session_id=row.id, owner_id=user.id, role="assistant", content=welcome))
+    await db.commit()
+    await db.refresh(row)
+    return await _read_session(db, row)
+
+
+@router.patch("/sessions/{session_id}/context", response_model=AdvisorSessionRead)
+async def update_session_context(
+    session_id: UUID,
+    payload: AdvisorSessionContextUpdate,
+    db: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
+):
+    row = await _owned_session(db, session_id, user.id, lock=True)
+    if row.status != "ACTIVE":
+        raise HTTPException(409, detail="已确认的会话不能继续修改")
+    context = dict(row.context or {})
+    old_planning_inputs = context.get("planning_inputs", {})
+    new_planning_inputs = {
+        "origin": payload.origin.strip(), "companions": payload.companions,
+        "hard_constraints": payload.hard_constraints,
+    }
+    before = (row.destination, row.start_date, row.end_date, row.budget, row.pace_level, row.preference_text,
+              old_planning_inputs)
+    row.destination = payload.destination.strip()
+    row.start_date = payload.start_date
+    row.end_date = payload.end_date
+    row.budget = payload.budget
+    row.pace_level = payload.pace_level
+    row.preference_text = payload.preference_text.strip()
+    after = (row.destination, row.start_date, row.end_date, row.budget, row.pace_level, row.preference_text,
+             new_planning_inputs)
+    if before != after:
+        context["revision"] = int(context.get("revision", 0)) + 1
+    context["slot_sources"] = {
+        "destination": "advisor_form", "start_date": "advisor_form", "end_date": "advisor_form",
+        "budget": "advisor_form", "pace_level": "advisor_form", "preferences": "advisor_form",
+        "origin": "advisor_form", "companions": "advisor_form", "hard_constraints": "advisor_form",
+    }
+    context["planning_inputs"] = new_planning_inputs
+    context["planning_state"] = _planning_state(row)
+    row.context = context
+    row.updated_at = datetime.now(UTC)
+    changed_fields = [name for name, old_value, new_value in zip(
+        ("destination", "start_date", "end_date", "budget", "pace_level", "preferences", "planning_inputs"),
+        before, after, strict=True,
+    ) if old_value != new_value]
+    db.add(AdvisorRunEventModel(
+        owner_id=user.id, session_id=row.id, phase="user", operation="update_context",
+        status="SUCCEEDED", metadata_json={"changed_fields": changed_fields},
+    ))
+    db.add(AdvisorMessageModel(
+        session_id=row.id, owner_id=user.id, role="assistant",
+        content="旅行条件已更新。地点和日期齐全后可以继续搜索候选并生成草案。",
+        payload={"event": "CONTEXT_UPDATED", "planning_state": context["planning_state"]},
+    ))
     await db.commit()
     await db.refresh(row)
     return await _read_session(db, row)
@@ -229,6 +565,126 @@ async def get_session_detail(session_id: UUID, db: AsyncSession = Depends(get_se
     return await _read_session(db, await _owned_session(db, session_id, user.id))
 
 
+@router.post("/sessions/{session_id}/destinations", response_model=AdvisorSessionRead)
+async def recommend_destinations(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
+    maps=Depends(get_maps_provider),
+    redis: Redis = Depends(get_rate_limit_redis),
+):
+    """Recommend a few cities using bounded, live POI searches as evidence."""
+    started_at = perf_counter()
+    row = await _owned_session(db, session_id, user.id, lock=True)
+    if row.status != "ACTIVE":
+        raise HTTPException(409, detail="已确认的会话不能继续修改")
+    if row.destination:
+        raise HTTPException(409, detail="当前会话已有目的地")
+    if settings.maps_provider != "amap":
+        raise HTTPException(503, detail="目的地推荐需要配置真实地图服务；当前模拟地图不能用于城市推荐")
+    planning_inputs = (row.context or {}).get("planning_inputs", {})
+    origin = str(planning_inputs.get("origin", "")).strip()
+    if not origin:
+        raise HTTPException(422, detail="请先填写出发地，再比较目的地")
+    if not row.start_date or not row.end_date:
+        raise HTTPException(422, detail="请先填写旅行日期，再比较目的地")
+    queries = _destination_queries(
+        row.preference_text,
+        [str(item) for item in planning_inputs.get("hard_constraints", [])],
+    )
+    if not queries:
+        raise HTTPException(422, detail="请先填写至少一项旅行偏好，例如自然、美食、历史街区或海滨休闲")
+
+    await enforce_identity_rate_limit(
+        redis,
+        str(user.id),
+        bucket="advisor-destinations",
+        limit=settings.advisor_destination_limit_per_user,
+        window_seconds=settings.advisor_destination_window_seconds,
+    )
+
+    retrieved_at = datetime.now(UTC).isoformat()
+    city_results: dict[str, dict] = {
+        city: {"city": city, "matched_interests": [], "places": [], "place_count": 0, "failed_interests": []}
+        for city in _DESTINATION_CITIES
+    }
+    failures = 0
+    for city in _DESTINATION_CITIES:
+        for label, keyword in queries:
+            try:
+                places = await maps.search_place(keyword, city)
+            except MapsProviderError:
+                failures += 1
+                city_results[city]["failed_interests"].append(label)
+                continue
+            verified = [place for place in places if place.provider != "fake"]
+            if verified:
+                city_results[city]["matched_interests"].append(label)
+                city_results[city]["place_count"] += len(verified)
+                city_results[city]["places"].extend({
+                    "name": place.name,
+                    "category": place.category,
+                    "address": place.address,
+                    "provider": place.provider,
+                    "provider_id": place.provider_id,
+                    "latitude": place.latitude,
+                    "longitude": place.longitude,
+                } for place in verified)
+
+    retrieved_at = datetime.now(UTC).isoformat()
+    ranked = sorted(
+        (item for item in city_results.values() if item["places"]),
+        key=lambda item: (-len(item["matched_interests"]), -item["place_count"], item["city"]),
+    )[:3]
+    for item in ranked:
+        unique_places = {place["provider_id"]: place for place in item["places"]}
+        item["places"] = list(unique_places.values())[:4]
+        item["reasons"] = [f"地图检索到 {item['place_count']} 个相关地点，覆盖 {len(item['matched_interests'])} 类偏好："
+                           + "、".join(item["matched_interests"])]
+        item["provider"] = item["places"][0]["provider"]
+        item["retrieved_at"] = retrieved_at
+
+    if not ranked and failures == len(_DESTINATION_CITIES) * len(queries):
+        raise HTTPException(503, detail="地图服务暂时不可用，你的偏好已保留，请稍后重试")
+    if ranked:
+        reply = "以下城市按地图检索到的偏好相关地点整理。它们是待比较的候选，不代表交通、费用或季节适宜度已核实；选择后仍需确认日期和行程草案。"
+        if failures:
+            reply += f"另有 {failures} 项地图搜索暂时失败，未用于候选排序。"
+    elif failures:
+        reply = f"有 {failures} 项地图搜索暂时失败，且当前没有可展示的核验结果。你的偏好已保留，可以稍后重试或直接填写目的地。"
+    else:
+        reply = "地图服务没有找到可核验的匹配地点。你的偏好已保留，可以修改偏好后重试，或直接填写目的地。"
+    db.add(AdvisorMessageModel(
+        session_id=row.id,
+        owner_id=user.id,
+        role="assistant",
+        content=reply,
+        payload={
+            "event": "DESTINATION_RECOMMENDATIONS",
+            "recommendations": ranked,
+            "source": "AMap Web Service",
+            "retrieved_at": retrieved_at,
+            "search_count": len(_DESTINATION_CITIES) * len(queries),
+            "failed_search_count": failures,
+        },
+    ))
+    db.add(AdvisorRunEventModel(
+        owner_id=user.id,
+        session_id=row.id,
+        phase="tool",
+        operation="recommend_destinations",
+        status="SUCCEEDED" if ranked else "NO_RESULTS",
+        duration_ms=max(0, int((perf_counter() - started_at) * 1000)),
+        error_code=None,
+        metadata_json={"candidate_count": len(ranked), "search_count": len(_DESTINATION_CITIES) * len(queries),
+                       "failed_search_count": failures},
+    ))
+    row.updated_at = datetime.now(UTC)
+    await db.commit()
+    await db.refresh(row)
+    return await _read_session(db, row)
+
+
 @router.post("/sessions/{session_id}/messages", response_model=AdvisorSessionRead)
 async def send_message(
     session_id: UUID,
@@ -236,37 +692,77 @@ async def send_message(
     db: AsyncSession = Depends(get_session),
     user: UserModel = Depends(get_current_user),
     maps=Depends(get_maps_provider),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=80),
 ):
+    started_at = perf_counter()
     row = await _owned_session(db, session_id, user.id, lock=True)
+    content = payload.content.strip()
+    if idempotency_key:
+        if not re.fullmatch(r"[A-Za-z0-9._:-]{8,80}", idempotency_key):
+            raise HTTPException(422, detail="Idempotency-Key 格式无效")
+        previous = await db.scalar(select(AdvisorMessageModel).where(
+            AdvisorMessageModel.session_id == row.id,
+            AdvisorMessageModel.owner_id == user.id,
+            AdvisorMessageModel.role == "user",
+            AdvisorMessageModel.idempotency_key == idempotency_key,
+        ))
+        if previous is not None:
+            if previous.content != content:
+                raise HTTPException(409, detail="Idempotency-Key 已用于另一条消息")
+            return await _read_session(db, row)
     if row.status != "ACTIVE":
         raise HTTPException(409, detail="已确认的会话不能继续修改")
-    content = payload.content.strip()
-    db.add(AdvisorMessageModel(session_id=row.id, owner_id=user.id, role="user", content=content))
-    if content and ("偏好" in content or "喜欢" in content or "不要" in content or "希望" in content):
-        row.preference_text = (row.preference_text + "\n" + content).strip()[-4000:]
+    db.add(AdvisorMessageModel(session_id=row.id, owner_id=user.id, role="user", content=content,
+                               idempotency_key=idempotency_key))
     try:
-        context, adjustments = _apply_existing_adjustments(row, content) if row.trip_id else (dict(row.context or {}), [])
-        extraction = await extract_places(
-            content, api_key=settings.llm_api_key, model=settings.llm_model, base_url=settings.llm_base_url,
-        )
+        extraction, model_fallback = await _extract_advisor_intent(content)
+        allowed_search_queries = _allowed_interest_queries(content, extraction.search_queries)
+        if (
+            allowed_search_queries or extraction.pace_adjustment != "none"
+            or any(term in content for term in ("偏好", "喜欢", "不喜欢", "不要", "希望", "不想"))
+        ):
+            row.preference_text = (row.preference_text + "\n" + content).strip()[-4000:]
+        context, adjustments = _apply_existing_adjustments(row, content, extraction)
         found = []
-        searched_mentions = 0
-        for mention in extraction.places:
-            if row.trip_id and any(candidate["name"] == mention.name for candidate in row.candidates):
+        preselected_candidate_ids = []
+        searched_requests = 0
+        search_failures = []
+        search_runtime = _search_tool_runtime(maps)
+        requests = [
+            (mention.name, mention.confidence, mention.suggestion, mention.action == "add")
+            for mention in extraction.places if mention.action != "remove"
+        ]
+        requests.extend(
+            (query, 0.55, f"按你提到的“{query}”偏好搜索", False)
+            for query in allowed_search_queries
+            if query.casefold() not in {mention.name.casefold() for mention in extraction.places}
+        )
+        for keyword, confidence, suggestion, select_by_default in (requests if row.destination else []):
+            if row.trip_id and any(candidate["name"].casefold() == keyword.casefold() for candidate in row.candidates):
                 continue
-            searched_mentions += 1
-            for place in (await maps.search_place(mention.name, row.destination or None))[:5]:
+            searched_requests += 1
+            try:
+                search_result = await search_runtime.call("search_places", {
+                    "keyword": keyword, "city": row.destination or None,
+                })
+            except ToolFailure as exc:
+                search_failures.append(exc.code)
+                continue
+            for place in search_result["places"][:5]:
                 candidate = {
-                    "id": str(uuid4()), "provider": place.provider, "provider_id": place.provider_id,
-                    "name": place.name, "address": place.address, "category": place.category,
-                    "latitude": place.latitude, "longitude": place.longitude,
-                    "duration_min": place.suggested_duration_min, "opening_hours": place.opening_hours,
-                    "confidence": mention.confidence, "suggestion": mention.suggestion,
+                    "id": str(uuid4()), "provider": place["provider"], "provider_id": place["provider_id"],
+                    "name": place["name"], "address": place["address"], "category": place["category"],
+                    "latitude": place["latitude"], "longitude": place["longitude"],
+                    "duration_min": place["duration_min"], "opening_hours": place["opening_hours"],
+                    "confidence": confidence, "suggestion": suggestion,
+                    "verification_status": search_result["status"], "verified_at": search_result["retrieved_at"],
                 }
                 if not any(c["provider"] == candidate["provider"] and c["provider_id"] == candidate["provider_id"] for c in row.candidates):
                     row.candidates = [*row.candidates, candidate]
                     found.append(candidate)
-                    if row.trip_id:
+                    if select_by_default:
+                        preselected_candidate_ids.append(candidate["id"])
+                    if row.trip_id and select_by_default:
                         context["selected_candidate_ids"] = sorted({
                             *context.get("selected_candidate_ids", []), candidate["id"],
                         })
@@ -274,8 +770,20 @@ async def send_message(
         if found:
             names = "、".join(c["name"] for c in found[:8])
             reply = f"地图服务核对到这些候选：{names}。请在候选清单中选择想去的地点，再生成行程草案。"
-        elif searched_mentions:
-            reply = "提取到了地点名称，但地图服务没有匹配结果。请补充城市或换一种地点写法。"
+            if search_failures:
+                reply += " 部分地图查询暂时失败，以上候选仅来自成功的查询。"
+        elif not row.destination:
+            reply = "已记录你的兴趣。请先在旅行条件中填写目的地城市或区域，我再按这些偏好搜索地图候选。"
+        elif not row.destination:
+            reply = (
+                "我已记下你刚才的旅行偏好。目前还没有目的地，"
+                "我不能根据地图核验结果可靠地推荐城市。你可以先告诉我考虑中的城市，"
+                "或补充出发地和旅行天数，我再帮你筛选地点并比较行程。"
+            )
+        elif searched_requests and search_failures:
+            reply = "地图服务暂时不可用，这轮未能核验地点。你的偏好已保留，可以稍后重试。"
+        elif searched_requests:
+            reply = "地图服务没有找到匹配候选。可以补充更具体的地点名称或偏好关键词。"
         elif adjustments:
             reply = "已记录你对当前计划的调整。确认变更前会生成新的草案版本，不会修改原计划。"
         else:
@@ -285,6 +793,51 @@ async def send_message(
             reply += " " + "；".join(adjustments) + "。"
         if row.trip_id and row.context and row.context.get("confirmed_memories") and not adjustments:
             reply += f" 会话已载入 {len(row.context['confirmed_memories'])} 条已确认旅行记忆供你查看。"
+        composed, reply_tokens, reply_output_tokens = (None, 0, 0) if model_fallback or not row.destination else await compose_advisor_reply(
+            {
+                "current_message": content,
+                "destination": row.destination or None,
+                "dates": {
+                    "start": row.start_date.isoformat() if row.start_date else None,
+                    "end": row.end_date.isoformat() if row.end_date else None,
+                },
+                "budget": str(row.budget) if row.budget is not None else None,
+                "pace_level": row.pace_level,
+                "preferences": row.preference_text[-1200:],
+                "confirmed_personal_memories": (row.context or {}).get("personal_memories", []),
+                "planning_inputs": (row.context or {}).get("planning_inputs", {}),
+                "missing_required": context.get("planning_state", {}).get("missing_required", []),
+                "adjustments_applied": adjustments,
+                "verified_candidates": [{
+                    "name": item["name"], "address": item["address"], "category": item["category"],
+                    "provider": item["provider"], "verification_status": item["verification_status"],
+                } for item in found[:8]],
+                "search_requests_without_results": searched_requests if not found else 0,
+                "search_failures": search_failures,
+            },
+            api_key=settings.llm_api_key,
+            model=settings.llm_model,
+            base_url=settings.llm_base_url,
+            token_budget=settings.llm_max_tokens_per_turn - extraction.output_tokens,
+        )
+        response_source = "MODEL" if composed else "TEMPLATE"
+        if composed:
+            reply = composed.reply
+            if composed.follow_up_question:
+                reply += "\n" + composed.follow_up_question
+        elif model_fallback:
+            reply += " 模型暂时不可用，本轮使用本地规则识别明确提及的地点；请核对地图候选。"
+        llm_output_tokens = extraction.output_tokens + reply_output_tokens
+        llm_input_tokens = (
+            max(0, extraction.token_usage - extraction.output_tokens)
+            + max(0, reply_tokens - reply_output_tokens)
+        )
+        llm_total_tokens = llm_input_tokens + llm_output_tokens
+    except ToolFailure as exc:
+        await db.rollback()
+        if exc.code == "TOOL_TIMEOUT":
+            raise HTTPException(504, detail="地图搜索超时，请稍后重试") from exc
+        raise HTTPException(503, detail="地图服务暂时不可用，请稍后重试") from exc
     except MapsProviderError as exc:
         await db.rollback()
         raise HTTPException(503, detail="地图服务暂时不可用，请稍后重试") from exc
@@ -292,9 +845,37 @@ async def send_message(
         await db.rollback()
         raise HTTPException(502, detail="地点信息解析暂时失败，请重试或直接写出地点名称") from exc
     db.add(AdvisorMessageModel(session_id=row.id, owner_id=user.id, role="assistant", content=reply,
-                               payload={"candidate_ids": [c["id"] for c in found]}))
-    if row.trip_id:
-        row.context = context
+                               payload={
+                                   "candidate_ids": preselected_candidate_ids,
+                                   "response_source": response_source,
+                                   "extraction_source": "TEMPLATE" if model_fallback or not settings.llm_api_key or not settings.llm_model else "MODEL",
+                                   "model_fallback_reason": "EXTRACTION_FAILED" if model_fallback else None,
+                                   "llm_model": settings.llm_model if settings.llm_api_key else None,
+                                   "llm_tokens": llm_total_tokens,
+                                   "llm_input_tokens": llm_input_tokens,
+                                   "llm_output_tokens": llm_output_tokens,
+                                   "tool_calls": [{key: call[key] for key in ("tool", "status", "latency_ms", "error_code")}
+                                                  for call in search_runtime.calls],
+                               }))
+    for call in search_runtime.calls:
+        db.add(AdvisorRunEventModel(
+            owner_id=user.id, session_id=row.id, phase="tool", operation=call["tool"],
+            status=call["status"], duration_ms=call["latency_ms"], error_code=call["error_code"],
+            metadata_json={"result_count": len((call.get("output_data") or {}).get("places", []))},
+        ))
+    db.add(AdvisorRunEventModel(
+        owner_id=user.id, session_id=row.id, phase="interpretation", operation="send_message",
+        status=response_source, duration_ms=max(0, int((perf_counter() - started_at) * 1000)),
+        token_usage=llm_total_tokens,
+        metadata_json={"candidate_count": len(found), "search_count": searched_requests,
+                       "failed_search_count": len(search_failures),
+                       "model_fallback": model_fallback,
+                       "llm_model": settings.llm_model if settings.llm_api_key else None,
+                       "llm_input_tokens": llm_input_tokens,
+                       "llm_output_tokens": llm_output_tokens},
+    ))
+    context["planning_state"] = _planning_state(row)
+    row.context = context
     row.updated_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(row)
@@ -308,16 +889,34 @@ async def create_draft(
     db: AsyncSession = Depends(get_session),
     user: UserModel = Depends(get_current_user),
     maps=Depends(get_maps_provider),
+    weather=Depends(get_weather_provider),
 ):
+    started_at = perf_counter()
     row = await _owned_session(db, session_id, user.id, lock=True)
     if row.status != "ACTIVE":
         raise HTTPException(409, detail="已确认的会话不能重新生成草案")
     if not row.start_date or not row.end_date:
         raise HTTPException(400, detail="请先设置旅行开始和结束日期")
+    if not row.destination:
+        raise HTTPException(400, detail="请先设置旅行目的地")
+    profile_memories = await _active_personal_memories(db, user.id)
+    current_context = dict(row.context or {})
+    if current_context.get("personal_memories", []) != profile_memories:
+        current_context["personal_memories"] = profile_memories
+        current_context["revision"] = int(current_context.get("revision", 0)) + 1
+        row.context = current_context
+    planning_inputs = (row.context or {}).get("planning_inputs", {})
+    explicit_limits = [{"constraint_type": "HARD_LIMIT", "text": text}
+                       for text in planning_inputs.get("hard_constraints", [])]
+    planning_memories = [*profile_memories, *explicit_limits]
     by_id = {candidate["id"]: candidate for candidate in row.candidates}
     selected = [by_id.get(str(candidate_id)) for candidate_id in payload.candidate_ids]
     if any(candidate is None for candidate in selected) or len(set(map(str, payload.candidate_ids))) != len(payload.candidate_ids):
         raise HTTPException(400, detail="候选地点无效或重复")
+    hard_conflicts = [message for candidate in selected
+                      for message in _hard_limit_conflicts(candidate, planning_memories)]
+    if hard_conflicts:
+        raise HTTPException(409, detail="；".join(hard_conflicts))
     planner_candidates = [Candidate(
         poi_id=UUID(item["id"]), name=item["name"], latitude=float(item["latitude"]),
         longitude=float(item["longitude"]), duration_min=max(15, int(item["duration_min"])),
@@ -325,15 +924,118 @@ async def create_draft(
         opening_hours=item.get("opening_hours"), note=item.get("suggestion"),
     ) for item in selected]
     matrix = None
-    if len(planner_candidates) > 1:
+    start_travel_min = None
+    origin_leg = {"status": "NOT_PROVIDED", "from": None, "duration_min": None,
+                  "source": None, "retrieved_at": None}
+    transport_provenance = {
+        "status": "NOT_REQUIRED", "source": None, "retrieved_at": None,
+    }
+    distance_runtime = None
+    origin_query = str(planning_inputs.get("origin", "")).strip()
+    origin_warnings = []
+    origin_point = None
+    origin_match = None
+    if origin_query:
         try:
-            matrix = await maps.get_distance_matrix([(c.latitude, c.longitude) for c in planner_candidates])
+            origin_matches = await maps.search_place(origin_query)
+            exact_matches = [place for place in origin_matches
+                             if _normalized_place_name(place.name) == _normalized_place_name(origin_query)]
+            unique_matches = {(place.latitude, place.longitude): place for place in exact_matches}
+            if len(unique_matches) == 1:
+                origin_match = next(iter(unique_matches.values()))
+                origin_point = (origin_match.latitude, origin_match.longitude)
+        except ToolFailure:
+            origin_leg = {**origin_leg, "status": "UNAVAILABLE"}
+        except MapsProviderError:
+            origin_leg = {**origin_leg, "status": "UNAVAILABLE"}
+    if origin_point and len(planner_candidates) <= 29:
+        try:
+            distance_runtime = _distance_tool_runtime(maps)
+            result = await distance_runtime.call("get_distance_matrix", {
+                "points": [origin_point, *((c.latitude, c.longitude) for c in planner_candidates)],
+            })
+            full_matrix = result["durations_min"]
+            matrix = [row[1:] for row in full_matrix[1:]]
+            start_travel_min = full_matrix[0][1:]
+            origin_leg = {
+                "status": "VERIFIED" if result["status"] == "VERIFIED" else result["status"],
+                "from": origin_match.name, "duration_min": min(start_travel_min, default=0),
+                "source": result["source"], "retrieved_at": result["retrieved_at"],
+            }
+            transport_provenance = {key: result[key] for key in ("status", "source", "retrieved_at")}
+        except ToolFailure as exc:
+            origin_leg = {**origin_leg, "status": "UNAVAILABLE"}
+            origin_warnings.append("出发地交通查询超时；本次未使用该估算。"
+                                   if exc.code == "TOOL_TIMEOUT"
+                                   else "出发地交通查询不可用；本次未使用该估算。")
+        except MapsProviderError:
+            origin_leg = {**origin_leg, "status": "UNAVAILABLE"}
+            origin_warnings.append("出发地交通查询不可用；本次未使用该估算。")
+    if origin_query and not origin_point:
+        unresolved = origin_leg["status"] != "UNAVAILABLE"
+        origin_leg = {
+            **origin_leg, "status": origin_leg["status"] if origin_leg["status"] == "UNAVAILABLE" else "UNRESOLVED",
+            "from": origin_query,
+        }
+        origin_warnings.append(
+            "未能唯一核验出发地；草案未计入出发地到首个地点的交通时间。"
+            if unresolved else "出发地地图服务不可用；草案未计入这段交通时间。"
+        )
+    elif origin_point and len(planner_candidates) > 29:
+        origin_leg = {**origin_leg, "status": "UNAVAILABLE", "from": origin_match.name}
+        origin_warnings.append("地点数量达到地图矩阵上限；未计入出发地到首个地点的交通时间。")
+    if matrix is None and len(planner_candidates) > 1:
+        try:
+            distance_runtime = _distance_tool_runtime(maps)
+            result = await distance_runtime.call("get_distance_matrix", {
+                "points": [(c.latitude, c.longitude) for c in planner_candidates],
+            })
+            matrix = result["durations_min"]
+            transport_provenance = {key: result[key] for key in ("status", "source", "retrieved_at")}
+        except ToolFailure as exc:
+            if exc.code == "TOOL_TIMEOUT":
+                raise HTTPException(504, detail="交通时间查询超时，请稍后重试") from exc
+            raise HTTPException(503, detail="交通时间服务暂时不可用") from exc
         except MapsProviderError as exc:
             raise HTTPException(503, detail="交通时间服务暂时不可用") from exc
     max_per_day = {1: 3, 2: 4, 3: 5, 4: 6, 5: 6}[row.pace_level]
     visits, warnings = build_itinerary(row.start_date, row.end_date, planner_candidates, matrix,
                                        buffer_min=90 if row.pace_level <= 2 else 60,
-                                       max_pois_per_day=max_per_day)
+                                       max_pois_per_day=max_per_day,
+                                       start_travel_min=start_travel_min)
+    warnings.extend(origin_warnings)
+    if start_travel_min is not None and visits:
+        first_day_visits = [visit for visit in visits if visit.day == row.start_date]
+        if first_day_visits:
+            first_visit = min(first_day_visits, key=lambda visit: visit.start_time)
+            first_index = next(index for index, candidate in enumerate(planner_candidates)
+                               if candidate.poi_id == first_visit.candidate.poi_id)
+            origin_leg["duration_min"] = start_travel_min[first_index]
+    for memory in planning_memories:
+        if memory.get("constraint_type") == "HARD_LIMIT" and any(
+            term in str(memory.get("text", "")).casefold() for term in ("辣", "过敏", "无障碍", "轮椅", "清真", "素食")
+        ):
+            warnings.append(f"硬性限制需人工核对：{memory.get('text')}（地图数据无法核验菜单、过敏原或无障碍设施）")
+        elif memory.get("constraint_type") == "HARD_LIMIT" and not any(
+            term in str(memory.get("text", "")).casefold()
+            for term in ("博物馆", "museum", "展馆", "酒吧", "夜店", "bar", "nightclub",
+                         "购物", "商场", "shopping", "mall", "动物园", "zoo", "寺", "教堂", "清真寺")
+        ):
+            warnings.append(f"请人工核对硬性限制：{memory.get('text')}（当前地图和排程数据无法验证该条件）")
+    try:
+        forecast = await weather.forecast(row.destination, row.start_date, row.end_date)
+        weather_summary = {
+            **forecast,
+            "fetched_at": forecast["fetched_at"].isoformat(),
+        }
+    except WeatherProviderError:
+        weather_summary = {
+            "status": "UNAVAILABLE", "city": row.destination, "timezone": None,
+            "source": "Open-Meteo", "attribution": "Weather data by Open-Meteo (CC BY 4.0)",
+            "fetched_at": datetime.now(UTC).isoformat(), "message": "天气服务暂时不可用。",
+            "days": [],
+        }
+        warnings.append("天气服务暂时不可用；草案未使用天气信息。")
     context = dict(row.context or {})
     selected_ids = [item["id"] for item in selected]
     if row.trip_id and set(context.get("selected_candidate_ids", [])) != set(selected_ids):
@@ -377,7 +1079,23 @@ async def create_draft(
         "context_revision": int(context.get("revision", 0)),
         "generated_at": datetime.now(UTC).isoformat(),
         "selected_candidate_ids": selected_ids,
+        "applied_personal_memories": profile_memories,
+        "transport": transport_provenance,
+        "origin_leg": origin_leg,
         "warnings": warnings,
+        "weather": weather_summary,
+        "trip_changes": {
+            "before": context.get("base_trip", {
+                "destination": row.destination, "start_date": row.start_date.isoformat(),
+                "end_date": row.end_date.isoformat(), "budget": str(row.budget) if row.budget is not None else None,
+                "pace_level": int(context.get("base_pace_level", row.pace_level)),
+            }),
+            "after": {
+                "destination": row.destination, "start_date": row.start_date.isoformat(),
+                "end_date": row.end_date.isoformat(), "budget": str(row.budget) if row.budget is not None else None,
+                "pace_level": row.pace_level,
+            },
+        } if row.trip_id else None,
         "pace_change": {
             "before": int(context.get("base_pace_level", row.pace_level)),
             "after": row.pace_level,
@@ -395,7 +1113,25 @@ async def create_draft(
     }
     db.add(AdvisorMessageModel(session_id=row.id, owner_id=user.id, role="assistant",
                                content=f"已生成第 {row.draft_version} 版待确认草案，安排 {len(visits)} 个地点。确认前不会写入旅行数据。",
-                               payload={"draft_version": row.draft_version, "warnings": warnings}))
+                               payload={
+                                   "draft_version": row.draft_version, "warnings": warnings,
+                                   "tool_calls": [{key: call[key] for key in ("tool", "status", "latency_ms", "error_code")}
+                                                  for call in (distance_runtime.calls if distance_runtime else [])],
+                               }))
+    db.add(AdvisorRunEventModel(
+        owner_id=user.id, session_id=row.id, phase="planning", operation="create_draft",
+        status="SUCCEEDED", duration_ms=max(0, int((perf_counter() - started_at) * 1000)),
+        metadata_json={"selected_count": len(selected), "stop_count": len(visits),
+                       "warning_count": len(warnings), "weather_status": weather_summary["status"],
+                       "transport_status": transport_provenance["status"]},
+    ))
+    if distance_runtime:
+        for call in distance_runtime.calls:
+            db.add(AdvisorRunEventModel(
+                owner_id=user.id, session_id=row.id, phase="tool", operation=call["tool"],
+                status=call["status"], duration_ms=call["latency_ms"], error_code=call["error_code"],
+                metadata_json={"point_count": len((call.get("input_data") or {}).get("points", []))},
+            ))
     row.updated_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(row)
@@ -436,6 +1172,15 @@ async def confirm_draft(
         expected_snapshot = (snapshot_plan["id"], snapshot_plan["version"]) if snapshot_plan else None
         if latest_snapshot != expected_snapshot:
             raise HTTPException(409, detail="原旅行计划已在其他位置更新，请重新打开顾问会话")
+        base_trip = context.get("base_trip")
+        if base_trip and (
+            base_trip["destination"] != trip.destination
+            or base_trip["start_date"] != trip.start_date.isoformat()
+            or base_trip["end_date"] != trip.end_date.isoformat()
+            or base_trip["budget"] != (str(trip.budget) if trip.budget is not None else None)
+            or base_trip["pace_level"] != trip.pace_level
+        ):
+            raise HTTPException(409, detail="旅行条件已在其他位置更新，请重新打开顾问会话")
     else:
         if not row.start_date or not row.end_date:
             raise HTTPException(400, detail="行程日期缺失")
@@ -495,10 +1240,19 @@ async def confirm_draft(
                 change_cost=change["change_cost"], before_data=change["before"],
                 after_data=change["after"], reason=change["reason"],
             ))
+        trip.destination = row.destination
+        trip.start_date = row.start_date
+        trip.end_date = row.end_date
+        trip.budget = row.budget
+        trip.pace_level = row.pace_level
     row.status = "CONFIRMED"
     row.confirmed_trip_id = trip.id
     row.confirmed_plan_id = plan.id
     row.updated_at = datetime.now(UTC)
+    db.add(AdvisorRunEventModel(
+        owner_id=user.id, session_id=row.id, phase="user", operation="confirm_draft",
+        status="SUCCEEDED", metadata_json={"plan_version": version, "created_trip": row.trip_id is None},
+    ))
     db.add(AdvisorMessageModel(session_id=row.id, owner_id=user.id, role="assistant",
                                content="草案已确认并保存到旅行。你可以在行程详情中继续调整。",
                                payload={"trip_id": str(trip.id), "plan_id": str(plan.id)}))

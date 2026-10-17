@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     email_request_ip_limit_per_hour: int = Field(default=30, ge=1, le=10000)
     email_send_limit_per_hour: int = Field(default=100, ge=1, le=100000)
     email_action_cooldown_seconds: int = Field(default=60, ge=1, le=3600)
+    advisor_destination_limit_per_user: int = Field(default=3, ge=1, le=100)
+    advisor_destination_window_seconds: int = Field(default=600, ge=60, le=86400)
     web_base_url: str = "http://localhost:3001"
     web_allowed_origins: str = "http://localhost:3000,http://localhost:3001"
     session_cookie_domain: str = ""
@@ -32,6 +34,8 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = ""
     llm_base_url: str = "https://api.openai.com/v1"
+    # Caps generated tokens across extraction and response; prompt tokens are tracked separately.
+    llm_max_tokens_per_turn: int = Field(default=1200, ge=128, le=8000)
     media_storage_dir: str = ".data/media"
     media_storage_backend: str = "local"
     media_max_upload_bytes: int = 10_485_760

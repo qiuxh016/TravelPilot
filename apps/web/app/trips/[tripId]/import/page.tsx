@@ -65,6 +65,7 @@ export default function ImportPage() {
       {content.entities.map((entity) => <article className="layer" key={entity.id}>
         <span className="index">置信度 {Math.round(entity.confidence * 100)}%</span><h2>{entity.name}</h2>
         {entity.suggestion ? <p>{entity.suggestion}</p> : null}
+        {entity.evidence ? <blockquote>原文依据：{entity.evidence}</blockquote> : <p>模型未提供可引用的原文依据，请对照上方攻略确认。</p>}
         {entity.candidates.length === 0 ? <p>没有找到地图候选，请手动添加。</p> : null}
         {entity.candidates.map((candidate) => <label key={candidate.id} className="candidate-row">
           <input type="checkbox" checked={selected.includes(candidate.id) || candidate.confirmed} disabled={candidate.confirmed || busy} onChange={() => toggle(candidate.id)} />

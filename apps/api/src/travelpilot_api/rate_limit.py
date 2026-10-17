@@ -60,7 +60,7 @@ async def _increment(redis: Redis, key: str, ttl_seconds: int) -> int:
     except (RedisError, TimeoutError, OSError) as exc:
         raise HTTPException(
             status_code=503,
-            detail="认证服务暂不可用，请稍后重试。",
+            detail="请求服务暂不可用，请稍后重试。",
         ) from exc
 
 
@@ -80,6 +80,32 @@ async def enforce_ip_rate_limit(
         raise HTTPException(
             status_code=429,
             detail="请求过于频繁，请稍后重试。",
+            headers={"Retry-After": str(_retry_after(window_seconds, now))},
+        )
+
+
+def _identity_hash(identity: str) -> str:
+    key = settings.auth_rate_limit_hash_secret.encode("utf-8") or _LOCAL_HASH_KEY
+    return hmac.new(key, identity.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+async def enforce_identity_rate_limit(
+    redis: Redis,
+    identity: str,
+    *,
+    bucket: str,
+    limit: int,
+    window_seconds: int,
+) -> None:
+    """Apply a fixed-window limit to a stable identity without storing it in Redis keys."""
+    now = int(time.time())
+    window = now // window_seconds
+    key = f"travelpilot:rate:{bucket}:{window}:{_identity_hash(identity)}"
+    count = await _increment(redis, key, window_seconds * 2)
+    if count > limit:
+        raise HTTPException(
+            status_code=429,
+            detail="此功能使用较多地图查询，请稍后再试。",
             headers={"Retry-After": str(_retry_after(window_seconds, now))},
         )
 

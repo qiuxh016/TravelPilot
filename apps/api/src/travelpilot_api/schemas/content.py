@@ -36,6 +36,7 @@ class EntityRead(BaseModel):
     name: str
     category: str
     suggestion: str | None
+    evidence: str | None = None
     confidence: float
     candidates: list[CandidateRead]
 
@@ -47,6 +48,9 @@ class ContentRead(BaseModel):
     text: str
     status: str
     error: str | None
+    skill_name: str | None = None
+    skill_version: str | None = None
+    token_usage: int = 0
     created_at: datetime
     entities: list[EntityRead]
 

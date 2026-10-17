@@ -26,14 +26,14 @@ export default function TripsPage() {
   return <main className="shell dashboard-page">
     <header className="dashboard-welcome">
       <div><h1>下一段旅行，<br className="desktop-break" />从一张地图开始。</h1><p>找到想去的地方，慢慢排成自己的节奏。已经出发过的旅程，也值得好好记下来。</p></div>
-      <div className="dashboard-welcome-actions"><Link className="primary" href="/advisor">开始规划 <span aria-hidden="true">↗</span></Link><Link className="secondary" href="/moments">记录旅途 <span aria-hidden="true">↗</span></Link></div>
+      <div className="dashboard-welcome-actions"><Link className="primary" href="/advisor">开始规划 <span aria-hidden="true">↗</span></Link></div>
     </header>
 
     {loading && <div className="dashboard-loading" role="status">正在整理你的旅程…</div>}
     {!loading && error && <section className="dashboard-error" role="alert"><div><h2>旅行暂时没有加载出来</h2><p>{error}{errorCode ? ` · ${errorCode}` : ""}</p></div><button className="secondary" type="button" onClick={() => void loadTrips()}>重试</button></section>}
     {!loading && !error && trips.length > 0 && <DashboardJourney trips={trips} />}
     {!loading && !error && trips.length === 0 && <section className="dashboard-first-trip">
-      <div><span className="dashboard-first-trip-index">01</span><h2>先从一个想去的地方开始。</h2><p>告诉旅行顾问你喜欢什么，或自己创建一趟旅行。地点、计划和沿途记忆都会留在这里。</p><div className="dashboard-first-trip-actions"><Link className="primary" href="/advisor">聊聊目的地</Link><Link className="text-link" href="/trips/new">我已经有计划 →</Link></div></div>
+      <div><span className="dashboard-first-trip-index">01</span><h2>先从一个想去的地方开始。</h2><p>告诉旅行顾问你喜欢什么，或自己创建一趟旅行。地点、计划和沿途记忆都会留在这里。</p><div className="dashboard-first-trip-actions"><Link className="text-link" href="/trips/new">我已经有计划 →</Link></div></div>
       <div className="dashboard-first-trip-mark" aria-hidden="true"><span>⌖</span><i /><i /><i /></div>
     </section>}
 

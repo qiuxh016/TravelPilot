@@ -9,10 +9,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from redis.asyncio import Redis
-from sqlalchemy import delete, exists, or_, select, update
+from sqlalchemy import delete, exists, inspect, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from travelpilot_infra.db.models.advisor import AdvisorMessageModel, AdvisorSessionModel
+from travelpilot_infra.db.models.advisor import (
+    AdvisorMessageModel,
+    AdvisorRunEventModel,
+    AdvisorSessionModel,
+)
 from travelpilot_infra.db.models.plan import TripPlanModel, TripPlanNodeModel
 from travelpilot_infra.db.models.plan_change import PlanChangeModel
 from travelpilot_infra.db.models.poi import PoiModel
@@ -43,6 +47,8 @@ from travelpilot_infra.db.models.workflow import (
     ToolCallModel,
     TripEventModel,
     UserFeedbackModel,
+    UserMemorySettingsModel,
+    UserPreferenceMemoryModel,
     WorkflowRunModel,
 )
 from travelpilot_infra.db.session import get_session
@@ -430,6 +436,10 @@ async def export_account(user: UserModel = Depends(get_current_user),
         "memory_suggestions": (await session.scalars(select(MemorySuggestionModel).where(
             MemorySuggestionModel.owner_user_id == user.id
         ))).all(),
+        "user_preference_memories": (await session.scalars(select(UserPreferenceMemoryModel).where(
+            UserPreferenceMemoryModel.owner_id == user.id
+        ))).all(),
+        "user_memory_settings": ([row] if (row := await session.get(UserMemorySettingsModel, user.id)) else []),
     }
     advisor_sessions = (await session.scalars(select(AdvisorSessionModel).where(
         AdvisorSessionModel.owner_id == user.id
@@ -439,14 +449,21 @@ async def export_account(user: UserModel = Depends(get_current_user),
         AdvisorMessageModel.owner_id == user.id,
         AdvisorMessageModel.session_id.in_(advisor_session_ids) if advisor_session_ids else False,
     ).order_by(AdvisorMessageModel.created_at))).all()
+    grouped["advisor_run_events"] = (await session.scalars(select(AdvisorRunEventModel).where(
+        AdvisorRunEventModel.owner_id == user.id,
+    ).order_by(AdvisorRunEventModel.created_at))).all()
+    grouped["advisor_run_events"] = (await session.scalars(select(AdvisorRunEventModel).where(
+        AdvisorRunEventModel.owner_id == user.id,
+    ).order_by(AdvisorRunEventModel.created_at))).all()
     poi_ids = {item.poi_id for item in wishlist}
     poi_ids.update(item.poi_id for item in plan_nodes)
     pois = (await session.scalars(select(PoiModel).where(PoiModel.id.in_(poi_ids)))).all() if poi_ids else []
     grouped["pois"] = pois
 
     def encode(model):
-        return jsonable_encoder({column.name: getattr(model, column.name)
-                                 for column in model.__table__.columns})
+        mapper = inspect(type(model))
+        return jsonable_encoder({column.name: getattr(model, prop.key)
+                                 for prop in mapper.column_attrs for column in prop.columns})
 
     return {
         "format": "travelpilot-account-export-v1",

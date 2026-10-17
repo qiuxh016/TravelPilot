@@ -89,7 +89,15 @@ def _route_template(request: Request) -> str:
 @lru_cache(maxsize=1)
 def _expected_migration_heads() -> set[str]:
     repository_root = Path(__file__).resolve().parents[4]
-    config = AlembicConfig(str(repository_root / "alembic.ini"))
+    config_path = repository_root / "alembic.ini"
+    if config_path.is_file():
+        config = AlembicConfig(str(config_path))
+    else:
+        import travelpilot_infra
+
+        migrations = Path(travelpilot_infra.__file__).resolve().parent / "db" / "migrations"
+        config = AlembicConfig()
+        config.set_main_option("script_location", str(migrations))
     return set(ScriptDirectory.from_config(config).get_heads())
 
 

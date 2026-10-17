@@ -8,6 +8,7 @@ from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from travelpilot_core.engines.impact_analysis.replan import Node, plan_diff, replan
+from travelpilot_core.skills import select_skill
 from travelpilot_infra.db.models.plan import TripPlanModel, TripPlanNodeModel
 from travelpilot_infra.db.models.plan_change import PlanChangeModel
 from travelpilot_infra.db.models.poi import PoiModel
@@ -19,6 +20,7 @@ from travelpilot_infra.db.session import get_session
 from travelpilot_worker.jobs import QUEUE, RESULT_PREFIX, ReplanJob
 
 from travelpilot_api.api.v1.plans import to_read
+from travelpilot_api.dependencies import get_owned_trip
 from travelpilot_api.schemas.events import DiffItem, EventCreate, EventRead, ReplanRequest
 from travelpilot_api.settings import settings
 
@@ -52,10 +54,8 @@ def _validate(nodes: list[Node], pois: dict[UUID, PoiModel]) -> list[str]:
 
 @router.post("/events", response_model=EventRead, status_code=201)
 async def create_event(trip_id: UUID, payload: EventCreate,
-                       session: AsyncSession = Depends(get_session)):
-    trip = await session.get(TripModel, trip_id)
-    if trip is None:
-        raise HTTPException(404, detail="Trip not found")
+                       session: AsyncSession = Depends(get_session),
+                       trip: TripModel = Depends(get_owned_trip)):
     if not trip.start_date <= payload.effective_at.date() <= trip.end_date:
         raise HTTPException(422, detail="Event is outside trip dates")
     event = TripEventModel(trip_id=trip_id, event_type=payload.event_type,
@@ -68,7 +68,8 @@ async def create_event(trip_id: UUID, payload: EventCreate,
 
 @router.post("/replan-runs")
 async def create_replan(trip_id: UUID, payload: ReplanRequest,
-                        session: AsyncSession = Depends(get_session)):
+                        session: AsyncSession = Depends(get_session),
+                        _trip: TripModel = Depends(get_owned_trip)):
     trip = await session.get(TripModel, trip_id)
     event = await session.get(TripEventModel, payload.event_id)
     if trip is None or event is None or event.trip_id != trip_id:
@@ -86,6 +87,7 @@ async def create_replan(trip_id: UUID, payload: ReplanRequest,
     except (ValueError, TypeError) as exc:
         raise HTTPException(422, detail=str(exc)) from exc
     if event.event_type == "WEATHER_CHANGE":
+        weather_skill = select_skill("weather_replan")
         removed = [node for node in old_nodes if node not in new_nodes]
         wishlist = (await session.execute(select(WishlistItemModel, PoiModel)
                     .join(PoiModel, WishlistItemModel.poi_id == PoiModel.id)
@@ -160,7 +162,9 @@ async def create_replan(trip_id: UUID, payload: ReplanRequest,
         reason=change["reason_code"],
     ) for change in changes if change["operation"] != "KEEP"])
     workflow = WorkflowRunModel(trip_id=trip_id, kind="REPLAN", status="SUCCEEDED",
-                                input_data={"event_id": str(event.id), "source_plan_id": str(previous_plan.id)},
+                                input_data={"event_id": str(event.id), "source_plan_id": str(previous_plan.id),
+                                            "skill": ({"name": weather_skill.name, "version": weather_skill.version}
+                                                      if event.event_type == "WEATHER_CHANGE" else None)},
                                 output_data={"plan_id": str(plan.id), "change_cost": sum(change["change_cost"] for change in changes)})
     session.add(workflow)
     trip.status = plan.status
@@ -171,7 +175,8 @@ async def create_replan(trip_id: UUID, payload: ReplanRequest,
 
 @router.post("/replan-jobs", status_code=202)
 async def queue_replan(trip_id: UUID, payload: ReplanRequest,
-                       session: AsyncSession = Depends(get_session)):
+                       session: AsyncSession = Depends(get_session),
+                       _trip: TripModel = Depends(get_owned_trip)):
     event = await session.get(TripEventModel, payload.event_id)
     if event is None or event.trip_id != trip_id:
         raise HTTPException(404, detail="Event not found")
@@ -189,9 +194,8 @@ async def queue_replan(trip_id: UUID, payload: ReplanRequest,
 
 @router.get("/replan-jobs/{job_id}")
 async def get_replan_job(trip_id: UUID, job_id: UUID,
-                         session: AsyncSession = Depends(get_session)):
-    if await session.get(TripModel, trip_id) is None:
-        raise HTTPException(404, detail="Trip not found")
+                         session: AsyncSession = Depends(get_session),
+                         _trip: TripModel = Depends(get_owned_trip)):
     redis = Redis.from_url(settings.redis_url)
     try:
         value = await redis.get(RESULT_PREFIX + str(job_id))
@@ -209,7 +213,8 @@ async def get_replan_job(trip_id: UUID, job_id: UUID,
 
 @router.get("/plans/{plan_id}/diff", response_model=list[DiffItem])
 async def get_diff(trip_id: UUID, plan_id: UUID,
-                   session: AsyncSession = Depends(get_session)):
+                   session: AsyncSession = Depends(get_session),
+                   _trip: TripModel = Depends(get_owned_trip)):
     repository = PlanRepository(session)
     current = await repository.get_with_nodes(trip_id, plan_id)
     if current is None:

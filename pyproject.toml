@@ -1,7 +1,7 @@
 [project]
 name = "travelpilot"
 version = "0.1.0"
-description = "Context-aware multi-agent travel copilot"
+description = "Context-aware AI travel planning copilot"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115,<1.0",
@@ -33,13 +33,25 @@ dev = [
 [tool.setuptools]
 packages = [
   "travelpilot_api",
+  "travelpilot_api.api",
+  "travelpilot_api.api.v1",
+  "travelpilot_api.schemas",
   "travelpilot_worker",
   "travelpilot_core",
+  "travelpilot_core.agents",
+  "travelpilot_core.application",
   "travelpilot_core.domain",
+  "travelpilot_core.engines",
+  "travelpilot_core.engines.constraints",
+  "travelpilot_core.engines.geo",
+  "travelpilot_core.engines.impact_analysis",
+  "travelpilot_core.engines.optimizer",
+  "travelpilot_core.ports",
   "travelpilot_infra",
   "travelpilot_infra.db",
   "travelpilot_infra.db.models",
   "travelpilot_infra.db.repositories",
+  "travelpilot_infra.mcp",
   "travelpilot_infra.providers",
   "travelpilot_infra.providers.maps",
   "travelpilot_infra.providers.weather",
@@ -51,6 +63,15 @@ travelpilot_worker = "apps/worker/src/travelpilot_worker"
 travelpilot_core = "packages/core/src/travelpilot_core"
 "travelpilot_core.domain" = "packages/core/src/travelpilot_core/domain"
 travelpilot_infra = "packages/infrastructure/src/travelpilot_infra"
+
+[tool.setuptools.package-data]
+travelpilot_core = ["skills/*/SKILL.md"]
+travelpilot_infra = [
+  "db/migrations/*.py",
+  "db/migrations/README",
+  "db/migrations/script.py.mako",
+  "db/migrations/versions/*.py",
+]
 
 [tool.ruff.lint]
 # FastAPI dependency declarations intentionally call Depends in defaults.

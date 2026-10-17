@@ -1,9 +1,16 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
+
+
+class AdvisorRuntimeStatus(BaseModel):
+    llm_status: Literal["CONFIGURED", "NOT_CONFIGURED"]
+    model_name: str | None = None
+    output_token_limit: int
+    upstream_status: Literal["CHECKED_PER_REQUEST"] = "CHECKED_PER_REQUEST"
 
 
 class AdvisorSessionCreate(BaseModel):
@@ -15,14 +22,17 @@ class AdvisorSessionCreate(BaseModel):
     budget: Decimal | None = Field(default=None, ge=0)
     pace_level: int = Field(default=3, ge=1, le=5)
     preference_text: str = Field(default="", max_length=4000)
+    origin: str = Field(default="", max_length=120)
+    companions: list[Annotated[str, Field(min_length=1, max_length=120)]] = Field(default_factory=list, max_length=10)
+    hard_constraints: list[Annotated[str, Field(min_length=1, max_length=120)]] = Field(default_factory=list, max_length=10)
 
     @model_validator(mode="after")
     def validate_context(self):
         if self.mode == "existing" and self.trip_id is None:
             raise ValueError("trip_id is required for an existing trip")
-        if self.mode != "existing" and not self.destination.strip():
+        if self.mode == "destination" and not self.destination.strip():
             raise ValueError("destination is required")
-        if self.mode != "existing" and (self.start_date is None or self.end_date is None):
+        if self.mode == "destination" and (self.start_date is None or self.end_date is None):
             raise ValueError("start_date and end_date are required")
         if (self.start_date is None) != (self.end_date is None):
             raise ValueError("start_date and end_date must be provided together")
@@ -33,6 +43,26 @@ class AdvisorSessionCreate(BaseModel):
 
 class AdvisorMessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
+
+
+class AdvisorSessionContextUpdate(BaseModel):
+    destination: str = Field(default="", max_length=120)
+    start_date: date | None = None
+    end_date: date | None = None
+    budget: Decimal | None = Field(default=None, ge=0)
+    pace_level: int = Field(default=3, ge=1, le=5)
+    preference_text: str = Field(default="", max_length=4000)
+    origin: str = Field(default="", max_length=120)
+    companions: list[Annotated[str, Field(min_length=1, max_length=120)]] = Field(default_factory=list, max_length=10)
+    hard_constraints: list[Annotated[str, Field(min_length=1, max_length=120)]] = Field(default_factory=list, max_length=10)
+
+    @model_validator(mode="after")
+    def validate_context(self):
+        if (self.start_date is None) != (self.end_date is None):
+            raise ValueError("start_date and end_date must be provided together")
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date")
+        return self
 
 
 class AdvisorDraftCreate(BaseModel):

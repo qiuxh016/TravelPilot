@@ -34,3 +34,38 @@ class FeedbackRead(BaseModel):
 class MemoryUpdate(BaseModel):
     text: str | None = Field(default=None, min_length=2, max_length=2000)
     confirmed: bool | None = None
+
+
+class UserPreferenceMemoryCreate(BaseModel):
+    category: str = Field(default="GENERAL", min_length=2, max_length=40)
+    text: str = Field(min_length=2, max_length=1000)
+    constraint_type: str = Field(default="PREFERENCE", pattern="^(PREFERENCE|HARD_LIMIT)$")
+    expires_at: datetime | None = None
+
+
+class UserPreferenceMemoryUpdate(BaseModel):
+    category: str | None = Field(default=None, min_length=2, max_length=40)
+    text: str | None = Field(default=None, min_length=2, max_length=1000)
+    constraint_type: str | None = Field(default=None, pattern="^(PREFERENCE|HARD_LIMIT)$")
+    expires_at: datetime | None = None
+
+
+class UserPreferenceMemoryRead(BaseModel):
+    id: UUID
+    category: str
+    text: str
+    constraint_type: str
+    source: str
+    confidence: float
+    confirmed: bool
+    expires_at: datetime | None
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class UserMemorySettingsRead(BaseModel):
+    enabled: bool
+
+
+class UserMemorySettingsUpdate(BaseModel):
+    enabled: bool

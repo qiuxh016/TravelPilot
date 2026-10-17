@@ -1,4 +1,8 @@
-from travelpilot_infra.db.models.advisor import AdvisorMessageModel, AdvisorSessionModel
+from travelpilot_infra.db.models.advisor import (
+    AdvisorMessageModel,
+    AdvisorRunEventModel,
+    AdvisorSessionModel,
+)
 from travelpilot_infra.db.models.plan import TripPlanModel, TripPlanNodeModel
 from travelpilot_infra.db.models.plan_change import PlanChangeModel
 from travelpilot_infra.db.models.poi import PoiModel
@@ -29,11 +33,14 @@ from travelpilot_infra.db.models.workflow import (
     ToolCallModel,
     TripEventModel,
     UserFeedbackModel,
+    UserMemorySettingsModel,
+    UserPreferenceMemoryModel,
     WorkflowRunModel,
 )
 
 __all__ = [
     "AdvisorMessageModel",
+    "AdvisorRunEventModel",
     "AdvisorSessionModel",
     "AgentRunModel",
     "ContentItemModel",
@@ -58,7 +65,9 @@ __all__ = [
     "TripPlanNodeModel",
     "TripShareGrantModel",
     "UserFeedbackModel",
+    "UserMemorySettingsModel",
     "UserModel",
+    "UserPreferenceMemoryModel",
     "UserSessionModel",
     "WishlistItemModel",
     "WorkflowRunModel",

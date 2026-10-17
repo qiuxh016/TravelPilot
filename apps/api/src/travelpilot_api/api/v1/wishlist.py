@@ -3,8 +3,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from travelpilot_core.application.wishlist import WishlistService
+from travelpilot_infra.db.models.trip import TripModel
+from travelpilot_infra.db.models.wishlist import WishlistItemModel
 from travelpilot_infra.db.session import get_session
 
+from travelpilot_api.dependencies import get_owned_trip, get_owned_wishlist_item
 from travelpilot_api.schemas.wishlist import (
     WishlistCreate,
     WishlistRead,
@@ -55,6 +58,7 @@ async def create_wishlist_item(
     trip_id: UUID,
     payload: WishlistCreate,
     session: AsyncSession = Depends(get_session),
+    _trip: TripModel = Depends(get_owned_trip),
 ) -> WishlistRead:
     """为指定 Trip 添加一个 Wishlist 地点。"""
 
@@ -81,6 +85,7 @@ async def create_wishlist_item(
 async def list_wishlist_items(
     trip_id: UUID,
     session: AsyncSession = Depends(get_session),
+    _trip: TripModel = Depends(get_owned_trip),
 ) -> list[WishlistRead]:
     """查询指定 Trip 的全部 Wishlist。"""
 
@@ -108,6 +113,7 @@ async def update_wishlist_item(
     item_id: UUID,
     payload: WishlistUpdate,
     session: AsyncSession = Depends(get_session),
+    _item: WishlistItemModel = Depends(get_owned_wishlist_item),
 ) -> WishlistRead:
     """修改 Wishlist 的优先级、兴趣分数和备注。"""
 
@@ -136,6 +142,7 @@ async def update_wishlist_item(
 async def delete_wishlist_item(
     item_id: UUID,
     session: AsyncSession = Depends(get_session),
+    _item: WishlistItemModel = Depends(get_owned_wishlist_item),
 ) -> None:
     """删除 WishlistItem，但保留 POI。"""
 

@@ -22,6 +22,7 @@ class Route:
     distance_m: int
     duration_min: int
     provider: str
+    polyline: tuple[tuple[float, float], ...] = ()
 
 class MapsPort(Protocol):
     async def search_place(self, keyword: str, city: str | None = None) -> list[Place]: ...

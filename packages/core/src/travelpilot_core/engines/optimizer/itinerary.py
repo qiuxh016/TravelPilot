@@ -56,6 +56,7 @@ def build_itinerary(
     *,
     buffer_min: int = 60,
     max_pois_per_day: int = 6,
+    start_travel_min: list[int] | None = None,
 ) -> tuple[list[Visit], list[str]]:
     """Group nearby POIs, order each day by proximity, then validate capacity.
 
@@ -69,6 +70,10 @@ def build_itinerary(
         len(travel_matrix) != count or any(len(row) != count for row in travel_matrix)
     ):
         raise ValueError("travel matrix dimensions do not match candidates")
+    if start_travel_min is not None and (
+        len(start_travel_min) != count or any(value < 0 for value in start_travel_min)
+    ):
+        raise ValueError("start travel estimates do not match candidates")
     days = (end_date - start_date).days + 1
     indexed = list(enumerate(candidates))
     groups = cluster_places([candidate for _, candidate in indexed])
@@ -92,7 +97,15 @@ def build_itinerary(
         cursor = 9 * 60
         while remaining:
             if previous is None:
-                selected = remaining.pop(0)
+                if day_index == 0 and start_travel_min is not None:
+                    selected = min(remaining, key=lambda entry: (
+                        start_travel_min[entry[0]], -entry[1].priority,
+                        -entry[1].interest_score, entry[1].name,
+                    ))
+                    cursor += start_travel_min[selected[0]]
+                    remaining.remove(selected)
+                else:
+                    selected = remaining.pop(0)
             else:
                 selected = min(remaining, key=lambda entry: (
                     travel_matrix[previous[0]][entry[0]] if travel_matrix is not None

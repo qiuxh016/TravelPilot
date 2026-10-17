@@ -12,10 +12,10 @@ async def search(keyword:str=Query(min_length=1),city:str|None=None,maps=Depends
     except MapsProviderError as e: unavailable(e)
 @router.post("/maps/static-map")
 async def static_map(payload:StaticMapRequest,maps=Depends(get_maps_provider)):
-    if not hasattr(maps, "get_static_map"):
+    if not hasattr(getattr(maps, "provider", maps), "get_static_map"):
         raise HTTPException(503, detail="真实地图需要将 MAPS_PROVIDER 配置为 amap")
     try:
-        content, content_type = await maps.get_static_map(payload.points, payload.selected_index)
+        content, content_type = await maps.get_static_map(payload.points, payload.selected_index, payload.route_path)
         return Response(content=content, media_type=content_type, headers={"Cache-Control": "private, max-age=300"})
     except MapsProviderError as e: unavailable(e)
 @router.get("/places/{provider_id}",response_model=PlaceRead)

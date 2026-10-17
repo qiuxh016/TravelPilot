@@ -157,7 +157,10 @@ export const getTripWeather = (tripId: string) =>
   request<TripWeather>(`/api/v1/trips/${tripId}/weather`);
 export const getWeatherForecast = (city: string, startDate: string, endDate: string) =>
   request<TripWeather>(`/api/v1/weather/forecast?city=${encodeURIComponent(city)}&start_date=${startDate}&end_date=${endDate}`);
-export async function getStaticMapImage(points: { latitude: number; longitude: number }[], selectedIndex = 0): Promise<string> {
+export type MapRoute = { distance_m: number; duration_min: number; provider: string; polyline: [number, number][] };
+export const estimateMapRoute = (origin: [number, number], destination: [number, number]) =>
+  request<MapRoute>("/api/v1/routes/estimate", { method: "POST", body: JSON.stringify({ origin, destination }) });
+export async function getStaticMapImage(points: { latitude: number; longitude: number }[], selectedIndex = 0, routePath?: [number, number][]): Promise<string> {
   const csrf = typeof document === "undefined" ? "" : document.cookie.split("; ").find((item) => item.startsWith("travelpilot_csrf="))?.split("=").slice(1).join("=") ?? "";
   const response = await fetch(`${API_URL}/api/v1/maps/static-map`, {
     method: "POST",
@@ -166,7 +169,7 @@ export async function getStaticMapImage(points: { latitude: number; longitude: n
       "Content-Type": "application/json",
       ...(csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {}),
     },
-    body: JSON.stringify({ points: points.map((point) => [point.latitude, point.longitude]), selected_index: selectedIndex }),
+    body: JSON.stringify({ points: points.map((point) => [point.latitude, point.longitude]), selected_index: selectedIndex, route_path: routePath }),
   });
   if (!response.ok) throw await parseError(response);
   return URL.createObjectURL(await response.blob());
@@ -176,15 +179,32 @@ export type AdvisorCandidate = {
   id: string; provider: string; provider_id: string; name: string; address: string | null;
   category: string; latitude: number; longitude: number; duration_min: number;
   opening_hours: Record<string, string> | null; confidence: number; suggestion: string | null;
-  in_current_plan?: boolean; existing_poi_id?: string;
+  in_current_plan?: boolean; existing_poi_id?: string; verification_status?: string; verified_at?: string;
 };
 export type AdvisorMessage = { id: string; role: "user" | "assistant"; content: string; payload: Record<string, unknown> | null; created_at: string };
+export type AdvisorDestinationRecommendation = {
+  city: string; matched_interests: string[]; place_count: number; reasons: string[]; provider: string; retrieved_at: string;
+  places: { name: string; category: string; address: string | null; provider: string; provider_id: string; latitude: number; longitude: number }[];
+};
 export type AdvisorStop = { candidate_id: string; name: string; day: string; start_time: string; end_time: string; latitude: number; longitude: number; category: string; address: string | null };
 export type AdvisorPlanSnapshot = { id: string; version: number; status: string; warnings: string[]; stops: (AdvisorStop & { poi_id: string; priority: number; status: string; note: string | null })[] };
 export type AdvisorMemorySnapshot = { id: string; type: string; text: string; importance: number; confidence: number };
-export type AdvisorContext = { revision: number; selected_candidate_ids: string[]; current_plan: AdvisorPlanSnapshot | null; confirmed_memories: AdvisorMemorySnapshot[] };
+export type AdvisorPlanningSlot = { value: string | number | null; source: string | null; confidence: number; status: "known" | "missing" };
+export type AdvisorContext = {
+  revision: number; selected_candidate_ids: string[]; current_plan: AdvisorPlanSnapshot | null;
+  confirmed_memories: AdvisorMemorySnapshot[];
+  personal_memories?: { id: string; category: string; text: string; constraint_type: "PREFERENCE" | "HARD_LIMIT" }[];
+  planning_inputs?: { origin: string; companions: string[]; hard_constraints: string[] };
+  planning_state?: { slots: Record<string, AdvisorPlanningSlot>; missing_required: string[]; unresolved_questions: { slot: string; question: string }[] };
+};
 export type AdvisorChange = { stable_key: string; operation: "ADD" | "REMOVE" | "MOVE" | "KEEP"; name: string; reason: string; change_cost: number; before: Record<string, unknown> | null; after: Record<string, unknown> | null };
-export type AdvisorDraft = { version: number; context_revision: number; generated_at: string; selected_candidate_ids: string[]; warnings: string[]; pace_change: { before: number; after: number } | null; changes: AdvisorChange[]; change_summary: Record<string, number>; stops: AdvisorStop[] };
+export type AdvisorDraftWeather = {
+  status: "AVAILABLE" | "OUT_OF_RANGE" | "UNAVAILABLE"; city: string; timezone: string | null;
+  source: string; attribution: string; fetched_at: string; message: string | null;
+  days: { date: string; description: string; temperature_max_c: number | null;
+    temperature_min_c: number | null; precipitation_probability_max: number | null }[];
+};
+export type AdvisorDraft = { version: number; context_revision: number; generated_at: string; selected_candidate_ids: string[]; applied_personal_memories?: { id: string; category: string; text: string; constraint_type: "PREFERENCE" | "HARD_LIMIT" }[]; transport?: { status: "NOT_REQUIRED" | "VERIFIED" | "SIMULATED"; source: string | null; retrieved_at: string | null }; origin_leg?: { status: "NOT_PROVIDED" | "VERIFIED" | "SIMULATED" | "UNRESOLVED" | "UNAVAILABLE"; from: string | null; duration_min: number | null; source: string | null; retrieved_at: string | null }; warnings: string[]; weather?: AdvisorDraftWeather; trip_changes?: { before: Record<string, string | number | null>; after: Record<string, string | number | null> } | null; pace_change: { before: number; after: number } | null; changes: AdvisorChange[]; change_summary: Record<string, number>; stops: AdvisorStop[] };
 export type AdvisorSession = {
   id: string; mode: "discover" | "destination" | "existing"; trip_id: string | null; destination: string;
   start_date: string | null; end_date: string | null; budget: string | number | null; pace_level: number;
@@ -192,14 +212,29 @@ export type AdvisorSession = {
   status: "ACTIVE" | "CONFIRMED"; confirmed_trip_id: string | null; confirmed_plan_id: string | null;
   created_at: string; updated_at: string; messages: AdvisorMessage[];
 };
+export type AdvisorRuntimeStatus = {
+  llm_status: "CONFIGURED" | "NOT_CONFIGURED" | "UNAVAILABLE";
+  model_name: string | null;
+  output_token_limit: number;
+  upstream_status: "CHECKED_PER_REQUEST";
+};
 export type AdvisorSessionInput = {
   mode: AdvisorSession["mode"]; trip_id?: string; destination?: string; start_date?: string; end_date?: string;
   budget?: number | null; pace_level: number; preference_text?: string;
+  origin?: string; companions?: string[]; hard_constraints?: string[];
+};
+export type AdvisorSessionContextInput = {
+  destination: string; start_date: string | null; end_date: string | null;
+  budget: number | null; pace_level: number; preference_text: string;
+  origin?: string; companions?: string[]; hard_constraints?: string[];
 };
 export const listAdvisorSessions = () => request<AdvisorSession[]>("/api/v1/advisor/sessions");
+export const getAdvisorRuntimeStatus = () => request<AdvisorRuntimeStatus>("/api/v1/advisor/status");
 export const createAdvisorSession = (input: AdvisorSessionInput) => request<AdvisorSession>("/api/v1/advisor/sessions", { method: "POST", body: JSON.stringify(input) });
+export const updateAdvisorSessionContext = (sessionId: string, input: AdvisorSessionContextInput) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/context`, { method: "PATCH", body: JSON.stringify(input) });
 export const getAdvisorSession = (sessionId: string) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}`);
-export const sendAdvisorMessage = (sessionId: string, content: string) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/messages`, { method: "POST", body: JSON.stringify({ content }) });
+export const sendAdvisorMessage = (sessionId: string, content: string) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/messages`, { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ content }) });
+export const recommendAdvisorDestinations = (sessionId: string) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/destinations`, { method: "POST", body: "{}" });
 export const createAdvisorDraft = (sessionId: string, candidate_ids: string[]) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/draft`, { method: "POST", body: JSON.stringify({ candidate_ids }) });
 export const confirmAdvisorDraft = (sessionId: string, draft_version: number) => request<{ trip_id: string; plan_id: string; plan_version: number; already_confirmed: boolean }>(`/api/v1/advisor/sessions/${sessionId}/confirm`, { method: "POST", body: JSON.stringify({ draft_version }) });
 export const deleteAdvisorSession = (sessionId: string) => request<void>(`/api/v1/advisor/sessions/${sessionId}`, { method: "DELETE" });
@@ -261,7 +296,7 @@ export type Candidate = {
 };
 export type ContentEntity = {
   id: string; name: string; category: string; suggestion: string | null;
-  confidence: number; candidates: Candidate[];
+  evidence: string | null; confidence: number; candidates: Candidate[];
 };
 export type ImportedContent = {
   id: string; trip_id: string; content_type: string; text: string;
@@ -300,6 +335,15 @@ export const updateMemory = (tripId: string, memoryId: string, input: { text?: s
   request<Memory>(`/api/v1/trips/${tripId}/memories/${memoryId}`, { method: "PATCH", body: JSON.stringify(input) });
 export const deleteMemory = (tripId: string, memoryId: string) =>
   request<void>(`/api/v1/trips/${tripId}/memories/${memoryId}`, { method: "DELETE" });
+export type UserPreferenceMemory = { id: string; category: string; text: string; constraint_type: "PREFERENCE" | "HARD_LIMIT"; source: string; confidence: number; confirmed: boolean; expires_at: string | null; created_at: string };
+export const getUserMemorySettings = () => request<{ enabled: boolean }>("/api/v1/account/memory-settings");
+export const setUserMemorySettings = (enabled: boolean) => request<{ enabled: boolean }>("/api/v1/account/memory-settings", { method: "PUT", body: JSON.stringify({ enabled }) });
+export const listUserMemories = () => request<UserPreferenceMemory[]>("/api/v1/account/memories");
+export const createUserMemory = (input: { category: string; text: string; constraint_type: "PREFERENCE" | "HARD_LIMIT" }) =>
+  request<UserPreferenceMemory>("/api/v1/account/memories", { method: "POST", body: JSON.stringify(input) });
+export const updateUserMemory = (id: string, input: { category?: string; text?: string; constraint_type?: "PREFERENCE" | "HARD_LIMIT" }) =>
+  request<UserPreferenceMemory>(`/api/v1/account/memories/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+export const deleteUserMemory = (id: string) => request<void>(`/api/v1/account/memories/${id}`, { method: "DELETE" });
 
 export type Friendship = { id: string; friend_user_id: string; email: string; status: "PENDING" | "ACCEPTED" | "BLOCKED"; direction: "INCOMING" | "OUTGOING" | "NONE"; created_at: string };
 export type TripShare = { id: string; trip_id: string; grantee_user_id: string; email: string; scope: "TRIP_SUMMARY" | "TRIP_AND_PLAN"; created_at: string };

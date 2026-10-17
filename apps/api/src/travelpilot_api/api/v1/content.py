@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from travelpilot_core.agents.extraction import extract_places
+from travelpilot_core.skills import select_skill
 from travelpilot_infra.db.models.poi import PoiModel
 from travelpilot_infra.db.models.trip import TripModel
 from travelpilot_infra.db.models.wishlist import WishlistItemModel
@@ -18,7 +19,7 @@ from travelpilot_infra.db.models.workflow import (
 from travelpilot_infra.db.session import get_session
 from travelpilot_infra.providers.maps.errors import MapsProviderError
 
-from travelpilot_api.dependencies import get_maps_provider
+from travelpilot_api.dependencies import get_maps_provider, get_owned_content, get_owned_trip
 from travelpilot_api.media_storage import normalize_image
 from travelpilot_api.ocr import recognize_text
 from travelpilot_api.schemas.content import (
@@ -37,9 +38,8 @@ logger = logging.getLogger("travelpilot.content")
 
 @router.post("/trips/{trip_id}/content/ocr", response_model=OcrTextRead)
 async def recognize_content_image(trip_id: UUID, file: UploadFile = File(...),
-                                  session: AsyncSession = Depends(get_session)):
-    if await session.get(TripModel, trip_id) is None:
-        raise HTTPException(404, detail="Trip not found")
+                                  session: AsyncSession = Depends(get_session),
+                                  _trip: TripModel = Depends(get_owned_trip)):
     if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
         raise HTTPException(415, detail="仅支持 JPEG、PNG 或 WebP 图片")
     if file.size is not None and file.size > settings.media_max_upload_bytes:
@@ -72,33 +72,39 @@ async def _read(session: AsyncSession, content_id: UUID) -> ContentRead:
         ).order_by(EntityCandidateModel.score.desc()))).all()
         result.append(EntityRead(
             id=entity.id, name=entity.name, category=entity.category,
-            suggestion=entity.suggestion, confidence=entity.confidence,
+            suggestion=entity.suggestion, evidence=entity.evidence, confidence=entity.confidence,
             candidates=[CandidateRead.model_validate(candidate) for candidate in candidates],
         ))
     return ContentRead(
         id=source.id, trip_id=source.trip_id, content_type=source.content_type,
         text=source.text, status=source.status, error=source.error,
+        skill_name=source.skill_name, skill_version=source.skill_version, token_usage=source.token_usage,
         created_at=source.created_at, entities=result,
     )
 
 
 @router.post("/trips/{trip_id}/content", response_model=ContentRead, status_code=status.HTTP_201_CREATED)
 async def create_content(trip_id: UUID, payload: ContentCreate,
-                         session: AsyncSession = Depends(get_session), maps=Depends(get_maps_provider)):
-    if await session.get(TripModel, trip_id) is None:
-        raise HTTPException(404, detail="Trip not found")
+                         session: AsyncSession = Depends(get_session), maps=Depends(get_maps_provider),
+                         _trip: TripModel = Depends(get_owned_trip)):
     source = ContentSourceModel(trip_id=trip_id, content_type=payload.content_type,
                                 text=payload.text, status="PARSING")
     session.add(source)
     await session.flush()
     session.add(ContentItemModel(source_id=source.id, text=payload.text, kind="TEXT"))
     try:
+        skill = select_skill("content_import")
+        if skill:
+            source.skill_name, source.skill_version = skill.name, skill.version
         extraction = await extract_places(payload.text, api_key=settings.llm_api_key,
-                                          model=settings.llm_model, base_url=settings.llm_base_url)
+                                          model=settings.llm_model, base_url=settings.llm_base_url,
+                                          additional_instructions=skill.instructions if skill else "")
+        source.token_usage = extraction.token_usage
         for mention in extraction.places:
+            evidence = mention.evidence if mention.evidence and mention.evidence in payload.text else None
             entity = ExtractedEntityModel(source_id=source.id, name=mention.name,
                                           category=mention.category, suggestion=mention.suggestion,
-                                          confidence=mention.confidence)
+                                          evidence=evidence, confidence=mention.confidence)
             session.add(entity)
             await session.flush()
             places = await maps.search_place(mention.name)
@@ -119,22 +125,22 @@ async def create_content(trip_id: UUID, payload: ContentCreate,
 
 
 @router.get("/content/{content_id}", response_model=ContentRead)
-async def get_content(content_id: UUID, session: AsyncSession = Depends(get_session)):
+async def get_content(content_id: UUID, session: AsyncSession = Depends(get_session),
+                      _source: ContentSourceModel = Depends(get_owned_content)):
     return await _read(session, content_id)
 
 
 @router.get("/content/{content_id}/candidates", response_model=list[CandidateRead])
-async def list_candidates(content_id: UUID, session: AsyncSession = Depends(get_session)):
+async def list_candidates(content_id: UUID, session: AsyncSession = Depends(get_session),
+                          _source: ContentSourceModel = Depends(get_owned_content)):
     content = await _read(session, content_id)
     return [candidate for entity in content.entities for candidate in entity.candidates]
 
 
 @router.post("/content/{content_id}/confirm", response_model=ContentRead)
 async def confirm_content(content_id: UUID, payload: ConfirmCandidates,
-                          session: AsyncSession = Depends(get_session)):
-    source = await session.get(ContentSourceModel, content_id)
-    if source is None:
-        raise HTTPException(404, detail="Content not found")
+                          session: AsyncSession = Depends(get_session),
+                          source: ContentSourceModel = Depends(get_owned_content)):
     if source.status not in ("NEEDS_CONFIRMATION", "IMPORTED"):
         raise HTTPException(409, detail="Content is not ready for confirmation")
     rows = (await session.execute(

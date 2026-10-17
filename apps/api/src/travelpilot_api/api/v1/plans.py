@@ -3,10 +3,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from travelpilot_core.application.plans import PlanService
+from travelpilot_infra.db.models.trip import TripModel
 from travelpilot_infra.db.session import get_session
 from travelpilot_infra.providers.maps.errors import MapsProviderError
 
-from travelpilot_api.dependencies import get_maps_provider
+from travelpilot_api.dependencies import get_maps_provider, get_owned_trip
 from travelpilot_api.schemas.plans import PlanChangeRead, PlanNodeRead, PlanNodeUpdate, PlanRead
 
 router = APIRouter(prefix="/trips/{trip_id}", tags=["plans"])
@@ -25,7 +26,8 @@ def to_read(plan, rows):
 
 
 @router.post("/plan-runs", response_model=PlanRead, status_code=status.HTTP_201_CREATED)
-async def generate_plan(trip_id: UUID, session: AsyncSession = Depends(get_session), maps=Depends(get_maps_provider)):
+async def generate_plan(trip_id: UUID, session: AsyncSession = Depends(get_session),
+                        maps=Depends(get_maps_provider), _trip: TripModel = Depends(get_owned_trip)):
     try:
         plan = await PlanService(session).generate(trip_id, maps)
     except LookupError as exc:
@@ -41,14 +43,16 @@ async def generate_plan(trip_id: UUID, session: AsyncSession = Depends(get_sessi
 
 
 @router.get("/plans", response_model=list[PlanRead])
-async def list_plans(trip_id: UUID, session: AsyncSession = Depends(get_session)):
+async def list_plans(trip_id: UUID, session: AsyncSession = Depends(get_session),
+                     _trip: TripModel = Depends(get_owned_trip)):
     service = PlanService(session)
     plans = await service.list(trip_id)
     return [to_read(plan, (await service.get(trip_id, plan.id))[1]) for plan in plans]
 
 
 @router.get("/plans/{plan_id}", response_model=PlanRead)
-async def get_plan(trip_id: UUID, plan_id: UUID, session: AsyncSession = Depends(get_session)):
+async def get_plan(trip_id: UUID, plan_id: UUID, session: AsyncSession = Depends(get_session),
+                   _trip: TripModel = Depends(get_owned_trip)):
     result = await PlanService(session).get(trip_id, plan_id)
     if result is None:
         raise HTTPException(404, detail="Plan not found")
@@ -56,7 +60,9 @@ async def get_plan(trip_id: UUID, plan_id: UUID, session: AsyncSession = Depends
 
 
 @router.patch("/plans/{plan_id}/nodes/{node_id}", response_model=PlanRead)
-async def update_node(trip_id: UUID, plan_id: UUID, node_id: UUID, payload: PlanNodeUpdate, reason: str | None = None, session: AsyncSession = Depends(get_session)):
+async def update_node(trip_id: UUID, plan_id: UUID, node_id: UUID, payload: PlanNodeUpdate,
+                      reason: str | None = None, session: AsyncSession = Depends(get_session),
+                      _trip: TripModel = Depends(get_owned_trip)):
     service = PlanService(session)
     if await service.get(trip_id, plan_id) is None:
         raise HTTPException(404, detail="Plan not found")
@@ -74,7 +80,8 @@ async def update_node(trip_id: UUID, plan_id: UUID, node_id: UUID, payload: Plan
 
 
 @router.delete("/plans/{plan_id}/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_node(trip_id: UUID, plan_id: UUID, node_id: UUID, reason: str | None = None, session: AsyncSession = Depends(get_session)):
+async def delete_node(trip_id: UUID, plan_id: UUID, node_id: UUID, reason: str | None = None,
+                      session: AsyncSession = Depends(get_session), _trip: TripModel = Depends(get_owned_trip)):
     service = PlanService(session)
     if await service.get(trip_id, plan_id) is None:
         raise HTTPException(404, detail="Plan not found")
@@ -88,7 +95,8 @@ async def delete_node(trip_id: UUID, plan_id: UUID, node_id: UUID, reason: str |
 
 
 @router.get("/plans/{plan_id}/changes", response_model=list[PlanChangeRead])
-async def list_changes(trip_id: UUID, plan_id: UUID, session: AsyncSession = Depends(get_session)):
+async def list_changes(trip_id: UUID, plan_id: UUID, session: AsyncSession = Depends(get_session),
+                       _trip: TripModel = Depends(get_owned_trip)):
     service = PlanService(session)
     if await service.get(trip_id, plan_id) is None:
         raise HTTPException(404, detail="Plan not found")

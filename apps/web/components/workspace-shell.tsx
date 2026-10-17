@@ -18,7 +18,6 @@ function NavIcon({ name }: { name: string }) {
     memory: "M5 5.5A2.5 2.5 0 0 1 7.5 3H20v15H7.5A2.5 2.5 0 0 0 5 20.5v-15ZM5 6h12 M8 9h8 M8 12h6",
     friends: "M16 20v-1.5a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20 M9.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM17 11a3 3 0 1 0 0-6 M17 14.5a4 4 0 0 1 4 4V20",
     moments: "M20 7v10a2 2 0 0 1-2 2H6l-3 2V7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2ZM7 10h10 M7 14h7 M8 5V3 M16 5V3",
-    demo: "M3 6.5 8.5 4 15 6.5 21 4v13.5L15 20l-6.5-2.5L3 20V6.5Z M8.5 4v13.5 M15 6.5V20",
     account: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0",
   };
   return <svg aria-hidden="true" className="workspace-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name]} /></svg>;
@@ -58,11 +57,10 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   function isActive(href: string, key: string) {
     if (key === "trips") return pathname === "/trips";
     if (key === "places") return pathname === "/places";
-    if (key === "demo") return pathname === "/demo";
     if (key === "account") return pathname === "/account";
     if (key === "friends") return pathname === "/friends";
     if (key === "moments") return pathname === "/moments";
-    if (key === "overview") return /^\/trips\/[^/]+$/.test(pathname);
+    if (key === "overview") return pathname !== "/trips/new" && /^\/trips\/[^/]+$/.test(pathname);
     return href !== "/trips" && pathname === href;
   }
 
@@ -83,7 +81,6 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
     { key: "memory", label: "旅行记忆", href: paths.memory, icon: "memory", needsTrip: true },
     { key: "friends", label: "好友圈与分享", href: "/friends", icon: "friends" },
     { key: "moments", label: "旅行动态", href: "/moments", icon: "moments" },
-    { key: "demo", label: "地图与天气演示", href: "/demo", icon: "demo" },
     { key: "account", label: "账户与隐私", href: "/account", icon: "account" },
   ];
 

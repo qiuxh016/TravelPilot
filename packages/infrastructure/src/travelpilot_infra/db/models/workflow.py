@@ -23,6 +23,9 @@ class ContentSourceModel(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="RECEIVED")
     error: Mapped[str | None] = mapped_column(Text)
+    skill_name: Mapped[str | None] = mapped_column(String(80))
+    skill_version: Mapped[str | None] = mapped_column(String(24))
+    token_usage: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
@@ -41,6 +44,7 @@ class ExtractedEntityModel(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False, default="ATTRACTION")
     suggestion: Mapped[str | None] = mapped_column(Text)
+    evidence: Mapped[str | None] = mapped_column(Text)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
 
 
@@ -126,3 +130,29 @@ class MemoryModel(Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     confirmed: Mapped[bool] = mapped_column(default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class UserPreferenceMemoryModel(Base):
+    __tablename__ = "user_preference_memories"
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    owner_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    category: Mapped[str] = mapped_column(String(40), nullable=False, default="GENERAL")
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    constraint_type: Mapped[str] = mapped_column(String(16), nullable=False, default="PREFERENCE")
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="USER_EXPLICIT")
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    confirmed: Mapped[bool] = mapped_column(default=True, nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class UserMemorySettingsModel(Base):
+    __tablename__ = "user_memory_settings"
+    owner_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    enabled: Mapped[bool] = mapped_column(default=False, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)

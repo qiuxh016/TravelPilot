@@ -1,0 +1,16 @@
+{$SITE_DOMAIN} {
+	encode zstd gzip
+	@api path /api/* /health /ready*
+	handle @api {
+		reverse_proxy api:8000
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options DENY
+		-Server
+	}
+}
