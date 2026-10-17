@@ -40,7 +40,17 @@ class AmapProvider:
     async def get_route(self, origin, destination):
         data = await self._get("/direction/driving", origin=f"{origin[1]},{origin[0]}", destination=f"{destination[1]},{destination[0]}")
         path = data["route"]["paths"][0]
-        return Route(origin, destination, int(path["distance"]), max(1, round(int(path["duration"]) / 60)), "amap")
+        coordinates = []
+        for step in path.get("steps", []):
+            for pair in step.get("polyline", "").split(";"):
+                try:
+                    longitude, latitude = (float(value) for value in pair.split(",", 1))
+                except (ValueError, TypeError):
+                    continue
+                point = (latitude, longitude)
+                if not coordinates or coordinates[-1] != point:
+                    coordinates.append(point)
+        return Route(origin, destination, int(path["distance"]), max(1, round(int(path["duration"]) / 60)), "amap", tuple(coordinates))
 
     async def get_distance_matrix(self, points):
         if not points:
@@ -60,7 +70,7 @@ class AmapProvider:
         return [[columns[destination][origin] for destination in range(len(points))]
                 for origin in range(len(points))]
 
-    async def get_static_map(self, points, selected_index=0):
+    async def get_static_map(self, points, selected_index=0, route_path=None):
         """Return a server-fetched AMap static map so the Web Service key stays private."""
         if not points:
             raise ValueError("至少需要一个地图点")
@@ -86,9 +96,9 @@ class AmapProvider:
             "size": "1024*420",
             "markers": markers,
         }
-        if len(locations) > 1:
-            path = ";".join(f"{longitude:.6f},{latitude:.6f}" for longitude, latitude in locations)
-            params["paths"] = f"6,0x236443,0.8,,:{path}"
+        if route_path and len(route_path) > 1:
+            path = ";".join(f"{longitude:.6f},{latitude:.6f}" for latitude, longitude in route_path)
+            params["paths"] = f"6,0x236443,0.9,,:{path}"
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get("https://restapi.amap.com/v3/staticmap", params={**params, "key": self.api_key})

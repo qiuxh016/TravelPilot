@@ -31,5 +31,5 @@ class CachedMapsProvider:
     async def get_distance_matrix(self, points):
         return await self._get("get_distance_matrix", tuple(tuple(point) for point in points))
 
-    async def get_static_map(self, points, selected_index=0):
-        return await self.provider.get_static_map(tuple(tuple(point) for point in points), selected_index)
+    async def get_static_map(self, points, selected_index=0, route_path=None):
+        return await self.provider.get_static_map(tuple(tuple(point) for point in points), selected_index, route_path)
