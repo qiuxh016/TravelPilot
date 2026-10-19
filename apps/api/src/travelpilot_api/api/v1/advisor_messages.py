@@ -80,6 +80,7 @@ async def _keep_turn_heartbeat(write, interval: float = _TURN_HEARTBEAT_INTERVAL
 
 async def _persist_idempotent_user_message(
     *, session_id: UUID, owner_id: UUID, idempotency_key: str, content: str,
+    selected_candidate_ids: list[str] | None = None,
 ) -> None:
     """Commit the retry source before work that may outlive a process.
 
@@ -94,6 +95,10 @@ async def _persist_idempotent_user_message(
             role="user",
             content=content,
             idempotency_key=idempotency_key,
+            payload=(
+                {"selection_snapshot": selected_candidate_ids}
+                if selected_candidate_ids is not None else None
+            ),
         ))
         await message_db.commit()
 
@@ -180,6 +185,7 @@ async def send_message(
 ):
     row = await owned_session(db, session_id, user.id, lock=True)
     content = payload.content.strip()
+    submitted_selection = getattr(payload, "selected_candidate_ids", None)
     if not re.fullmatch(r"[A-Za-z0-9._:-]{8,80}", idempotency_key):
         raise HTTPException(422, detail="Idempotency-Key 格式无效")
     previous = await db.scalar(
@@ -193,6 +199,16 @@ async def send_message(
     if previous is not None:
         if previous.content != content:
             raise HTTPException(409, detail="Idempotency-Key 已用于另一条消息")
+        previous_snapshot = (
+            getattr(previous, "payload", {}).get("selection_snapshot")
+            if isinstance(getattr(previous, "payload", None), dict) else None
+        )
+        if submitted_selection is not None and previous_snapshot is None:
+            raise HTTPException(409, detail="Idempotency-Key 尚未记录本次地点选择，请重新提交咨询")
+        if submitted_selection is not None and previous_snapshot is not None:
+            requested_snapshot = sorted(str(value) for value in submitted_selection)
+            if requested_snapshot != sorted(previous_snapshot):
+                raise HTTPException(409, detail="Idempotency-Key 已用于另一份地点选择")
         exact_reply = await db.scalar(
             select(AdvisorMessageModel.id).where(
                 AdvisorMessageModel.session_id == row.id,
@@ -244,15 +260,40 @@ async def send_message(
         resume_existing_user_message = False
     if row.status != "ACTIVE":
         raise HTTPException(409, detail="已确认的会话不能继续修改")
+    selection_snapshot = (
+        sorted(str(value) for value in submitted_selection)
+        if submitted_selection is not None else None
+    )
+    if previous is not None and selection_snapshot is None and isinstance(getattr(previous, "payload", None), dict):
+        saved_snapshot = previous.payload.get("selection_snapshot")
+        if isinstance(saved_snapshot, list) and all(isinstance(value, str) for value in saved_snapshot):
+            selection_snapshot = sorted(saved_snapshot)
+    if selection_snapshot is not None:
+        known_candidate_ids = {
+            str(item.get("id")) for item in (row.candidates or [])
+            if isinstance(item, dict) and item.get("id")
+        }
+        if not set(selection_snapshot).issubset(known_candidate_ids):
+            raise HTTPException(422, detail="选择中包含不属于当前对话的地点")
+        context = dict(row.context or {})
+        if sorted(str(value) for value in context.get("selected_candidate_ids", [])) != selection_snapshot:
+            context["selected_candidate_ids"] = selection_snapshot
+            context["revision"] = int(context.get("revision", 0)) + 1
+            row.context = context
     if not resume_existing_user_message:
         # Keep the original request recoverable if the API process exits while
         # a model or provider call is in flight. The retry path detects this
         # row and will not insert the user's message twice.
+        persist_arguments = {
+            "session_id": row.id,
+            "owner_id": user.id,
+            "idempotency_key": idempotency_key,
+            "content": content,
+        }
+        if selection_snapshot is not None:
+            persist_arguments["selected_candidate_ids"] = selection_snapshot
         await _persist_idempotent_user_message(
-            session_id=row.id,
-            owner_id=user.id,
-            idempotency_key=idempotency_key,
-            content=content,
+            **persist_arguments,
         )
         resume_existing_user_message = True
     from travelpilot_api.advisor.turn_service import execute_advisor_turn

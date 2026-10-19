@@ -184,12 +184,28 @@ def plan_advisor_request(
     """Resolve supported user intent without mutating session or trip state."""
     schedule_followup = continuing_task and continuing_task_type == "SCHEDULE"
     scope_text = current_message if schedule_followup and isinstance(current_message, str) else goal
-    suppress_context_search = schedule_followup and not _has_explicit_search_action(scope_text)
+    previous_category = (
+        previous_payload.get("planning_category")
+        if isinstance(previous_payload, dict) else None
+    )
+    resume_explicit_compound_domain = bool(
+        schedule_followup
+        and isinstance(previous_payload, dict)
+        and previous_payload.get("schedule_recommendation_requested") is True
+        and previous_category in {"FOOD", "LODGING"}
+    )
+    suppress_context_search = (
+        schedule_followup and not _has_explicit_search_action(scope_text)
+        and not resume_explicit_compound_domain
+    )
     explicit_schedule = bool(
         schedule_followup or _is_schedule_recommendation_request(scope_text)
     )
     explicit_domain_search = bool(_EXPLICIT_DOMAIN_SEARCH.search(scope_text))
-    suppress_schedule_side_search = explicit_schedule and not explicit_domain_search
+    suppress_schedule_side_search = (
+        explicit_schedule and not explicit_domain_search
+        and not resume_explicit_compound_domain
+    )
     task_kinds = (
         set() if suppress_context_search
         else _evidence_grounded_task_kinds(extraction, scope_text)

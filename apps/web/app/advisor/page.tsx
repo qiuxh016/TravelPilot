@@ -715,6 +715,10 @@ export default function AdvisorPage() {
       storedRequest = value ? JSON.parse(value) as { idempotencyKey?: string; fingerprint?: string } : null;
     } catch { storedRequest = null; }
     const pendingRequest = pendingMessageRequestRef.current;
+    const isSamePendingRequest = pendingRequest?.sessionId === active.id && pendingRequest.content === content;
+    const isStoredRetry = Boolean(
+      fingerprint && storedRequest?.fingerprint === fingerprint && storedRequest.idempotencyKey,
+    );
     const idempotencyKey = pendingRequest?.sessionId === active.id && pendingRequest.content === content
       ? pendingRequest.idempotencyKey
       : fingerprint && storedRequest?.fingerprint === fingerprint && storedRequest.idempotencyKey
@@ -744,7 +748,10 @@ export default function AdvisorPage() {
     };
     void pollProgress();
     try {
-      const updated = await sendAdvisorMessage(active.id, content, idempotencyKey);
+      const updated = await sendAdvisorMessage(
+        active.id, content, idempotencyKey,
+        isSamePendingRequest || isStoredRetry ? undefined : selected,
+      );
       if (pendingMessageRequestRef.current?.idempotencyKey === idempotencyKey) {
         pendingMessageRequestRef.current = null;
       }

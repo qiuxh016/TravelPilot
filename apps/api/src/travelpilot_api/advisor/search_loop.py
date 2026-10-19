@@ -228,6 +228,17 @@ async def run_advisor_search_loop(
             action = None
         if action is not None and action.kind in {"ASK_USER", "FINISH"}:
             required_remaining = [item for item in remaining if item.get("required") is True]
+            if weather_available:
+                # A clarification about optional preferences must not prevent
+                # a forecast the user explicitly asked for when the trip dates
+                # and weather tool are already available.
+                decision_source = "RULE_RECOVERY"
+                decision_summary = "先核对用户明确要求的旅行天气，再处理偏好追问"
+                weather_attempted = True
+                return AgentAction(
+                    kind="CALL_TOOL", tool="get_trip_weather", arguments={},
+                    summary=decision_summary,
+                )
             if required_remaining:
                 # A model may choose how to satisfy a request, but cannot close
                 # the search loop while a user-requested domain is still

@@ -44,6 +44,13 @@ class AdvisorSessionCreate(BaseModel):
 
 class AdvisorMessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
+    selected_candidate_ids: list[UUID] | None = Field(default=None, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_selection(self):
+        if self.selected_candidate_ids is not None and len(set(self.selected_candidate_ids)) != len(self.selected_candidate_ids):
+            raise ValueError("selected_candidate_ids must be unique")
+        return self
 
 
 class AdvisorMessageFeedbackCreate(BaseModel):

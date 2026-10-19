@@ -283,7 +283,16 @@ export const createAdvisorSession = (input: AdvisorSessionInput) => request<Advi
 export const updateAdvisorSessionContext = (sessionId: string, input: AdvisorSessionContextInput) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/context`, { method: "PATCH", body: JSON.stringify(input) });
 export const getAdvisorSession = (sessionId: string) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}`);
 export const updateAdvisorChecklistDecision = (sessionId: string, item_key: string, decision: "LATER" | "NOT_NEEDED" | "RESET", draft_version: number) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/checklist`, { method: "PATCH", body: JSON.stringify({ item_key, decision, draft_version }) });
-export const sendAdvisorMessage = (sessionId: string, content: string, idempotencyKey = crypto.randomUUID()) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/messages`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ content }) });
+export const sendAdvisorMessage = (
+  sessionId: string,
+  content: string,
+  idempotencyKey = crypto.randomUUID(),
+  selectedCandidateIds?: string[],
+) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/messages`, {
+  method: "POST",
+  headers: { "Idempotency-Key": idempotencyKey },
+  body: JSON.stringify({ content, selected_candidate_ids: selectedCandidateIds }),
+});
 export const submitAdvisorMessageFeedback = (
   sessionId: string,
   messageId: string,
