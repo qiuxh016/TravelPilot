@@ -1,0 +1,1164 @@
+{
+  "review_protocol": "advisor_single_system_quality_review_v1",
+  "assessment_type": "independent human quality review; one system; not a comparative test",
+  "sample": {
+    "conversation_count": 16,
+    "turn_count": 20,
+    "source": "bounded live Advisor product run (UTC 2026-10-19)"
+  },
+  "rubric": {
+    "scale": "1-5 integer; leave null until reviewed. Use 2 or 4 only when the response falls between the adjacent behavior anchors. Score each conversation as a whole.",
+    "dimensions": {
+      "factual_grounding": "Uses only supplied context and evidence; avoids unsupported places, times, routes, weather, prices or availability.",
+      "constraint_safety": "Respects explicit dates, preferences and task scope; distinguishes draft from saved itinerary.",
+      "task_progress": "Moves the stated travel task forward with a relevant result or concrete next step.",
+      "clarification_quality": "Asks focused questions when material information is missing, without unnecessary interrogation.",
+      "transparency": "Distinguishes verified, simulated and uncertain information and explains relevant failures."
+    },
+    "anchors": {
+      "factual_grounding": {
+        "1": "重大事实没有上下文或证据支持，或把模拟数据说成真实信息。",
+        "3": "大部分内容有依据，但有重要推断未标明，或漏掉关键限定。",
+        "5": "所有关键事实均能对应已提供的上下文或证据；不确定处标注清楚。"
+      },
+      "constraint_safety": {
+        "1": "忽视明确限制、用户任务范围或确认边界，可能误导用户认为已正式保存。",
+        "3": "遵守主要要求，但漏掉一项重要限制或草案状态说明。",
+        "5": "完整遵守明确要求与任务范围；清楚区分建议、草案和正式保存。"
+      },
+      "task_progress": {
+        "1": "没有推动用户目标，或主要内容与请求无关。",
+        "3": "部分推进目标，但遗漏关键步骤或只给出较笼统的下一步。",
+        "5": "完成当前可支持的目标；若无法完成，给出具体且有用的下一步。"
+      },
+      "clarification_quality": {
+        "1": "遗漏会改变结果的关键信息，或反复询问已知内容、提出无关问题。",
+        "3": "识别了部分不确定项，但问题过宽、过多，或遗漏一个重要澄清点。",
+        "5": "只在必要时追问，问题聚焦关键决策，并利用已有上下文避免重复询问。"
+      },
+      "transparency": {
+        "1": "将未核验、模拟或失败结果表述为确定事实，或隐瞒会影响决策的限制。",
+        "3": "标出部分来源或状态，但重要时效、局限或失败影响说明不足。",
+        "5": "清晰说明来源、核验状态、不确定性及相关故障，并说明其对建议的影响。"
+      }
+    },
+    "reviewer_instructions": "Read the whole conversation in order. Score each dimension independently using only the shown user messages, context, evidence and replies. Evidence is synthetic where marked; do not treat it as real-world travel data. Do not infer or guess the model identity. Use the 1/3/5 anchors and choose 2 or 4 only for intermediate performance. Record concrete omissions or unsupported claims in reviewer_notes."
+  },
+  "responses": [
+    {
+      "review_id": "80c61ec86f46c95d",
+      "conversation": [
+        {
+          "user_message": "帮我把收藏的人民公园、武侯祠和锦里安排成两日行程，节奏轻松一点。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [
+                "人民公园",
+                "武侯祠",
+                "锦里"
+              ],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "NOT_REQUESTED_OR_OUT_OF_RANGE"
+            },
+            "verified_candidates": [],
+            "weather_evidence": {},
+            "route_evidence": {},
+            "schedule_assignments": [
+              {
+                "day": "2026-10-23",
+                "start_time": "09:00"
+              },
+              {
+                "day": "2026-10-23",
+                "start_time": "10:51"
+              },
+              {
+                "day": "2026-10-24",
+                "start_time": "09:00"
+              }
+            ],
+            "schedule_breaks": []
+          },
+          "advisor_reply": "已按草案安排：第1天（10月23日）：人民公园 09:00、锦里 10:51；第2天（10月24日）：武侯祠 09:00\n\n我根据本轮纳入排程的 3 个地点，结合当前可用的路线估算和地图建议游览时长排出一版时间建议。它只是待确认草案；检查路线和空档后，点击“确认并保存行程”才会生成新计划。"
+        },
+        {
+          "user_message": "请让第二天上午留空，午餐留出一小时；只生成待确认草案，不要替我确认保存。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [
+                "人民公园",
+                "武侯祠",
+                "锦里"
+              ],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "NOT_REQUESTED_OR_OUT_OF_RANGE"
+            },
+            "verified_candidates": [],
+            "weather_evidence": {},
+            "route_evidence": {},
+            "schedule_assignments": [
+              {
+                "day": "2026-10-23",
+                "start_time": "09:00"
+              },
+              {
+                "day": "2026-10-23",
+                "start_time": "13:00"
+              },
+              {
+                "day": "2026-10-24",
+                "start_time": "13:00"
+              }
+            ],
+            "schedule_breaks": [
+              {
+                "day": "2026-10-23",
+                "meal_type": "LUNCH",
+                "label": "午餐",
+                "start_time": "12:00",
+                "end_time": "13:00",
+                "duration_min": 60,
+                "time_is_proposed_default": true
+              },
+              {
+                "day": "2026-10-24",
+                "meal_type": "LUNCH",
+                "label": "午餐",
+                "start_time": "12:00",
+                "end_time": "13:00",
+                "duration_min": 60,
+                "time_is_proposed_default": true
+              }
+            ]
+          },
+          "advisor_reply": "已按草案安排：第1天（10月23日）：人民公园 09:00、锦里 13:00；第2天（10月24日）：武侯祠 13:00\n\n我根据本轮纳入排程的 3 个地点，结合当前可用的路线估算和地图建议游览时长排出一版时间建议。它只是待确认草案；检查路线和空档后，点击“确认并保存行程”才会生成新计划。\n\n草案还按你的要求预留了：第1天（10月23日） 午餐 12:00–13:00；第2天（10月24日） 午餐 12:00–13:00。这是建议时段，尚未安排餐厅；你可以告诉我想改到几点。"
+        }
+      ],
+      "scores": {
+        "factual_grounding": null,
+        "constraint_safety": null,
+        "task_progress": null,
+        "clarification_quality": null,
+        "transparency": null,
+        "reviewer_notes": ""
+      }
+    },
+    {
+      "review_id": "aa759ccde8a5342d",
+      "conversation": [
+        {
+          "user_message": "请把我收藏的人民公园、武侯祠和锦里安排成两日游，查询人民公园到武侯祠的驾车路线，并结合天气提醒我带什么。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [
+                "人民公园",
+                "武侯祠",
+                "锦里"
+              ],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "LOCAL_SIMULATED_FIXTURE"
+            },
+            "verified_candidates": [],
+            "weather_evidence": {
+              "status": "AVAILABLE",
+              "city": "成都",
+              "source": "Local simulated forecast",
+              "fetched_at": "2026-10-19T16:07:06.833363+00:00",
+              "days": [
+                {
+                  "date": "2026-10-23",
+                  "description": "小雨（模拟）",
+                  "weather_code": 61,
+                  "precipitation_probability_max": 75,
+                  "advice": []
+                },
+                {
+                  "date": "2026-10-24",
+                  "description": "小雨（模拟）",
+                  "weather_code": 61,
+                  "precipitation_probability_max": 75,
+                  "advice": []
+                }
+              ]
+            },
+            "route_evidence": {
+              "origin_name": "人民公园",
+              "destination_name": "武侯祠",
+              "mode": "DRIVING",
+              "distance_m": 2003,
+              "duration_min": 6,
+              "source": "Local simulated maps",
+              "retrieved_at": "2026-10-19T16:07:05.145032+00:00"
+            },
+            "schedule_assignments": [
+              {
+                "day": "2026-10-23",
+                "start_time": "09:00"
+              },
+              {
+                "day": "2026-10-23",
+                "start_time": "10:51"
+              },
+              {
+                "day": "2026-10-24",
+                "start_time": "09:00"
+              }
+            ],
+            "schedule_breaks": []
+          },
+          "advisor_reply": "已按草案安排：第1天（10月23日）：人民公园 09:00、锦里 10:51；第2天（10月24日）：武侯祠 09:00\n\n我根据本轮纳入排程的 3 个地点，结合当前可用的路线估算和地图建议游览时长排出一版时间建议。它只是待确认草案；检查路线和空档后，点击“确认并保存行程”才会生成新计划。\n\n已核验人民公园到武侯祠的驾车路线：约 2.0 公里、6 分钟。数据来源：Local simulated maps，查询时间：2026-10-19T16:07:05.145032+00:00。这只是路线时间估算，不包含实时路况；请在出发前再次核对。 天气参考：2026-10-23 小雨（模拟），13–20°C，降水概率 75%；2026-10-24 小雨（模拟），13–20°C，降水概率 75%。来源：Local simulated forecast，更新时间：2026-10-19T16:07:06.833363+00:00。出行提醒：降水可能性偏高，建议带伞或轻便雨衣。。通用随身清单：身份证件、手机与充电器、常用药、舒适鞋和个人洗漱用品。"
+        },
+        {
+          "user_message": "三处都安排，按轻松节奏分两天排并留出午餐时间；先给待确认的时间建议，不要保存正式行程。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [
+                "人民公园",
+                "武侯祠",
+                "锦里"
+              ],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "LOCAL_SIMULATED_FIXTURE"
+            },
+            "verified_candidates": [],
+            "weather_evidence": {},
+            "route_evidence": {},
+            "schedule_assignments": [
+              {
+                "day": "2026-10-23",
+                "start_time": "09:00"
+              },
+              {
+                "day": "2026-10-23",
+                "start_time": "10:51"
+              },
+              {
+                "day": "2026-10-24",
+                "start_time": "09:00"
+              }
+            ],
+            "schedule_breaks": []
+          },
+          "advisor_reply": "已按草案安排：第1天（10月23日）：人民公园 09:00、锦里 10:51；第2天（10月24日）：武侯祠 09:00\n\n我根据本轮纳入排程的 3 个地点，结合当前可用的路线估算和地图建议游览时长排出一版时间建议。它只是待确认草案；检查路线和空档后，点击“确认并保存行程”才会生成新计划。"
+        }
+      ],
+      "scores": {
+        "factual_grounding": null,
+        "constraint_safety": null,
+        "task_progress": null,
+        "clarification_quality": null,
+        "transparency": null,
+        "reviewer_notes": ""
+      }
+    },
+    {
+      "review_id": "b0c34d166491004a",
+      "conversation": [
+        {
+          "user_message": "请把我收藏的人民公园、武侯祠和锦里排成两日游，节奏轻松，每天留一小时午餐，先给待确认草案。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [
+                "人民公园",
+                "武侯祠",
+                "锦里"
+              ],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "NOT_REQUESTED_OR_OUT_OF_RANGE"
+            },
+            "verified_candidates": [],
+            "weather_evidence": {},
+            "route_evidence": {},
+            "schedule_assignments": [
+              {
+                "day": "2026-10-23",
+                "start_time": "09:00"
+              },
+              {
+                "day": "2026-10-23",
+                "start_time": "13:00"
+              },
+              {
+                "day": "2026-10-24",
+                "start_time": "09:00"
+              }
+            ],
+            "schedule_breaks": [
+              {
+                "day": "2026-10-23",
+                "meal_type": "LUNCH",
+                "label": "午餐",
+                "start_time": "12:00",
+                "end_time": "13:00",
+                "duration_min": 60,
+                "time_is_proposed_default": true
+              },
+              {
+                "day": "2026-10-24",
+                "meal_type": "LUNCH",
+                "label": "午餐",
+                "start_time": "12:00",
+                "end_time": "13:00",
+                "duration_min": 60,
+                "time_is_proposed_default": true
+              }
+            ]
+          },
+          "advisor_reply": "已按草案安排：第1天（10月23日）：人民公园 09:00、锦里 13:00；第2天（10月24日）：武侯祠 09:00\n\n我根据本轮纳入排程的 3 个地点，结合当前可用的路线估算和地图建议游览时长排出一版时间建议。它只是待确认草案；检查路线和空档后，点击“确认并保存行程”才会生成新计划。\n\n草案还按你的要求预留了：第1天（10月23日） 午餐 12:00–13:00；第2天（10月24日） 午餐 12:00–13:00。这是建议时段，尚未安排餐厅；你可以告诉我想改到几点。"
+        },
+        {
+          "user_message": "请让第二天上午留空，午餐留出一小时；只更新待确认草案，不要保存正式行程。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [
+                "人民公园",
+                "武侯祠",
+                "锦里"
+              ],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "NOT_REQUESTED_OR_OUT_OF_RANGE"
+            },
+            "verified_candidates": [],
+            "weather_evidence": {},
+            "route_evidence": {},
+            "schedule_assignments": [
+              {
+                "day": "2026-10-23",
+                "start_time": "09:00"
+              },
+              {
+                "day": "2026-10-23",
+                "start_time": "13:00"
+              },
+              {
+                "day": "2026-10-24",
+                "start_time": "13:00"
+              }
+            ],
+            "schedule_breaks": [
+              {
+                "day": "2026-10-23",
+                "meal_type": "LUNCH",
+                "label": "午餐",
+                "start_time": "12:00",
+                "end_time": "13:00",
+                "duration_min": 60,
+                "time_is_proposed_default": true
+              },
+              {
+                "day": "2026-10-24",
+                "meal_type": "LUNCH",
+                "label": "午餐",
+                "start_time": "12:00",
+                "end_time": "13:00",
+                "duration_min": 60,
+                "time_is_proposed_default": true
+              }
+            ]
+          },
+          "advisor_reply": "已按草案安排：第1天（10月23日）：人民公园 09:00、锦里 13:00；第2天（10月24日）：武侯祠 13:00\n\n我根据本轮纳入排程的 3 个地点，结合当前可用的路线估算和地图建议游览时长排出一版时间建议。它只是待确认草案；检查路线和空档后，点击“确认并保存行程”才会生成新计划。\n\n草案还按你的要求预留了：第1天（10月23日） 午餐 12:00–13:00；第2天（10月24日） 午餐 12:00–13:00。这是建议时段，尚未安排餐厅；你可以告诉我想改到几点。"
+        }
+      ],
+      "scores": {
+        "factual_grounding": null,
+        "constraint_safety": null,
+        "task_progress": null,
+        "clarification_quality": null,
+        "transparency": null,
+        "reviewer_notes": ""
+      }
+    },
+    {
+      "review_id": "d4e36f3789d4ecb1",
+      "conversation": [
+        {
+          "user_message": "帮我找成都的午餐，想吃川菜。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [
+                "人民公园"
+              ],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "NOT_REQUESTED_OR_OUT_OF_RANGE"
+            },
+            "verified_candidates": [
+              {
+                "name": "模拟川味餐馆",
+                "planning_category": "FOOD",
+                "meal_type": "LUNCH",
+                "verification_status": "SIMULATED"
+              }
+            ],
+            "weather_evidence": {},
+            "route_evidence": {},
+            "schedule_assignments": [],
+            "schedule_breaks": []
+          },
+          "advisor_reply": "成都午餐想吃川菜，这个方向很合适。目前核对到的午餐候选只有一家：模拟川味餐馆，位于成都市青羊区，分类是川菜中餐厅。不过它的菜单、价格、营业时间和人气情况都没有核实信息，需要你出发前再确认一下。另外，你的行程里还有人民公园，可以考虑把午餐安排在公园附近，但具体路线和交通时间目前没有数据，需要另行查证。\n要不要我先把这家模拟川味餐馆作为午餐备选，放进待确认的行程草案里？"
+        }
+      ],
+      "scores": {
+        "factual_grounding": null,
+        "constraint_safety": null,
+        "task_progress": null,
+        "clarification_quality": null,
+        "transparency": null,
+        "reviewer_notes": ""
+      }
+    },
+    {
+      "review_id": "3056c2b782d01632",
+      "conversation": [
+        {
+          "user_message": "帮我找成都的午餐地点，并结合这段旅行的天气提醒我带伞和穿什么，不用安排景点行程。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [
+                "人民公园"
+              ],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "LOCAL_SIMULATED_FIXTURE"
+            },
+            "verified_candidates": [
+              {
+                "name": "模拟川味餐馆",
+                "planning_category": "FOOD",
+                "meal_type": "LUNCH",
+                "verification_status": "SIMULATED"
+              }
+            ],
+            "weather_evidence": {
+              "status": "AVAILABLE",
+              "city": "成都",
+              "source": "Local simulated forecast",
+              "fetched_at": "2026-10-19T16:07:27.160976+00:00",
+              "days": [
+                {
+                  "date": "2026-10-23",
+                  "description": "小雨（模拟）",
+                  "weather_code": 61,
+                  "precipitation_probability_max": 75,
+                  "advice": []
+                },
+                {
+                  "date": "2026-10-24",
+                  "description": "小雨（模拟）",
+                  "weather_code": 61,
+                  "precipitation_probability_max": 75,
+                  "advice": []
+                }
+              ]
+            },
+            "route_evidence": {},
+            "schedule_assignments": [],
+            "schedule_breaks": []
+          },
+          "advisor_reply": "我按午餐需求筛选了餐饮地点：模拟川味餐馆。这里只展示餐饮候选；选择后请确认用餐日期和时间，再生成待确认安排。 天气参考：2026-10-23 小雨（模拟），13–20°C，降水概率 75%；2026-10-24 小雨（模拟），13–20°C，降水概率 75%。来源：Local simulated forecast，更新时间：2026-10-19T16:07:27.160976+00:00。出行提醒：降水可能性偏高，建议带伞或轻便雨衣。。通用随身清单：身份证件、手机与充电器、常用药、舒适鞋和个人洗漱用品。"
+        }
+      ],
+      "scores": {
+        "factual_grounding": null,
+        "constraint_safety": null,
+        "task_progress": null,
+        "clarification_quality": null,
+        "transparency": null,
+        "reviewer_notes": ""
+      }
+    },
+    {
+      "review_id": "ade131508b3691ec",
+      "conversation": [
+        {
+          "user_message": "帮我找成都的午餐地点，并结合这段旅行的天气提醒我带伞和穿什么，不用安排景点行程。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [
+                "人民公园"
+              ],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "LOCAL_SYNTHETIC_WEATHER_OUTAGE"
+            },
+            "verified_candidates": [
+              {
+                "name": "模拟川味餐馆",
+                "planning_category": "FOOD",
+                "meal_type": "LUNCH",
+                "verification_status": "SIMULATED"
+              }
+            ],
+            "weather_evidence": {},
+            "route_evidence": {},
+            "schedule_assignments": [],
+            "schedule_breaks": []
+          },
+          "advisor_reply": "午餐方面，本轮只核到一个候选：模拟川味餐馆（成都市青羊区，川菜，标注为午餐；来源为模拟数据）。它的菜单、价格、营业时间、是否需要排队等细节目前都未知，建议出发前再核实。你行程里还有人民公园，若想午餐后顺路散步，可把餐馆和公园的先后顺序留到确认营业时间后再定；我不会替你安排景点行程。\n\n天气方面，这次旅行（2026-10-23 至 10-24）目前没有可用的天气预报，所以我无法确认会不会下雨，也不能给出具体穿衣建议。带伞和穿衣请以出发前一两天的实时预报为准：一般建议成都十月下旬早晚偏凉、白天较温和，可带薄外套并叠穿，雨具随身备着更稳妥——这属于通用建议，不是本次行程的天气结论。\n\n需要我帮你把这家餐馆作为午餐备选记入待确认草案吗？\n要不要把“模拟川味餐馆”作为午餐备选放进待确认草案？ 天气服务暂时不可用，本轮没有生成天气结论。请稍后重试。通用随身清单：身份证件、手机与充电器、常用药、舒适鞋和个人洗漱用品。天气服务恢复后，我再按预报提醒衣物、雨具和室内备选。"
+        }
+      ],
+      "scores": {
+        "factual_grounding": null,
+        "constraint_safety": null,
+        "task_progress": null,
+        "clarification_quality": null,
+        "transparency": null,
+        "reviewer_notes": ""
+      }
+    },
+    {
+      "review_id": "2c0fa758b92dd479",
+      "conversation": [
+        {
+          "user_message": "帮我找几个适合游览的景点和午餐地点，先推荐候选，不要安排或保存行程。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "NOT_REQUESTED_OR_OUT_OF_RANGE"
+            },
+            "verified_candidates": [
+              {
+                "name": "成都大熊猫繁育研究基地",
+                "planning_category": "ATTRACTION",
+                "verification_status": "SIMULATED"
+              },
+              {
+                "name": "宽窄巷子",
+                "planning_category": "ATTRACTION",
+                "verification_status": "SIMULATED"
+              },
+              {
+                "name": "模拟川味餐馆",
+                "planning_category": "FOOD",
+                "meal_type": "LUNCH",
+                "verification_status": "SIMULATED"
+              }
+            ],
+            "weather_evidence": {},
+            "route_evidence": {},
+            "schedule_assignments": [],
+            "schedule_breaks": []
+          },
+          "advisor_reply": "好的，先只给你候选，不排行程、不保存。\n\n**景点候选（来自本次已核对的候选）**\n- **成都大熊猫繁育研究基地**：位于成华区，是成都很有代表性的游览点，适合安排半天左右慢慢看。\n- **宽窄巷子**：位于青羊区，适合散步、看老成都街巷风貌，节奏轻松。\n\n**午餐候选（仅午餐类）**\n- **模拟川味餐馆**：位于青羊区，川菜类午餐候选。\n\n需要说明的是：这几个候选的**具体营业时间、门票或人均价格、菜单、当天拥挤程度和实时排队情况**目前都没有核实数据，出发前需要再查一下。另外，宽窄巷子和这家餐馆都在青羊区，地理上比较接近，这是从地址能看出的信息，但实际路程和交通时间还需要另行确认。\n\n从一般经验来说（非核实信息）：熊猫基地通常上午人相对少、熊猫也更活跃，宽窄巷子更适合下午或傍晚逛；不过这只是通用建议，具体还要看你的节奏。\n\n你更想先按“熊猫基地为主”还是“市区街巷为主”来缩小候选范围？\n你更想先按“熊猫基地为主”还是“市区街巷为主”来缩小候选范围？"
+        }
+      ],
+      "scores": {
+        "factual_grounding": null,
+        "constraint_safety": null,
+        "task_progress": null,
+        "clarification_quality": null,
+        "transparency": null,
+        "reviewer_notes": ""
+      }
+    },
+    {
+      "review_id": "d0056c0ab70d7c97",
+      "conversation": [
+        {
+          "user_message": "帮我找几个适合游览的景点和午餐候选，我选好后再决定时间。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "NOT_REQUESTED_OR_OUT_OF_RANGE"
+            },
+            "verified_candidates": [
+              {
+                "name": "成都大熊猫繁育研究基地",
+                "planning_category": "ATTRACTION",
+                "verification_status": "SIMULATED"
+              },
+              {
+                "name": "宽窄巷子",
+                "planning_category": "ATTRACTION",
+                "verification_status": "SIMULATED"
+              },
+              {
+                "name": "模拟川味餐馆",
+                "planning_category": "FOOD",
+                "meal_type": "LUNCH",
+                "verification_status": "SIMULATED"
+              }
+            ],
+            "weather_evidence": {},
+            "route_evidence": {},
+            "schedule_assignments": [],
+            "schedule_breaks": []
+          },
+          "advisor_reply": "好的，先帮你把候选列出来，时间安排等你选好再定。\n\n**景点候选（2个）**\n- **成都大熊猫繁育研究基地**：位于成华区。适合作为半天的重点游览。\n- **宽窄巷子**：位于青羊区。适合轻松步行、感受街区氛围。\n\n**午餐候选（1个）**\n- **模拟川味餐馆**：位于青羊区，川菜，标注为午餐。\n\n需要说明的是：这些候选的营业时间、门票或人均价格、是否需要预约、当天人流情况，以及各点之间的实际交通时间，目前都没有核实数据，出发前需要再查一下。\n\n从位置上看，宽窄巷子和这家川味餐馆都在青羊区，作为一般性建议，把这两个安排在同一段会比较顺；熊猫基地在成华区，通常需要单独留出半天。不过具体路线和车程还需要实际核对。\n\n你想先保留哪几个？确定后我再帮你排两天的顺序。\n景点和午餐候选里，你想保留哪几个？"
+        }
+      ],
+      "scores": {
+        "factual_grounding": null,
+        "constraint_safety": null,
+        "task_progress": null,
+        "clarification_quality": null,
+        "transparency": null,
+        "reviewer_notes": ""
+      }
+    },
+    {
+      "review_id": "5641fe302a134cee",
+      "conversation": [
+        {
+          "user_message": "帮我找成都的住宿候选，比较位置就好，不要加入景点行程，也不要代订。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "NOT_REQUESTED_OR_OUT_OF_RANGE"
+            },
+            "verified_candidates": [
+              {
+                "name": "模拟旅行酒店",
+                "planning_category": "LODGING",
+                "verification_status": "SIMULATED"
+              }
+            ],
+            "weather_evidence": {},
+            "route_evidence": {},
+            "schedule_assignments": [],
+            "schedule_breaks": []
+          },
+          "advisor_reply": "目前这轮只核到一个住宿候选：模拟旅行酒店，地址在成都市锦江区。就“位置”能确认的只有它属于锦江区；具体离地铁、商圈或你10月23日到24日想活动的区域有多远，现有信息不足，需要再查地图和交通时间。\n\n另外，你现有的行程里也已经有“模拟旅行酒店”这个地点，所以它更像是已知选项，而不是新比较出来的结果。目前没有第二个住宿候选，暂时无法做位置上的横向比较。\n\n按你的要求，我不会加入景点行程，也不会代订。要不要我再帮你找几个成都住宿候选，专门按位置来对比？\n你希望住宿优先靠近成都哪个区域或哪类交通节点（比如锦江区、市中心、地铁站附近）？"
+        }
+      ],
+      "scores": {
+        "factual_grounding": null,
+        "constraint_safety": null,
+        "task_progress": null,
+        "clarification_quality": null,
+        "transparency": null,
+        "reviewer_notes": ""
+      }
+    },
+    {
+      "review_id": "83294e33f683b363",
+      "conversation": [
+        {
+          "user_message": "结合我这段旅行的目的地和已收藏地点，给我一个实用建议。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [
+                "人民公园",
+                "武侯祠"
+              ],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "NOT_REQUESTED_OR_OUT_OF_RANGE"
+            },
+            "verified_candidates": [],
+            "weather_evidence": {},
+            "route_evidence": {},
+            "schedule_assignments": [],
+            "schedule_breaks": []
+          },
+          "advisor_reply": "你的成都行程是 10 月 23–24 日两天，目前收藏了人民公园和武侯祠，但两天都还没有具体安排。一个实用建议是：把这两处按“市中心—武侯片区”分成两天，避免来回折返。\n\n- 10 月 23 日：以人民公园为主，节奏放慢，适合散步、喝茶、感受本地生活。\n- 10 月 24 日：安排武侯祠，周边可顺路逛，但具体路线和交通时间需要另行核对。\n\n另外，目前还没有出发地信息，所以无法估算从出发地到第一个地点的时间；住宿也尚未添加，如果不需要可以忽略。天气、开放时间和实时人流都需要出发前再查。\n\n要不要我先按这个思路，把两天的待确认草案排出来？\n你希望我先把这两天排成待确认草案，还是先补充住宿或出发地信息？"
+        }
+      ],
+      "scores": {
+        "factual_grounding": null,
+        "constraint_safety": null,
+        "task_progress": null,
+        "clarification_quality": null,
+        "transparency": null,
+        "reviewer_notes": ""
+      }
+    },
+    {
+      "review_id": "5c41b8bd37a7530b",
+      "conversation": [
+        {
+          "user_message": "结合这段旅行的日期，告诉我需要带伞吗、穿什么衣服比较合适。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "LOCAL_SIMULATED_FIXTURE"
+            },
+            "verified_candidates": [],
+            "weather_evidence": {
+              "status": "AVAILABLE",
+              "city": "成都",
+              "source": "Local simulated forecast",
+              "fetched_at": "2026-10-19T16:08:03.039212+00:00",
+              "days": [
+                {
+                  "date": "2026-10-23",
+                  "description": "小雨（模拟）",
+                  "weather_code": 61,
+                  "precipitation_probability_max": 75,
+                  "advice": []
+                },
+                {
+                  "date": "2026-10-24",
+                  "description": "小雨（模拟）",
+                  "weather_code": 61,
+                  "precipitation_probability_max": 75,
+                  "advice": []
+                }
+              ]
+            },
+            "route_evidence": {},
+            "schedule_assignments": [],
+            "schedule_breaks": []
+          },
+          "advisor_reply": "成都 行程天气参考：2026-10-23 小雨（模拟），13–20°C，降水概率 75%；2026-10-24 小雨（模拟），13–20°C，降水概率 75%。降水可能性偏高，建议带伞或轻便雨衣。数据来自 Local simulated forecast，更新时间 2026-10-19T16:08:03.039212+00:00。通用随身清单：身份证件、手机与充电器、常用药、舒适鞋和个人洗漱用品；请按上面的逐日天气建议增减衣物或雨具。本地评测模拟天气，仅用于验证工具顺序。"
+        }
+      ],
+      "scores": {
+        "factual_grounding": null,
+        "constraint_safety": null,
+        "task_progress": null,
+        "clarification_quality": null,
+        "transparency": null,
+        "reviewer_notes": ""
+      }
+    },
+    {
+      "review_id": "c7c2708590e5685d",
+      "conversation": [
+        {
+          "user_message": "帮我查开车从人民公园到武侯祠怎么走，并结合这段旅行的天气提醒我带什么。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [
+                "人民公园",
+                "武侯祠"
+              ],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "LOCAL_SIMULATED_FIXTURE"
+            },
+            "verified_candidates": [],
+            "weather_evidence": {
+              "status": "AVAILABLE",
+              "city": "成都",
+              "source": "Local simulated forecast",
+              "fetched_at": "2026-10-19T16:08:05.656949+00:00",
+              "days": [
+                {
+                  "date": "2026-10-23",
+                  "description": "小雨（模拟）",
+                  "weather_code": 61,
+                  "precipitation_probability_max": 75,
+                  "advice": []
+                },
+                {
+                  "date": "2026-10-24",
+                  "description": "小雨（模拟）",
+                  "weather_code": 61,
+                  "precipitation_probability_max": 75,
+                  "advice": []
+                }
+              ]
+            },
+            "route_evidence": {
+              "origin_name": "人民公园",
+              "destination_name": "武侯祠",
+              "mode": "DRIVING",
+              "distance_m": 2003,
+              "duration_min": 6,
+              "source": "Local simulated maps",
+              "retrieved_at": "2026-10-19T16:08:04.783849+00:00"
+            },
+            "schedule_assignments": [],
+            "schedule_breaks": []
+          },
+          "advisor_reply": "已核验人民公园到武侯祠的驾车路线：约 2.0 公里、6 分钟。数据来源：Local simulated maps，查询时间：2026-10-19T16:08:04.783849+00:00。这只是路线时间估算，不包含实时路况；请在出发前再次核对。\n\n成都 行程天气参考：2026-10-23 小雨（模拟），13–20°C，降水概率 75%；2026-10-24 小雨（模拟），13–20°C，降水概率 75%。降水可能性偏高，建议带伞或轻便雨衣。数据来自 Local simulated forecast，更新时间 2026-10-19T16:08:05.656949+00:00。通用随身清单：身份证件、手机与充电器、常用药、舒适鞋和个人洗漱用品；请按上面的逐日天气建议增减衣物或雨具。本地评测模拟天气，仅用于验证工具顺序。"
+        }
+      ],
+      "scores": {
+        "factual_grounding": null,
+        "constraint_safety": null,
+        "task_progress": null,
+        "clarification_quality": null,
+        "transparency": null,
+        "reviewer_notes": ""
+      }
+    },
+    {
+      "review_id": "2f6cbcd1edfc7bd0",
+      "conversation": [
+        {
+          "user_message": "帮我查开车从人民公园到武侯祠怎么走，并结合这段旅行的天气提醒我带什么。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [
+                "人民公园",
+                "武侯祠"
+              ],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "LOCAL_DIRECT_ROUTE_TIMEOUT_FIXTURE",
+              "weather": "LOCAL_SIMULATED_FIXTURE"
+            },
+            "verified_candidates": [],
+            "weather_evidence": {
+              "status": "AVAILABLE",
+              "city": "成都",
+              "source": "Local simulated forecast",
+              "fetched_at": "2026-10-19T16:08:10.854780+00:00",
+              "days": [
+                {
+                  "date": "2026-10-23",
+                  "description": "小雨（模拟）",
+                  "weather_code": 61,
+                  "precipitation_probability_max": 75,
+                  "advice": []
+                },
+                {
+                  "date": "2026-10-24",
+                  "description": "小雨（模拟）",
+                  "weather_code": 61,
+                  "precipitation_probability_max": 75,
+                  "advice": []
+                }
+              ]
+            },
+            "route_evidence": {},
+            "schedule_assignments": [],
+            "schedule_breaks": []
+          },
+          "advisor_reply": "成都 行程天气参考：2026-10-23 小雨（模拟），13–20°C，降水概率 75%；2026-10-24 小雨（模拟），13–20°C，降水概率 75%。降水可能性偏高，建议带伞或轻便雨衣。数据来自 Local simulated forecast，更新时间 2026-10-19T16:08:10.854780+00:00。通用随身清单：身份证件、手机与充电器、常用药、舒适鞋和个人洗漱用品；请按上面的逐日天气建议增减衣物或雨具。本地评测模拟天气，仅用于验证工具顺序。\n\n路线本轮未能核验；我没有用直线距离替代驾车路线，你可以稍后重试地图服务。"
+        }
+      ],
+      "scores": {
+        "factual_grounding": null,
+        "constraint_safety": null,
+        "task_progress": null,
+        "clarification_quality": null,
+        "transparency": null,
+        "reviewer_notes": ""
+      }
+    },
+    {
+      "review_id": "9418193e85f3e8d9",
+      "conversation": [
+        {
+          "user_message": "帮我查开车从人民公园到武侯祠怎么走，并结合这段旅行的天气提醒我带什么。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [
+                "人民公园",
+                "武侯祠"
+              ],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "LOCAL_SYNTHETIC_WEATHER_OUTAGE"
+            },
+            "verified_candidates": [],
+            "weather_evidence": {},
+            "route_evidence": {
+              "origin_name": "人民公园",
+              "destination_name": "武侯祠",
+              "mode": "DRIVING",
+              "distance_m": 2003,
+              "duration_min": 6,
+              "source": "Local simulated maps",
+              "retrieved_at": "2026-10-19T16:08:15.444374+00:00"
+            },
+            "schedule_assignments": [],
+            "schedule_breaks": []
+          },
+          "advisor_reply": "已核验人民公园到武侯祠的驾车路线：约 2.0 公里、6 分钟。数据来源：Local simulated maps，查询时间：2026-10-19T16:08:15.444374+00:00。这只是路线时间估算，不包含实时路况；请在出发前再次核对。\n\n天气服务暂时不可用，本轮没有生成天气结论。你可以稍后重试；出行前请查看临近预报。通用随身清单可先准备身份证件、手机与充电器、常用药、舒适鞋和个人洗漱用品；衣物与雨具请等天气服务恢复后再按预报调整。天气服务恢复后，我再按预报提醒衣物、雨具和室内备选。"
+        }
+      ],
+      "scores": {
+        "factual_grounding": null,
+        "constraint_safety": null,
+        "task_progress": null,
+        "clarification_quality": null,
+        "transparency": null,
+        "reviewer_notes": ""
+      }
+    },
+    {
+      "review_id": "7af16097ae0ec223",
+      "conversation": [
+        {
+          "user_message": "结合这段旅行的天气看看是否下雨；如果有雨，帮我找成都室内备选地点，先推荐看看，不要加入行程。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "FAKE_MAPS",
+              "weather": "LOCAL_SIMULATED_FIXTURE"
+            },
+            "verified_candidates": [
+              {
+                "name": "模拟室内展馆",
+                "planning_category": "ATTRACTION",
+                "verification_status": "SIMULATED"
+              }
+            ],
+            "weather_evidence": {
+              "status": "AVAILABLE",
+              "city": "成都",
+              "source": "Local simulated forecast",
+              "fetched_at": "2026-10-19T16:08:21.751300+00:00",
+              "days": [
+                {
+                  "date": "2026-10-23",
+                  "description": "小雨（模拟）",
+                  "weather_code": 61,
+                  "precipitation_probability_max": 75,
+                  "advice": []
+                },
+                {
+                  "date": "2026-10-24",
+                  "description": "小雨（模拟）",
+                  "weather_code": 61,
+                  "precipitation_probability_max": 75,
+                  "advice": []
+                }
+              ]
+            },
+            "route_evidence": {},
+            "schedule_assignments": [],
+            "schedule_breaks": []
+          },
+          "advisor_reply": "地图服务核对到这些候选：模拟室内展馆。请先选择想去的地点，并为每个地点确认日期和开始时间。候选按地图服务返回顺序整理；只有地图提供评分时才会按评分辅助排序，不能把它当作全网热度。你更偏爱自然风景、历史文化、美食还是亲子活动？ 天气参考：2026-10-23 小雨（模拟），13–20°C，降水概率 75%；2026-10-24 小雨（模拟），13–20°C，降水概率 75%。来源：Local simulated forecast，更新时间：2026-10-19T16:08:21.751300+00:00。出行提醒：降水可能性偏高，建议带伞或轻便雨衣。。"
+        }
+      ],
+      "scores": {
+        "factual_grounding": null,
+        "constraint_safety": null,
+        "task_progress": null,
+        "clarification_quality": null,
+        "transparency": null,
+        "reviewer_notes": ""
+      }
+    },
+    {
+      "review_id": "03f49405386355b6",
+      "conversation": [
+        {
+          "user_message": "帮我把收藏的人民公园、武侯祠和锦里安排成两日行程，节奏轻松一点。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [
+                "人民公园",
+                "武侯祠",
+                "锦里"
+              ],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "LOCAL_ROUTE_MATRIX_TIMEOUT_FIXTURE",
+              "weather": "NOT_REQUESTED_OR_OUT_OF_RANGE"
+            },
+            "verified_candidates": [],
+            "weather_evidence": {},
+            "route_evidence": {},
+            "schedule_assignments": [
+              {
+                "day": "2026-10-23",
+                "start_time": "09:00"
+              },
+              {
+                "day": "2026-10-23",
+                "start_time": "10:51"
+              },
+              {
+                "day": "2026-10-24",
+                "start_time": "09:00"
+              }
+            ],
+            "schedule_breaks": []
+          },
+          "advisor_reply": "已按草案安排：第1天（10月23日）：人民公园 09:00、锦里 10:51；第2天（10月24日）：武侯祠 09:00\n\n我根据本轮纳入排程的 3 个地点，结合本地距离估算和地图建议游览时长（路线未核验）排出一版时间建议。它只是待确认草案；检查路线和空档后，点击“确认并保存行程”才会生成新计划。"
+        },
+        {
+          "user_message": "请让第二天上午留空，午餐留出一小时；只生成待确认草案，不要替我确认保存。",
+          "available_context_and_evidence": {
+            "trip_context": {
+              "destination": "成都",
+              "start_date": "2026-10-23",
+              "end_date": "2026-10-24",
+              "pace_level": 2,
+              "saved_places": [
+                "人民公园",
+                "武侯祠",
+                "锦里"
+              ],
+              "map_evidence": "Fake Maps; synthetic fixture data"
+            },
+            "evidence_mode": {
+              "maps": "LOCAL_ROUTE_MATRIX_TIMEOUT_FIXTURE",
+              "weather": "NOT_REQUESTED_OR_OUT_OF_RANGE"
+            },
+            "verified_candidates": [],
+            "weather_evidence": {},
+            "route_evidence": {},
+            "schedule_assignments": [
+              {
+                "day": "2026-10-23",
+                "start_time": "09:00"
+              },
+              {
+                "day": "2026-10-23",
+                "start_time": "13:00"
+              },
+              {
+                "day": "2026-10-24",
+                "start_time": "13:00"
+              }
+            ],
+            "schedule_breaks": [
+              {
+                "day": "2026-10-23",
+                "meal_type": "LUNCH",
+                "label": "午餐",
+                "start_time": "12:00",
+                "end_time": "13:00",
+                "duration_min": 60,
+                "time_is_proposed_default": true
+              },
+              {
+                "day": "2026-10-24",
+                "meal_type": "LUNCH",
+                "label": "午餐",
+                "start_time": "12:00",
+                "end_time": "13:00",
+                "duration_min": 60,
+                "time_is_proposed_default": true
+              }
+            ]
+          },
+          "advisor_reply": "已按草案安排：第1天（10月23日）：人民公园 09:00、锦里 13:00；第2天（10月24日）：武侯祠 13:00\n\n我根据本轮纳入排程的 3 个地点，结合本地距离估算和地图建议游览时长（路线未核验）排出一版时间建议。它只是待确认草案；检查路线和空档后，点击“确认并保存行程”才会生成新计划。\n\n草案还按你的要求预留了：第1天（10月23日） 午餐 12:00–13:00；第2天（10月24日） 午餐 12:00–13:00。这是建议时段，尚未安排餐厅；你可以告诉我想改到几点。"
+        }
+      ],
+      "scores": {
+        "factual_grounding": null,
+        "constraint_safety": null,
+        "task_progress": null,
+        "clarification_quality": null,
+        "transparency": null,
+        "reviewer_notes": ""
+      }
+    }
+  ]
+}
