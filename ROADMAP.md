@@ -2,6 +2,8 @@
 
 Updated: 2026-10-20
 
+Product-suite reproduction stage (2026-10-20): committed runner `scripts/run_advisor_product_live_suite.py` now starts isolated loopback API processes per provider-fixture group, forces Fake Maps and Fake Weather, disables SMTP, creates per-case temporary users through the product evaluator, verifies cleanup, and enforces per-turn/session/aggregate output-token ceilings before writing an aggregate report. Unit tests: **4 passed**; CLI `--help` verified without making model or provider requests. A live rerun still requires a separately approved model-call budget.
+
 Multi-turn holdout package check (2026-10-20): the grounded five-case `advisor_multiturn_holdout_v2` and its declared reference datasets pass frozen-schema, exact case/prompt separation, action ownership, tool-argument, and synthetic failure-observation checks (**12 tests**). This set has already been exposed in prior authorized model evaluation and is not a blind holdout for future prompt or policy changes. The package validates evaluation mechanics; it does not count as new model-quality evidence.
 
 Latest full Python API/evaluation regression (2026-10-20, current local worktree): **879 passed**, with one existing Starlette/httpx deprecation warning. Command: `.venv/Scripts/python.exe -m pytest apps/api/tests tests/evaluation -q`. The worktree contains additional uncommitted changes, so this result describes the tested local tree and must not be attributed to commit `027824f` alone. The reproducibility/provenance check for `027824f` is stored outside the repository at `%TEMP%\travelpilot-provenance-check-027824f.json`; it records that the tree was dirty and fingerprints the evaluation harness and Advisor runtime sources.
