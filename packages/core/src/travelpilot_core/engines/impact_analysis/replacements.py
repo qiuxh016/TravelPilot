@@ -5,7 +5,10 @@ from datetime import time
 from math import isfinite
 from uuid import UUID
 
-from travelpilot_core.engines.impact_analysis.replan import Node
+from travelpilot_core.engines.impact_analysis.replan import (
+    Node,
+    trusted_environment_profile,
+)
 
 
 @dataclass(frozen=True)
@@ -74,7 +77,7 @@ def _minutes(value: str) -> int | None:
 
 
 def _weather_safe(profile: dict | None, condition: str) -> bool:
-    if not profile:
+    if not trusted_environment_profile(profile):
         return False
     exposure = str(profile.get("exposure", "UNKNOWN")).upper()
     sensitivities = profile.get("sensitivity", {})

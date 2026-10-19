@@ -37,10 +37,15 @@ def verify_distance_matrix(output: Any, expected_size: int) -> bool:
     matrix = output.get("durations_min")
     if not isinstance(matrix, list) or len(matrix) != expected_size:
         return False
-    for row in matrix:
+    for index, row in enumerate(matrix):
         if not isinstance(row, list) or len(row) != expected_size:
             return False
         if any(not _valid_number(value) or value < 0 for value in row):
+            return False
+        # A route from a place to itself must take zero minutes. Accepting a
+        # positive diagonal can hide malformed provider matrices and makes the
+        # evidence contract weaker than the distance-matrix tool semantics.
+        if row[index] != 0:
             return False
     return True
 

@@ -43,6 +43,12 @@ class UserPreferenceMemoryCreate(BaseModel):
     expires_at: datetime | None = None
 
 
+class UserPreferenceMemorySuggestionConfirm(BaseModel):
+    category: str = Field(pattern="^(PACE|INTEREST|FOOD|LODGING|TRANSPORT|GENERAL)$")
+    text: str = Field(min_length=2, max_length=240)
+    constraint_type: str = Field(pattern="^(PREFERENCE|HARD_LIMIT)$")
+
+
 class UserPreferenceMemoryUpdate(BaseModel):
     category: str | None = Field(default=None, min_length=2, max_length=40)
     text: str | None = Field(default=None, min_length=2, max_length=1000)

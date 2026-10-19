@@ -1,6 +1,7 @@
 """A small bounded runtime with an explicit tool allowlist."""
 
 import asyncio
+import math
 import re
 import time
 from collections.abc import Awaitable, Callable
@@ -67,6 +68,34 @@ class AgentRuntime:
 
     def __init__(self, tools: list[ToolSpec], trace: Callable[[dict], Awaitable[None]],
                  *, max_steps: int = 5, max_attempts: int | None = None, token_budget: int = 2000):
+        for name, value in (("max_steps", max_steps), ("token_budget", token_budget)):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        if max_attempts is not None and (
+            isinstance(max_attempts, bool)
+            or not isinstance(max_attempts, int)
+            or max_attempts < 0
+        ):
+            raise ValueError("max_attempts must be a non-negative integer or None")
+        names = [tool.name for tool in tools]
+        if any(not isinstance(name, str) or not name.strip() for name in names):
+            raise ValueError("tool names must be non-empty strings")
+        if len(set(names)) != len(names):
+            raise ValueError("tool names must be unique")
+        for tool in tools:
+            if (
+                isinstance(tool.retry_limit, bool)
+                or not isinstance(tool.retry_limit, int)
+                or tool.retry_limit < 0
+            ):
+                raise ValueError(f"tool {tool.name} retry_limit must be a non-negative integer")
+            if (
+                isinstance(tool.timeout_seconds, bool)
+                or not isinstance(tool.timeout_seconds, (int, float))
+                or not math.isfinite(tool.timeout_seconds)
+                or tool.timeout_seconds <= 0
+            ):
+                raise ValueError(f"tool {tool.name} timeout_seconds must be a positive finite number")
         self.tools = {tool.name: tool for tool in tools}
         self.trace = trace
         self.max_steps = max_steps

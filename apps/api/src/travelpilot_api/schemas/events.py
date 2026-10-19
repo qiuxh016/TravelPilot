@@ -1,7 +1,9 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+from .plans import PlanRead
 
 EVENT_TYPES = {"WEATHER_CHANGE", "USER_FATIGUE", "POI_CANCELLED", "TIME_DELAY", "USER_ADD", "RESERVATION_CHANGE"}
 WEATHER_CONDITIONS = {"RAIN", "WIND", "HEAT", "COLD", "SNOW", "STORM"}
@@ -30,7 +32,9 @@ class EventCreate(BaseModel):
     @model_validator(mode="after")
     def valid_payload(self):
         if self.event_type == "WEATHER_CHANGE":
-            condition = self.payload.get("condition", "RAIN")
+            condition = self.payload.get("condition")
+            if condition is None:
+                raise ValueError("payload.condition is required for a weather change")
             if condition not in WEATHER_CONDITIONS:
                 raise ValueError("payload.condition must be a supported weather condition")
         if self.event_type in {"POI_CANCELLED", "USER_ADD", "RESERVATION_CHANGE"}:
@@ -42,6 +46,18 @@ class EventCreate(BaseModel):
             value = self.payload.get("delay_min")
             if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 180:
                 raise ValueError("payload.delay_min must be 1..180")
+        if self.event_type == "USER_ADD":
+            hours = self.payload.get("opening_hours")
+            if hours is not None:
+                if not isinstance(hours, dict):
+                    raise ValueError("payload.opening_hours must be an object")
+                try:
+                    opens = time.fromisoformat(str(hours.get("open", "")))
+                    closes = time.fromisoformat(str(hours.get("close", "")))
+                except ValueError as exc:
+                    raise ValueError("payload.opening_hours must include valid open and close times") from exc
+                if closes <= opens:
+                    raise ValueError("payload.opening_hours.close must be after open")
         return self
 
 
@@ -64,3 +80,40 @@ class DiffItem(BaseModel):
     before: dict | None
     after: dict | None
     change_cost: int
+
+
+class ReplanConfirm(BaseModel):
+    based_on_plan_id: UUID
+    based_on_plan_version: int = Field(ge=1)
+
+
+class ReplanPreviewNode(BaseModel):
+    poi_id: UUID
+    name: str
+    day: date
+    start_time: time
+    end_time: time
+    priority: int
+    status: str
+    note: str | None = None
+
+
+class ReplanPreviewRead(BaseModel):
+    run_id: UUID
+    event_id: UUID
+    based_on_plan_id: UUID
+    based_on_plan_version: int
+    proposed_version: int
+    status: str
+    proposed_plan_status: str
+    warnings: list[str]
+    nodes: list[ReplanPreviewNode]
+    diff: list["DiffItem"]
+    created_at: datetime
+    expires_at: datetime
+
+
+class ReplanConfirmRead(BaseModel):
+    run_id: UUID
+    plan: PlanRead
+    diff: list[DiffItem]

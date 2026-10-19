@@ -13,6 +13,7 @@ from travelpilot_infra.providers.maps.amap import AmapProvider
 from travelpilot_infra.providers.maps.cached import CachedMapsProvider
 from travelpilot_infra.providers.maps.errors import MapsConfigurationError
 from travelpilot_infra.providers.maps.fake import FakeMapsProvider
+from travelpilot_infra.providers.weather.fake import FakeWeatherProvider
 from travelpilot_infra.providers.weather.open_meteo import OpenMeteoProvider
 
 from travelpilot_api.auth import get_current_user
@@ -69,4 +70,6 @@ def get_maps_provider():
 
 @lru_cache(maxsize=1)
 def get_weather_provider():
+    if settings.weather_provider.strip().lower() == "fake":
+        return FakeWeatherProvider()
     return OpenMeteoProvider(settings.weather_timeout_seconds)

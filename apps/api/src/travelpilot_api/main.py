@@ -38,7 +38,11 @@ from travelpilot_api.api.v1.wishlist import (
     wishlist_item_router,
 )
 from travelpilot_api.auth import require_request_scope
+from travelpilot_api.build_info import advisor_runtime_source_manifest, fingerprint_manifest
 from travelpilot_api.settings import settings
+
+ADVISOR_RUNTIME_SOURCE_MANIFEST = advisor_runtime_source_manifest()
+ADVISOR_RUNTIME_FINGERPRINT = fingerprint_manifest(ADVISOR_RUNTIME_SOURCE_MANIFEST)
 
 
 class HealthResponse(BaseModel):
@@ -139,7 +143,8 @@ async def request_trace(request: Request, call_next):
     response_model=HealthResponse,
     tags=["system"],
 )
-async def health() -> HealthResponse:
+async def health(response: Response) -> HealthResponse:
+    response.headers["X-Advisor-Runtime-Fingerprint"] = ADVISOR_RUNTIME_FINGERPRINT
     return HealthResponse(
         status="ok",
         service="travelpilot-api",

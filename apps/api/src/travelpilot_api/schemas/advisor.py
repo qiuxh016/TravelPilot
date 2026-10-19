@@ -10,6 +10,7 @@ class AdvisorRuntimeStatus(BaseModel):
     llm_status: Literal["CONFIGURED", "NOT_CONFIGURED"]
     model_name: str | None = None
     output_token_limit: int
+    session_output_token_limit: int
     upstream_status: Literal["CHECKED_PER_REQUEST"] = "CHECKED_PER_REQUEST"
 
 
@@ -45,6 +46,36 @@ class AdvisorMessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
 
 
+class AdvisorMessageFeedbackCreate(BaseModel):
+    rating: Literal["HELPFUL", "NOT_HELPFUL"]
+    reason: Literal["MISSED_REQUEST", "INACCURATE", "NOT_ACTIONABLE", "TOO_VERBOSE", "OTHER"] | None = None
+
+    @model_validator(mode="after")
+    def validate_reason(self):
+        if self.rating == "HELPFUL" and self.reason is not None:
+            raise ValueError("helpful feedback cannot include a negative reason")
+        return self
+
+
+class AdvisorMessageFeedbackRead(BaseModel):
+    message_id: UUID
+    rating: Literal["HELPFUL", "NOT_HELPFUL"]
+    reason: Literal["MISSED_REQUEST", "INACCURATE", "NOT_ACTIONABLE", "TOO_VERBOSE", "OTHER"] | None
+    submitted_at: datetime
+
+
+class AdvisorDestinationDiscoveryRequest(BaseModel):
+    city: str | None = Field(default=None, min_length=1, max_length=80)
+
+    @model_validator(mode="after")
+    def normalize_city(self):
+        if self.city is not None:
+            self.city = self.city.strip()
+            if not self.city:
+                raise ValueError("city must not be blank")
+        return self
+
+
 class AdvisorSessionContextUpdate(BaseModel):
     destination: str = Field(default="", max_length=120)
     start_date: date | None = None
@@ -73,7 +104,14 @@ class AdvisorCandidateSchedule(BaseModel):
 
 class AdvisorDraftCreate(BaseModel):
     candidate_ids: list[UUID] = Field(min_length=1, max_length=30)
-    schedules: list[AdvisorCandidateSchedule] = Field(min_length=1, max_length=30)
+    schedules: list[AdvisorCandidateSchedule] = Field(default_factory=list, max_length=30)
+    allow_profile_memory_conflicts: bool = False
+
+
+class AdvisorChecklistDecision(BaseModel):
+    item_key: str = Field(min_length=3, max_length=220, pattern=r"^[A-Z_]+:\d{4}-\d{2}-\d{2}(?::[A-Z]+(?::[^\r\n]{0,80})?)?$" )
+    decision: Literal["LATER", "NOT_NEEDED", "RESET"]
+    draft_version: int = Field(ge=1)
 
 
 class AdvisorConfirm(BaseModel):
@@ -88,6 +126,15 @@ class AdvisorMessageRead(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class AdvisorProgressEventRead(BaseModel):
+    id: UUID
+    phase: str
+    operation: str
+    status: str
+    metadata: dict
+    created_at: datetime
 
 
 class AdvisorSessionRead(BaseModel):

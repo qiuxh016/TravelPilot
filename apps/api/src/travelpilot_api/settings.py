@@ -27,9 +27,11 @@ class Settings(BaseSettings):
     smtp_from_email: str = ""
     smtp_use_tls: bool = True
     smtp_use_ssl: bool = False
+    force_development_email_outbox: bool = False
     maps_provider: str = "fake"
     amap_api_key: str = ""
     maps_timeout_seconds: float = 8
+    weather_provider: str = "open_meteo"
     weather_timeout_seconds: float = 8
     redis_url: str = "redis://localhost:6379/0"
     llm_api_key: str = ""
@@ -37,6 +39,8 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.openai.com/v1"
     # Caps generated tokens across extraction and response; prompt tokens are tracked separately.
     llm_max_tokens_per_turn: int = Field(default=1200, ge=128, le=8000)
+    # Per-session generated-token allowance; users must explicitly extend it.
+    llm_max_output_tokens_per_session: int = Field(default=12000, ge=128, le=100000)
     media_storage_dir: str = ".data/media"
     media_storage_backend: str = "local"
     media_max_upload_bytes: int = 10_485_760
@@ -81,6 +85,8 @@ class Settings(BaseSettings):
             (self.smtp_host, self.smtp_from_email)
         ):
             raise ValueError("SMTP_HOST and SMTP_FROM_EMAIL are required in production")
+        if self.app_env.lower() == "production" and self.force_development_email_outbox:
+            raise ValueError("FORCE_DEVELOPMENT_EMAIL_OUTBOX cannot be enabled in production")
         if self.app_env.lower() == "production" and self.media_storage_backend.lower() != "s3":
             raise ValueError("MEDIA_STORAGE_BACKEND=s3 is required in production")
         if self.media_storage_backend.lower() == "s3" and not self.media_s3_bucket:

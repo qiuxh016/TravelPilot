@@ -23,6 +23,7 @@ from travelpilot_api.schemas.memory import (
     UserMemorySettingsUpdate,
     UserPreferenceMemoryCreate,
     UserPreferenceMemoryRead,
+    UserPreferenceMemorySuggestionConfirm,
     UserPreferenceMemoryUpdate,
 )
 
@@ -66,6 +67,43 @@ async def create_user_memory(payload: UserPreferenceMemoryCreate,
         owner_id=user.id, category=payload.category.strip().upper(), text=payload.text.strip(),
         constraint_type=payload.constraint_type, source="USER_EXPLICIT", confidence=1.0,
         confirmed=True, expires_at=payload.expires_at,
+    )
+    session.add(row)
+    await session.commit()
+    await session.refresh(row)
+    return row
+
+
+@router.post("/account/memories/confirm-suggestion", response_model=UserPreferenceMemoryRead, status_code=201)
+async def confirm_user_memory_suggestion(
+    payload: UserPreferenceMemorySuggestionConfirm,
+    session: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
+):
+    settings_row = await session.get(UserMemorySettingsModel, user.id)
+    if settings_row is None or not settings_row.enabled:
+        raise HTTPException(409, detail="请先在账户与隐私中开启偏好记忆")
+    text = " ".join(payload.text.strip().split())
+    if len(text) < 2:
+        raise HTTPException(422, detail="记忆内容不能为空")
+    existing = await session.scalar(select(UserPreferenceMemoryModel).where(
+        UserPreferenceMemoryModel.owner_id == user.id,
+        UserPreferenceMemoryModel.category == payload.category,
+        UserPreferenceMemoryModel.text == text,
+        UserPreferenceMemoryModel.constraint_type == payload.constraint_type,
+        UserPreferenceMemoryModel.source == "MODEL_SUGGESTED",
+        UserPreferenceMemoryModel.confirmed.is_(True),
+    ))
+    if existing is not None:
+        return existing
+    row = UserPreferenceMemoryModel(
+        owner_id=user.id,
+        category=payload.category,
+        text=text,
+        constraint_type=payload.constraint_type,
+        source="MODEL_SUGGESTED",
+        confidence=0.8,
+        confirmed=True,
     )
     session.add(row)
     await session.commit()

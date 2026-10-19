@@ -20,6 +20,8 @@ class WeatherProviderError(RuntimeError):
 
 
 class OpenMeteoProvider:
+    source = "Open-Meteo"
+
     def __init__(self, timeout: float = 8, cache_seconds: int = 1800):
         self.timeout = timeout
         self.cache_seconds = cache_seconds

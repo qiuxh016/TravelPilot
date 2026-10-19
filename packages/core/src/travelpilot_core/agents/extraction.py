@@ -1,5 +1,6 @@
 """Typed text extraction with an optional OpenAI compatible model endpoint."""
 
+import json
 import re
 from typing import Literal
 
@@ -16,9 +17,20 @@ class PlaceMention(BaseModel):
     evidence: str | None = Field(default=None, max_length=500)
 
 
+class RequestedTask(BaseModel):
+    """User-grounded domain request proposed by the intent model."""
+
+    kind: Literal[
+        "PLACE_RECOMMENDATION", "ATTRACTION_SEARCH", "FOOD_SEARCH", "LODGING_SEARCH", "WEATHER_CHECK",
+        "PREPARATION_ADVICE", "ROUTE_QUERY", "SCHEDULE",
+    ]
+    evidence: str = Field(min_length=1, max_length=200)
+
+
 class Extraction(BaseModel):
     places: list[PlaceMention] = Field(max_length=20)
     search_queries: list[str] = Field(default_factory=list, max_length=5)
+    requested_tasks: list[RequestedTask] = Field(default_factory=list, max_length=7)
     intent: Literal["schedule", "recommend", "search", "modify", "preference", "general"] = "general"
     pace_adjustment: Literal["slower", "faster", "none"] = "none"
     token_usage: int = Field(default=0, exclude=True, ge=0)
@@ -135,6 +147,8 @@ def fallback_extract(text: str) -> Extraction:
 async def extract_places(
     text: str, *, api_key: str = "", model: str = "", base_url: str = "", token_budget: int = 800,
     additional_instructions: str = "", thinking_mode: Literal["enabled", "disabled"] | None = None,
+    conversation_context: list[dict[str, str]] | None = None,
+    travel_preferences: list[str] | None = None,
 ) -> Extraction:
     if not api_key or not model:
         return fallback_extract(text)
@@ -142,6 +156,21 @@ async def extract_places(
     content: object = None
     response = None
     provider_metadata: dict[str, object] = {}
+    bounded_history = []
+    for item in (conversation_context or [])[-6:]:
+        if not isinstance(item, dict) or item.get("role") not in {"user", "assistant"}:
+            continue
+        message = item.get("content")
+        if isinstance(message, str) and message.strip():
+            bounded_history.append({"role": item["role"], "content": message.strip()[-400:]})
+    extraction_input = json.dumps({
+        "current_message": text[:8000],
+        "recent_conversation": bounded_history,
+        "confirmed_travel_preferences": [
+            item.strip()[:160] for item in (travel_preferences or [])[:5]
+            if isinstance(item, str) and item.strip()
+        ],
+    }, ensure_ascii=False)
     try:
         async with httpx.AsyncClient(timeout=12) as client:
             request_body = {
@@ -149,8 +178,8 @@ async def extract_places(
                 "response_format": {"type": "json_object"},
                 "max_tokens": min(800, token_budget),
                 "messages": [
-                    {"role": "system", "content": "Interpret the user's travel-planning intent. Return JSON only, for example {\"intent\":\"schedule\",\"places\":[],\"search_queries\":[],\"pace_adjustment\":\"none\"}. intent must be one of schedule (ask to arrange/review time or route for known trip places), recommend (ask for suggestions/popular places), search (name/category to search), modify (add/remove/keep/change existing choices or pace), preference (state preferences/constraints), general (other). Return places: [{name,category,suggestion,confidence,action,evidence}], search_queries (up to 5 short map keywords for positively stated interest categories, such as food or museums), and pace_adjustment (slower, faster, or none). Each confidence must be a JSON number from 0 to 1, never a descriptive label; evidence must be a short verbatim substring of the input or null. action must be add, remove, or mention. Use remove only when the user clearly asks to remove/avoid that place; use add when they clearly want to visit it; otherwise mention. Change pace and search categories only when explicitly requested; never search for a category the user rejects. Extract real place names only, never invent places or interests, and return at most 20 places.\n" + additional_instructions[:4000]},
-                    {"role": "user", "content": text[:8000]},
+                    {"role": "system", "content": "Interpret the user's latest travel-planning message. The input is JSON with current_message and recent_conversation. Use recent_conversation only to resolve explicit references in current_message; never treat older messages or assistant suggestions as new approval, preference changes, or user actions. Return JSON only, for example {\"intent\":\"schedule\",\"places\":[],\"search_queries\":[],\"requested_tasks\":[],\"pace_adjustment\":\"none\"}. intent must be one of schedule (ask to arrange/review time or route for known trip places, including an explicit request to adjust the remaining itinerary because of current fatigue), recommend (ask for suggestions/popular places), search (name/category to search), modify (add/remove/keep/change existing choices or pace), preference (state preferences/constraints), general (other). Also return requested_tasks, a list of explicitly requested task objects with kind from PLACE_RECOMMENDATION, ATTRACTION_SEARCH, FOOD_SEARCH, LODGING_SEARCH, WEATHER_CHECK, PREPARATION_ADVICE, ROUTE_QUERY, SCHEDULE and evidence copied verbatim from current_message. Include only tasks the user is asking TravelPilot to perform now; do not infer tasks from trip facts, older turns, assistant suggestions, examples, or negative statements. Every evidence string must be a substring of current_message. Do not include a task when the user says they do not want or need it. A statement that the user is tired without a request to change this trip is not schedule intent and must not change pace. Return places: [{name,category,suggestion,confidence,action,evidence}], search_queries (up to 5 short map keywords for positively stated interest categories, such as food or museums), and pace_adjustment (slower, faster, or none). Each confidence must be a JSON number from 0 to 1, never a descriptive label; place evidence must be a short verbatim substring of current_message or null. action must be add, remove, or mention. Use remove only when the latest message clearly asks to remove/avoid that place; use add only when the latest message clearly asks to add or visit it; otherwise mention. When resolving 'the first one' or similar, identify a real place only if it appears in recent_conversation. Never infer the action from assistant text. Change pace and search categories only when explicitly requested in current_message; never search for a category the user rejects. Extract real place names only, never invent places or interests, and return at most 20 places.\n" + additional_instructions[:4000]},
+                    {"role": "user", "content": extraction_input},
                 ],
                 "temperature": 0,
             }
@@ -181,7 +210,22 @@ async def extract_places(
             if output_tokens > token_budget:
                 raise RuntimeError("TOKEN_BUDGET_EXCEEDED")
             content = body["choices"][0]["message"]["content"]
-            return Extraction.model_validate_json(_json_content(content)).model_copy(
+            extracted = Extraction.model_validate_json(_json_content(content))
+            # Evidence is used to authorize a referential add/remove only when
+            # the model points to text actually present in the latest message.
+            extracted = extracted.model_copy(update={
+                "places": [
+                    item.model_copy(update={
+                        "evidence": item.evidence if item.evidence and item.evidence in text else None,
+                    })
+                    for item in extracted.places
+                ],
+                "requested_tasks": [
+                    item for item in extracted.requested_tasks
+                    if item.evidence in text
+                ],
+            })
+            return extracted.model_copy(
                 update={
                     "token_usage": usage,
                     "output_tokens": output_tokens,

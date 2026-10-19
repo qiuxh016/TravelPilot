@@ -12,6 +12,7 @@ __pycache__/
 node_modules/
 .next/
 .next-dev/
+.next-dev-test/
 out/
 dist/
 *.egg-info/
@@ -29,4 +30,8 @@ week*.md
 TravelPilot_项目结构与开源参考.md
 TravelPilot_项目规划.md
 计划.md
+
+# Blind-review arm mappings are private and must not be committed.
+tests/evaluation/reviews/*private_key*.json
+tests/evaluation/results/*blind_review*key*.private.json
 

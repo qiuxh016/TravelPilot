@@ -6,7 +6,12 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from travelpilot_core.agents.loop import AgentAction, LoopResult, run_constrained_loop
+from travelpilot_core.agents.loop import (
+    AgentAction,
+    AgentTaskContext,
+    LoopResult,
+    run_constrained_loop,
+)
 from travelpilot_core.agents.planner import (
     PlannerDecisionFailure,
     decide_next_action,
@@ -202,6 +207,15 @@ async def run_planner_agent(trip_id: UUID, payload: PlannerRequest,
             checkpoint=lambda state: checkpoint(state["state"],
                                                 transition=state.get("transition", 0),
                                                 tool=state.get("tool"), error=state.get("error")),
+            task_context=AgentTaskContext(
+                task_type="SCHEDULE",
+                goal="Build a schedule proposal from the selected trip places and current preferences",
+                known_facts=["trip_id"],
+                missing_facts=[],
+                success_criteria=["load verified trip context", "verify travel times when available"],
+                allowed_tools=["get_trip_context", "get_distance_matrix"],
+                approval_boundary="DRAFT_ONLY",
+            ),
             initial_observation={"trip_id": str(trip_id)}, max_decisions=3,
             allowed_tool_names={"get_trip_context", "get_distance_matrix"},
         )

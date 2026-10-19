@@ -198,21 +198,41 @@ export async function getStaticMapImage(points: { latitude: number; longitude: n
 export type AdvisorCandidate = {
   id: string; provider: string; provider_id: string; name: string; address: string | null;
   category: string; latitude: number; longitude: number; duration_min: number;
+  planning_category?: "FOOD" | "LODGING" | "ATTRACTION"; meal_type?: "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK" | null;
   opening_hours: Record<string, string> | null; confidence: number; suggestion: string | null;
   popularity_score?: number | null; explicit_day?: string; explicit_start_time?: string;
   in_current_plan?: boolean; existing_poi_id?: string; verification_status?: string; verified_at?: string;
+  profile_memory_conflicts?: string[];
+};
+export type AdvisorTaskSnapshot = {
+  task_id: string; task_type: "DISCOVERY" | "SCHEDULE" | "SEARCH" | "MEAL" | "LODGING" | "TRANSPORT" | "WEATHER" | "PREPARATION" | "MEMORY" | "GENERAL";
+  status: "WAITING_USER" | "PROPOSED" | "COMPLETED" | "PARTIAL" | "CANCELLED" | "STALE" | "FAILED";
+  goal: string; context_revision: number; turn_number: number; answers: string[];
+  question: string | null; action_summary: string;
+};
+export type AdvisorTransportRoute = {
+  status: "VERIFIED" | "SIMULATED"; mode: "DRIVING" | "WALKING" | "TRANSIT";
+  origin_name: string; destination_name: string; source: string; retrieved_at: string;
+  distance_m: number; duration_min: number; points: [number, number][]; polyline: [number, number][];
+  segments?: { mode: string; label: string }[];
 };
 export type AdvisorMessage = { id: string; role: "user" | "assistant"; content: string; payload: Record<string, unknown> | null; created_at: string };
+export type AdvisorMessageFeedbackRating = "HELPFUL" | "NOT_HELPFUL";
+export type AdvisorMessageFeedbackReason = "MISSED_REQUEST" | "INACCURATE" | "NOT_ACTIONABLE" | "TOO_VERBOSE" | "OTHER";
+export type AdvisorMessageFeedback = {
+  message_id: string; rating: AdvisorMessageFeedbackRating; reason: AdvisorMessageFeedbackReason | null; submitted_at: string;
+};
 export type AdvisorDestinationRecommendation = {
   city: string; matched_interests: string[]; place_count: number; reasons: string[]; provider: string; retrieved_at: string;
-  places: { name: string; category: string; address: string | null; provider: string; provider_id: string; latitude: number; longitude: number }[];
+  places: { name: string; category: string; address: string | null; provider: string; provider_id: string; latitude: number; longitude: number; popularity_score?: number | null }[];
 };
-export type AdvisorStop = { candidate_id: string; name: string; day: string; start_time: string; end_time: string; latitude: number; longitude: number; category: string; address: string | null };
+export type AdvisorStop = { candidate_id: string; name: string; day: string; start_time: string; end_time: string; latitude: number; longitude: number; category: string; planning_category?: "FOOD" | "LODGING" | "ATTRACTION"; meal_type?: "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK" | null; note?: string | null; address: string | null };
 export type AdvisorPlanSnapshot = { id: string; version: number; status: string; warnings: string[]; stops: (AdvisorStop & { poi_id: string; priority: number; status: string; note: string | null })[] };
 export type AdvisorMemorySnapshot = { id: string; type: string; text: string; importance: number; confidence: number };
 export type AdvisorPlanningSlot = { value: string | number | null; source: string | null; confidence: number; status: "known" | "missing" };
 export type AdvisorContext = {
   revision: number; selected_candidate_ids: string[]; current_plan: AdvisorPlanSnapshot | null;
+  checklist_decisions?: Record<string, { decision: "LATER" | "NOT_NEEDED"; draft_version: number }>;
   confirmed_memories: AdvisorMemorySnapshot[];
   personal_memories?: { id: string; category: string; text: string; constraint_type: "PREFERENCE" | "HARD_LIMIT" }[];
   planning_inputs?: { origin: string; companions: string[]; hard_constraints: string[] };
@@ -223,15 +243,23 @@ export type AdvisorDraftWeather = {
   status: "AVAILABLE" | "OUT_OF_RANGE" | "UNAVAILABLE"; city: string; timezone: string | null;
   source: string; attribution: string; fetched_at: string; message: string | null;
   days: { date: string; description: string; temperature_max_c: number | null;
-    temperature_min_c: number | null; precipitation_probability_max: number | null }[];
+    temperature_min_c: number | null; precipitation_probability_max: number | null;
+    advice?: { kind: string; text: string }[] }[];
+  plan_impacts?: { candidate_id: string; name: string; day: string; reason: string }[];
 };
-export type AdvisorDraft = { version: number; context_revision: number; generated_at: string; selected_candidate_ids: string[]; applied_personal_memories?: { id: string; category: string; text: string; constraint_type: "PREFERENCE" | "HARD_LIMIT" }[]; transport?: { status: "NOT_REQUIRED" | "VERIFIED" | "SIMULATED"; source: string | null; retrieved_at: string | null }; origin_leg?: { status: "NOT_PROVIDED" | "VERIFIED" | "SIMULATED" | "UNRESOLVED" | "UNAVAILABLE"; from: string | null; duration_min: number | null; source: string | null; retrieved_at: string | null }; warnings: string[]; weather?: AdvisorDraftWeather; trip_changes?: { before: Record<string, string | number | null>; after: Record<string, string | number | null> } | null; pace_change: { before: number; after: number } | null; changes: AdvisorChange[]; change_summary: Record<string, number>; stops: AdvisorStop[] };
+export type AdvisorAttentionItem = { kind: "MEAL_MISSING" | "OPEN_GAP" | "EMPTY_DAY" | "REST_CHECK" | "LODGING_MISSING" | "ORIGIN_MISSING" | "TRANSPORT_UNVERIFIED"; day: string; meal_type?: "LUNCH" | "DINNER"; from?: string; to?: string; hours?: number };
+export type AdvisorDraft = { version: number; context_revision: number; generated_at: string; selected_candidate_ids: string[]; attention_items?: AdvisorAttentionItem[]; lodging?: { candidate_id: string; name: string; address: string | null; provider: string; verification_status: string | null }[]; applied_personal_memories?: { id: string; category: string; text: string; constraint_type: "PREFERENCE" | "HARD_LIMIT" }[]; transport?: { status: "NOT_REQUIRED" | "VERIFIED" | "SIMULATED" | "UNAVAILABLE"; source: string | null; retrieved_at: string | null }; origin_leg?: { status: "NOT_PROVIDED" | "VERIFIED" | "SIMULATED" | "UNRESOLVED" | "UNAVAILABLE"; from: string | null; duration_min: number | null; source: string | null; retrieved_at: string | null }; warnings: string[]; weather?: AdvisorDraftWeather; trip_changes?: { before: Record<string, string | number | null>; after: Record<string, string | number | null> } | null; pace_change: { before: number; after: number } | null; changes: AdvisorChange[]; change_summary: Record<string, number>; stops: AdvisorStop[] };
 export type AdvisorSession = {
   id: string; mode: "discover" | "destination" | "existing"; trip_id: string | null; destination: string;
   start_date: string | null; end_date: string | null; budget: string | number | null; pace_level: number;
   preference_text: string; candidates: AdvisorCandidate[]; context: AdvisorContext; draft: AdvisorDraft | null; draft_version: number; draft_stale: boolean;
   status: "ACTIVE" | "CONFIRMED"; confirmed_trip_id: string | null; confirmed_plan_id: string | null;
   created_at: string; updated_at: string; messages: AdvisorMessage[];
+};
+export type AdvisorProgressEvent = {
+  id: string; phase: string; operation: string; status: string;
+  metadata: { state?: string; transition?: number; tool?: string; error_code?: string; observation_keys?: string[] };
+  created_at: string;
 };
 export type AdvisorRuntimeStatus = {
   llm_status: "CONFIGURED" | "NOT_CONFIGURED" | "UNAVAILABLE";
@@ -254,9 +282,19 @@ export const getAdvisorRuntimeStatus = () => request<AdvisorRuntimeStatus>("/api
 export const createAdvisorSession = (input: AdvisorSessionInput) => request<AdvisorSession>("/api/v1/advisor/sessions", { method: "POST", body: JSON.stringify(input) });
 export const updateAdvisorSessionContext = (sessionId: string, input: AdvisorSessionContextInput) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/context`, { method: "PATCH", body: JSON.stringify(input) });
 export const getAdvisorSession = (sessionId: string) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}`);
-export const sendAdvisorMessage = (sessionId: string, content: string) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/messages`, { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ content }) });
-export const recommendAdvisorDestinations = (sessionId: string) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/destinations`, { method: "POST", body: "{}" });
-export const createAdvisorDraft = (sessionId: string, candidate_ids: string[], schedules: { candidate_id: string; day: string; start_time: string }[]) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/draft`, { method: "POST", body: JSON.stringify({ candidate_ids, schedules }) });
+export const updateAdvisorChecklistDecision = (sessionId: string, item_key: string, decision: "LATER" | "NOT_NEEDED" | "RESET", draft_version: number) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/checklist`, { method: "PATCH", body: JSON.stringify({ item_key, decision, draft_version }) });
+export const sendAdvisorMessage = (sessionId: string, content: string, idempotencyKey = crypto.randomUUID()) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/messages`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ content }) });
+export const submitAdvisorMessageFeedback = (
+  sessionId: string,
+  messageId: string,
+  rating: AdvisorMessageFeedbackRating,
+  reason?: AdvisorMessageFeedbackReason,
+) => request<AdvisorMessageFeedback>(`/api/v1/advisor/sessions/${sessionId}/messages/${messageId}/feedback`, {
+  method: "PUT", body: JSON.stringify({ rating, ...(reason ? { reason } : {}) }),
+});
+export const getAdvisorRunProgress = (sessionId: string, idempotencyKey: string, signal?: AbortSignal) => request<AdvisorProgressEvent[]>(`/api/v1/advisor/sessions/${sessionId}/progress`, { headers: { "Idempotency-Key": idempotencyKey }, signal });
+export const recommendAdvisorDestinations = (sessionId: string, idempotencyKey = crypto.randomUUID(), city?: string) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/destinations`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(city ? { city } : {}) });
+export const createAdvisorDraft = (sessionId: string, candidate_ids: string[], schedules: { candidate_id: string; day: string; start_time: string }[], allow_profile_memory_conflicts = false, idempotencyKey = crypto.randomUUID()) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/draft`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ candidate_ids, schedules, allow_profile_memory_conflicts }) });
 export const confirmAdvisorDraft = (sessionId: string, draft_version: number) => request<{ trip_id: string; plan_id: string; plan_version: number; already_confirmed: boolean }>(`/api/v1/advisor/sessions/${sessionId}/confirm`, { method: "POST", body: JSON.stringify({ draft_version }) });
 export const deleteAdvisorSession = (sessionId: string) => request<void>(`/api/v1/advisor/sessions/${sessionId}`, { method: "DELETE" });
 export async function updateTrip(tripId: string, input: Partial<TripCreateInput>): Promise<Trip> {
@@ -362,11 +400,23 @@ export const confirmCandidates = (contentId: string, candidateIds: string[]) =>
 
 export type TripEvent = { id: string; trip_id: string; event_type: string; effective_at: string; effective_timezone_offset_minutes: number; payload: Record<string, unknown>; created_at: string };
 export type PlanDiff = { stable_key: string; operation: string; reason_code: string; before: Record<string, unknown> | null; after: Record<string, unknown> | null; change_cost: number };
-export type ReplanResult = { run_id: string; plan: Plan; diff: PlanDiff[] };
+export type ReplanResult = {
+  run_id: string; event_id: string; based_on_plan_id: string; based_on_plan_version: number;
+  proposed_version: number; status: "PREVIEWED";
+  proposed_plan_status: "READY" | "PLAN_CONFLICT" | "NEEDS_USER_INPUT" | "INFEASIBLE";
+  warnings: string[];
+  nodes: Plan["nodes"]; diff: PlanDiff[]; created_at: string; expires_at: string;
+};
+export type ReplanConfirmation = { run_id: string; plan: Plan; diff: PlanDiff[] };
 export const createEvent = (tripId: string, eventType: string, effectiveAt: string, payload: Record<string, unknown>) =>
   request<TripEvent>(`/api/v1/trips/${tripId}/events`, { method: "POST", body: JSON.stringify({ event_type: eventType, effective_at: effectiveAt, payload }) });
 export const replan = (tripId: string, eventId: string) =>
   request<ReplanResult>(`/api/v1/trips/${tripId}/replan-runs`, { method: "POST", body: JSON.stringify({ event_id: eventId }) });
+export const confirmReplan = (tripId: string, preview: ReplanResult) =>
+  request<ReplanConfirmation>(`/api/v1/trips/${tripId}/replan-runs/${preview.run_id}/confirm`, {
+    method: "POST",
+    body: JSON.stringify({ based_on_plan_id: preview.based_on_plan_id, based_on_plan_version: preview.based_on_plan_version }),
+  });
 export const getPlanDiff = (tripId: string, planId: string) =>
   request<PlanDiff[]>(`/api/v1/trips/${tripId}/plans/${planId}/diff`);
 export type Memory = { id: string; trip_id: string; feedback_id: string | null; memory_type: string; text: string; importance: number; confidence: number; confirmed: boolean; created_at: string };
@@ -379,11 +429,14 @@ export const updateMemory = (tripId: string, memoryId: string, input: { text?: s
 export const deleteMemory = (tripId: string, memoryId: string) =>
   request<void>(`/api/v1/trips/${tripId}/memories/${memoryId}`, { method: "DELETE" });
 export type UserPreferenceMemory = { id: string; category: string; text: string; constraint_type: "PREFERENCE" | "HARD_LIMIT"; source: string; confidence: number; confirmed: boolean; expires_at: string | null; created_at: string };
+export type AdvisorMemorySuggestion = { category: "PACE" | "INTEREST" | "FOOD" | "LODGING" | "TRANSPORT" | "GENERAL"; text: string; evidence: string };
 export const getUserMemorySettings = () => request<{ enabled: boolean }>("/api/v1/account/memory-settings");
 export const setUserMemorySettings = (enabled: boolean) => request<{ enabled: boolean }>("/api/v1/account/memory-settings", { method: "PUT", body: JSON.stringify({ enabled }) });
 export const listUserMemories = () => request<UserPreferenceMemory[]>("/api/v1/account/memories");
 export const createUserMemory = (input: { category: string; text: string; constraint_type: "PREFERENCE" | "HARD_LIMIT" }) =>
   request<UserPreferenceMemory>("/api/v1/account/memories", { method: "POST", body: JSON.stringify(input) });
+export const confirmUserMemorySuggestion = (input: AdvisorMemorySuggestion & { constraint_type: "PREFERENCE" | "HARD_LIMIT" }) =>
+  request<UserPreferenceMemory>("/api/v1/account/memories/confirm-suggestion", { method: "POST", body: JSON.stringify(input) });
 export const updateUserMemory = (id: string, input: { category?: string; text?: string; constraint_type?: "PREFERENCE" | "HARD_LIMIT" }) =>
   request<UserPreferenceMemory>(`/api/v1/account/memories/${id}`, { method: "PATCH", body: JSON.stringify(input) });
 export const deleteUserMemory = (id: string) => request<void>(`/api/v1/account/memories/${id}`, { method: "DELETE" });

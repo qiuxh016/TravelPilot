@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Literal
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -99,24 +100,33 @@ async def decide_next_action(
     }
     prompt = {
         "observation": observation,
-        "allowed_read_only_tools": tool_contracts,
-        "allowed_actions": ["CALL_TOOL", "FINISH"],
+        "allowed_tools": tool_contracts,
+        "allowed_actions": ["CALL_TOOL", "ASK_USER", "FINISH"],
     }
     try:
-        async with httpx.AsyncClient(timeout=12) as client:
-            response = await client.post(base_url.rstrip("/") + "/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}"}, json={
+        body = {
                     "model": model, "response_format": {"type": "json_object"},
                     "max_tokens": min(128, token_budget), "temperature": 0,
                     "messages": [
                         {"role": "system", "content": (
-                            "Choose the next read-only action only. Return JSON with kind, optional tool, "
-                            "arguments, and summary. Never invent tool names or arguments. If no additional "
-                            "read-only observation is needed, return kind FINISH."
+                            "Select exactly one next action using only the supplied observations and tools. "
+                            "Output one compact JSON object and no prose. Schema examples: "
+                            '{"kind":"CALL_TOOL","tool":"get_distance_matrix","arguments":{},"summary":"check route"}; '
+                            '{"kind":"ASK_USER","question":"Which date?"}; '
+                            '{"kind":"FINISH","summary":"Ready for review"}. '
+                            "Ask only for a feasibility-critical missing fact. Never invent tools or commit, "
+                            "delete, share, or publish data."
                         )},
-                        {"role": "user", "content": str(prompt)[:6000]},
+                        {"role": "user", "content": str(prompt)[:4000]},
                     ],
-                })
+                }
+        if urlparse(base_url).hostname == "api.deepseek.com":
+            body["thinking"] = {"type": "disabled"}
+        async with httpx.AsyncClient(timeout=12) as client:
+            response = await client.post(
+                base_url.rstrip("/") + "/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"}, json=body,
+            )
             response.raise_for_status()
             body = response.json()
             raw_usage = body.get("usage", {})

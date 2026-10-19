@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta, timezone
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,7 +15,12 @@ from travelpilot_core.engines.impact_analysis.replacements import (
     ReplanCandidate,
     search_weather_replacements,
 )
-from travelpilot_core.engines.impact_analysis.replan import Node, plan_diff, replan
+from travelpilot_core.engines.impact_analysis.replan import (
+    Node,
+    plan_diff,
+    replan,
+    trusted_environment_profile,
+)
 from travelpilot_core.skills import check_skill_applicability, load_skill
 from travelpilot_infra.db.models.plan import TripPlanModel, TripPlanNodeModel
 from travelpilot_infra.db.models.plan_change import PlanChangeModel
@@ -30,7 +35,15 @@ from travelpilot_worker.jobs import QUEUE, RESULT_PREFIX, ReplanJob
 
 from travelpilot_api.api.v1.plans import to_read
 from travelpilot_api.dependencies import get_maps_provider, get_owned_trip
-from travelpilot_api.schemas.events import DiffItem, EventCreate, EventRead, ReplanRequest
+from travelpilot_api.schemas.events import (
+    DiffItem,
+    EventCreate,
+    EventRead,
+    ReplanConfirm,
+    ReplanConfirmRead,
+    ReplanPreviewRead,
+    ReplanRequest,
+)
 from travelpilot_api.settings import settings
 
 router = APIRouter(prefix="/trips/{trip_id}", tags=["events"])
@@ -102,6 +115,8 @@ def _validate(nodes: list[Node], pois: dict[UUID, PoiModel]) -> list[str]:
 
 def _safe_weather_alternative(item: WishlistItemModel, poi: PoiModel, condition: str) -> bool:
     profile = item.environment_profile or poi.environment_profile or {}
+    if not trusted_environment_profile(profile):
+        return False
     exposure = str(profile.get("exposure", "UNKNOWN")).upper()
     sensitivity = profile.get("sensitivity", {})
     if isinstance(sensitivity, dict):
@@ -132,7 +147,7 @@ async def create_event(
     return event
 
 
-@router.post("/replan-runs")
+@router.post("/replan-runs", response_model=ReplanPreviewRead)
 async def create_replan(
     trip_id: UUID,
     payload: ReplanRequest,
@@ -160,10 +175,15 @@ async def create_replan(
         ).all()
     )
     old_nodes = _snapshots(old_rows, environment_profiles)
-    try:
-        new_nodes, warnings = replan(old_nodes, event.event_type, effective_at, event.payload)
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(422, detail=str(exc)) from exc
+    if event.event_type == "USER_ADD":
+        # This event needs an owner-scoped Wishlist/POI lookup and route-aware slot
+        # search; the pure replan engine cannot safely synthesize those inputs.
+        new_nodes, warnings = list(old_nodes), []
+    else:
+        try:
+            new_nodes, warnings = replan(old_nodes, event.event_type, effective_at, event.payload)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(422, detail=str(exc)) from exc
     search_diagnostics = None
     skill_decision = None
     weather_skill = None
@@ -356,7 +376,7 @@ async def create_replan(
                 poi.category,
                 poi.suggested_duration_min,
                 item.priority,
-                poi.opening_hours,
+                event.payload.get("opening_hours") or poi.opening_hours,
             )
             candidate, reason = find_user_add_slot(
                 new_nodes, add_candidate, effective_at, {}
@@ -425,52 +445,30 @@ async def create_replan(
     needs_input = event.event_type == "RESERVATION_CHANGE" and (
         not event.payload.get("start_time") or not event.payload.get("end_time")
     )
-    plan = TripPlanModel(
-        trip_id=trip_id,
-        version=await repository.next_version(trip_id),
-        status="PLAN_CONFLICT" if conflicts else "NEEDS_USER_INPUT" if needs_input else "READY",
-        warnings=warnings + conflicts,
+    user_add_infeasible = event.event_type == "USER_ADD" and user_add_diagnostic["outcome"] != "ADDED"
+    proposed_status = (
+        "PLAN_CONFLICT" if conflicts
+        else "NEEDS_USER_INPUT" if needs_input
+        else "INFEASIBLE" if user_add_infeasible
+        else "READY"
     )
-    session.add(plan)
-    await session.flush()
-    session.add_all(
-        [
-            TripPlanNodeModel(
-                plan_id=plan.id,
-                poi_id=node.poi_id,
-                day=node.day,
-                start_time=node.start_time,
-                end_time=node.end_time,
-                priority=node.priority,
-                status=node.status,
-                note=node.note,
-            )
-            for node in new_nodes
-        ]
-    )
-    session.add_all(
-        [
-            PlanChangeModel(
-                plan_id=plan.id,
-                change_type=change["operation"],
-                stable_key=change["stable_key"],
-                reason_code=change["reason_code"],
-                change_cost=change["change_cost"],
-                before_data=change["before"],
-                after_data=change["after"],
-                reason=change["reason_code"],
-            )
-            for change in changes
-            if change["operation"] != "KEEP"
-        ]
-    )
+    preview_nodes = [
+        {
+            "poi_id": str(node.poi_id), "name": pois[node.poi_id].name,
+            "day": node.day.isoformat(), "start_time": node.start_time.isoformat(),
+            "end_time": node.end_time.isoformat(), "priority": node.priority,
+            "status": node.status, "note": node.note,
+        }
+        for node in new_nodes
+    ]
     workflow = WorkflowRunModel(
         trip_id=trip_id,
         kind="REPLAN",
-        status="SUCCEEDED",
+        status="PREVIEWED",
         input_data={
             "event_id": str(event.id),
             "source_plan_id": str(previous_plan.id),
+            "source_plan_version": previous_plan.version,
             "skill": (
                 {"name": weather_skill.name, "version": weather_skill.version}
                 if weather_skill
@@ -479,17 +477,182 @@ async def create_replan(
             "skill_applicability": skill_decision,
         },
         output_data={
-            "plan_id": str(plan.id),
+            "preview": {
+                "status": proposed_status,
+                "warnings": warnings + conflicts,
+                "nodes": preview_nodes,
+            },
+            "diff": changes,
             "change_cost": sum(change["change_cost"] for change in changes),
             "replacement_search": search_diagnostics,
             "user_add": user_add_diagnostic,
         },
     )
     session.add(workflow)
-    trip.status = plan.status
+    await session.flush()
+    await session.commit()
+    return {
+        "run_id": workflow.id,
+        "event_id": event.id,
+        "based_on_plan_id": previous_plan.id,
+        "based_on_plan_version": previous_plan.version,
+        "proposed_version": previous_plan.version + 1,
+        "status": "PREVIEWED",
+        "proposed_plan_status": proposed_status,
+        "warnings": warnings + conflicts,
+        "nodes": preview_nodes,
+        "diff": changes,
+        "created_at": workflow.created_at,
+        "expires_at": workflow.created_at + timedelta(minutes=15),
+    }
+
+
+@router.post("/replan-runs/{run_id}/confirm", response_model=ReplanConfirmRead)
+async def confirm_replan(
+    trip_id: UUID,
+    run_id: UUID,
+    payload: ReplanConfirm,
+    session: AsyncSession = Depends(get_session),
+    _trip: TripModel = Depends(get_owned_trip),
+):
+    run = await session.scalar(
+        select(WorkflowRunModel)
+        .where(
+            WorkflowRunModel.id == run_id,
+            WorkflowRunModel.trip_id == trip_id,
+            WorkflowRunModel.kind == "REPLAN",
+        )
+        .with_for_update()
+    )
+    if run is None or run.trip_id != trip_id or run.kind != "REPLAN":
+        raise HTTPException(404, detail="Replan preview not found")
+    output = run.output_data if isinstance(run.output_data, dict) else {}
+    preview = output.get("preview") if isinstance(output.get("preview"), dict) else {}
+    if run.status == "CONFIRMED":
+        plan_id = (output.get("plan_id") if isinstance(output, dict) else None)
+        if not plan_id:
+            raise HTTPException(409, detail="Confirmed replan is missing its plan reference")
+        full = await PlanRepository(session).get_with_nodes(trip_id, UUID(str(plan_id)))
+        if full is None:
+            raise HTTPException(404, detail="Confirmed plan not found")
+        return {"run_id": run.id, "plan": to_read(*full), "diff": output.get("diff", [])}
+    if run.status != "PREVIEWED":
+        raise HTTPException(409, detail="Replan preview is no longer available")
+    if preview.get("status") != "READY":
+        raise HTTPException(409, detail="This preview has unresolved conflicts or needs more information")
+    input_data = run.input_data if isinstance(run.input_data, dict) else {}
+    if (
+        input_data.get("source_plan_id") != str(payload.based_on_plan_id)
+        or input_data.get("source_plan_version") != payload.based_on_plan_version
+    ):
+        raise HTTPException(409, detail="Confirmation does not match the plan version used for this preview")
+    created_at = run.created_at
+    if created_at is None:
+        raise HTTPException(409, detail="Replan preview timestamp is unavailable; generate a fresh preview")
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=UTC)
+    if datetime.now(UTC) - created_at > timedelta(minutes=15):
+        run.status = "EXPIRED"
+        await session.commit()
+        raise HTTPException(409, detail="Replan preview expired; generate a fresh preview")
+
+    repository = PlanRepository(session)
+    next_version = await repository.next_version(trip_id)
+    latest = (await repository.list_by_trip(trip_id))[:1]
+    if not latest or latest[0].id != payload.based_on_plan_id or latest[0].version != payload.based_on_plan_version:
+        run.status = "STALE"
+        await session.commit()
+        raise HTTPException(409, detail="Trip plan changed after this preview; generate a fresh preview")
+    source_plan = latest[0]
+    old_plan_and_rows = await repository.get_with_nodes(trip_id, source_plan.id)
+    if old_plan_and_rows is None:
+        raise HTTPException(404, detail="Source plan not found")
+    old_rows = old_plan_and_rows[1]
+    old_environment = dict(
+        (await session.execute(
+            select(WishlistItemModel.poi_id, WishlistItemModel.environment_profile)
+            .where(WishlistItemModel.trip_id == trip_id)
+        )).all()
+    )
+    old_nodes = _snapshots(old_rows, old_environment)
+    proposed_rows = preview.get("nodes")
+    if not isinstance(proposed_rows, list) or len(proposed_rows) > 100:
+        raise HTTPException(409, detail="Replan preview is malformed")
+    new_nodes = []
+    pois: dict[UUID, PoiModel] = {}
+    for item in proposed_rows:
+        if not isinstance(item, dict):
+            raise HTTPException(409, detail="Replan preview is malformed")
+        try:
+            poi_id = UUID(str(item["poi_id"]))
+            node = Node(
+                poi_id=poi_id, name=str(item["name"]), category="",
+                day=datetime.fromisoformat(item["day"]).date(),
+                start_time=time.fromisoformat(item["start_time"]),
+                end_time=time.fromisoformat(item["end_time"]),
+                priority=int(item["priority"]), status=str(item["status"]),
+                note=item.get("note"),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise HTTPException(409, detail="Replan preview is malformed") from exc
+        poi = await session.get(PoiModel, poi_id)
+        if poi is None or poi.name != node.name:
+            raise HTTPException(409, detail="A proposed place changed or is no longer available")
+        if not any(existing.poi_id == poi_id for existing in old_nodes):
+            membership = await session.execute(
+                select(WishlistItemModel.id).where(
+                    WishlistItemModel.trip_id == trip_id,
+                    WishlistItemModel.poi_id == poi_id,
+                )
+            )
+            if membership.scalar_one_or_none() is None:
+                raise HTTPException(409, detail="A proposed new place is no longer in this trip's Wishlist")
+        new_nodes.append(node)
+        pois[poi_id] = poi
+    conflicts = _validate(new_nodes, pois)
+    if conflicts:
+        raise HTTPException(409, detail="Preview no longer passes plan validation")
+    event_id = UUID(str(input_data.get("event_id", "")))
+    event = await session.get(TripEventModel, event_id)
+    if event is None or event.trip_id != trip_id:
+        raise HTTPException(409, detail="Source event is no longer available")
+    changes = plan_diff(old_nodes, new_nodes, event.event_type)
+    warnings = preview.get("warnings")
+    if not isinstance(warnings, list) or any(not isinstance(item, str) for item in warnings):
+        raise HTTPException(409, detail="Replan preview is malformed")
+    needs_input = event.event_type == "RESERVATION_CHANGE" and (
+        not event.payload.get("start_time") or not event.payload.get("end_time")
+    )
+    status = "NEEDS_USER_INPUT" if needs_input else str(preview.get("status", "READY"))
+    plan = TripPlanModel(
+        trip_id=trip_id, version=next_version,
+        status=status, warnings=warnings,
+    )
+    session.add(plan)
+    await session.flush()
+    session.add_all([
+        TripPlanNodeModel(
+            plan_id=plan.id, poi_id=node.poi_id, day=node.day,
+            start_time=node.start_time, end_time=node.end_time,
+            priority=node.priority, status=node.status, note=node.note,
+        ) for node in new_nodes
+    ])
+    session.add_all([
+        PlanChangeModel(
+            plan_id=plan.id, change_type=change["operation"],
+            stable_key=change["stable_key"], reason_code=change["reason_code"],
+            change_cost=change["change_cost"], before_data=change["before"],
+            after_data=change["after"], reason=change["reason_code"],
+        ) for change in changes if change["operation"] != "KEEP"
+    ])
+    trip = await session.get(TripModel, trip_id)
+    if trip is not None:
+        trip.status = plan.status
+    run.status = "CONFIRMED"
+    run.output_data = {**output, "plan_id": str(plan.id), "diff": changes}
     await session.commit()
     full = await repository.get_with_nodes(trip_id, plan.id)
-    return {"run_id": workflow.id, "plan": to_read(*full), "diff": changes}
+    return {"run_id": run.id, "plan": to_read(*full), "diff": changes}
 
 
 @router.post("/replan-jobs", status_code=202)

@@ -135,6 +135,7 @@ class PlanService:
 
     async def remove_poi_from_latest(self, trip_id: UUID, poi_id: UUID) -> bool:
         """Create a latest-plan revision without nodes for a removed wishlist POI."""
+        next_version = await self.repository.next_version(trip_id)
         plans = await self.repository.list_by_trip(trip_id)
         if not plans:
             return False
@@ -146,7 +147,7 @@ class PlanService:
 
         revised = TripPlanModel(
             trip_id=trip_id,
-            version=source.version + 1,
+            version=next_version,
             status=source.status,
             warnings=list(source.warnings),
         )

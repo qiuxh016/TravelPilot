@@ -2,6 +2,9 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime, time
 from uuid import UUID
 
+_TRUSTED_ENVIRONMENT_SOURCES = frozenset({"USER", "PROVIDER", "EDITORIAL"})
+_MIN_ENVIRONMENT_CONFIDENCE = 0.7
+
 
 @dataclass(frozen=True)
 class Node:
@@ -32,8 +35,10 @@ def _clock(value: int) -> time:
 def _weather_impact(node: Node, payload: dict) -> str:
     """Return REMOVE, KEEP, or UNKNOWN without guessing from POI category."""
     profile = node.environment_profile or {}
+    if not trusted_environment_profile(profile):
+        return "UNKNOWN"
     exposure = str(profile.get("exposure", "UNKNOWN")).upper()
-    condition = str(payload.get("condition", "RAIN")).upper()
+    condition = str(payload.get("condition", "")).upper()
     sensitivity_map = profile.get("sensitivity", {})
     if isinstance(sensitivity_map, dict):
         sensitivity = str(sensitivity_map.get(condition, "UNKNOWN")).upper()
@@ -49,6 +54,24 @@ def _weather_impact(node: Node, payload: dict) -> str:
     return "KEEP"
 
 
+def trusted_environment_profile(profile: dict | None) -> bool:
+    """Whether a profile has provenance and confidence fit for weather actions."""
+    if not isinstance(profile, dict):
+        return False
+    source = str(profile.get("source", "UNKNOWN")).upper()
+    confidence = profile.get("confidence")
+    if isinstance(confidence, bool):
+        return False
+    try:
+        confidence = float(confidence)
+    except (TypeError, ValueError):
+        return False
+    return (
+        source in _TRUSTED_ENVIRONMENT_SOURCES
+        and _MIN_ENVIRONMENT_CONFIDENCE <= confidence <= 1
+    )
+
+
 def affected(node: Node, effective_at: datetime) -> bool:
     """The first version only touches the event day, from the event time onward."""
     return node.day == effective_at.date() and node.start_time >= effective_at.time().replace(tzinfo=None)
@@ -56,9 +79,15 @@ def affected(node: Node, effective_at: datetime) -> bool:
 
 def replan(nodes: list[Node], event_type: str, effective_at: datetime,
            payload: dict) -> tuple[list[Node], list[str]]:
+    if event_type == "USER_ADD":
+        raise ValueError("USER_ADD_REQUIRES_CANDIDATE_LOOKUP")
     if event_type not in {"WEATHER_CHANGE", "USER_FATIGUE", "POI_CANCELLED",
-                          "TIME_DELAY", "USER_ADD", "RESERVATION_CHANGE"}:
+                          "TIME_DELAY", "RESERVATION_CHANGE"}:
         raise ValueError("INVALID_EVENT_TYPE")
+    if event_type == "WEATHER_CHANGE" and payload.get("condition") not in {
+        "RAIN", "WIND", "HEAT", "COLD", "SNOW", "STORM",
+    }:
+        raise ValueError("WEATHER_CONDITION_REQUIRED_OR_INVALID")
     result: list[Node] = []
     warnings: list[str] = []
     target = str(payload.get("poi_id", ""))

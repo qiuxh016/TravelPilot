@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from travelpilot_infra.db.models.plan import TripPlanModel, TripPlanNodeModel
 from travelpilot_infra.db.models.plan_change import PlanChangeModel
 from travelpilot_infra.db.models.poi import PoiModel
+from travelpilot_infra.db.models.trip import TripModel
 
 
 class PlanRepository:
@@ -13,6 +14,11 @@ class PlanRepository:
         self.session = session
 
     async def next_version(self, trip_id: UUID) -> int:
+        # Serialize plan-version allocation across every write path for this trip.
+        # The lock stays held until the caller commits/rolls back its transaction.
+        await self.session.scalar(
+            select(TripModel.id).where(TripModel.id == trip_id).with_for_update()
+        )
         value = await self.session.scalar(
             select(func.coalesce(func.max(TripPlanModel.version), 0)).where(TripPlanModel.trip_id == trip_id)
         )

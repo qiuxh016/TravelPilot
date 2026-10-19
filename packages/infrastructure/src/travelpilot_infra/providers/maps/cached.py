@@ -9,13 +9,13 @@ class CachedMapsProvider:
         self.ttl_seconds = ttl_seconds
         self._entries: dict[tuple, tuple[float, object]] = {}
 
-    async def _get(self, method: str, *args):
-        key = (type(self.provider).__name__, method, args)
+    async def _get(self, method: str, *args, **kwargs):
+        key = (type(self.provider).__name__, method, args, tuple(sorted(kwargs.items())))
         now = time.monotonic()
         entry = self._entries.get(key)
         if entry and entry[0] > now:
             return entry[1]
-        value = await getattr(self.provider, method)(*args)
+        value = await getattr(self.provider, method)(*args, **kwargs)
         self._entries[key] = (now + self.ttl_seconds, value)
         return value
 
@@ -25,8 +25,21 @@ class CachedMapsProvider:
     async def get_place_detail(self, provider_id: str):
         return await self._get("get_place_detail", provider_id)
 
-    async def get_route(self, origin, destination):
-        return await self._get("get_route", tuple(origin), tuple(destination))
+    async def get_route(self, origin, destination, mode="DRIVING", *, origin_city_code=None, destination_city_code=None):
+        if mode == "DRIVING" and not origin_city_code and not destination_city_code:
+            args = (tuple(origin), tuple(destination))
+        elif mode == "WALKING" and not origin_city_code and not destination_city_code:
+            args = (tuple(origin), tuple(destination), mode)
+        elif mode == "TRANSIT":
+            args = (tuple(origin), tuple(destination), mode)
+            return await self._get(
+                "get_route", *args,
+                origin_city_code=origin_city_code,
+                destination_city_code=destination_city_code,
+            )
+        else:
+            args = (tuple(origin), tuple(destination), mode, origin_city_code, destination_city_code)
+        return await self._get("get_route", *args)
 
     async def get_distance_matrix(self, points):
         return await self._get("get_distance_matrix", tuple(tuple(point) for point in points))

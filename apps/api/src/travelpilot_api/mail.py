@@ -1,8 +1,8 @@
 """Minimal transactional email delivery with a development-only in-memory outbox."""
 import asyncio
 import logging
-import ssl
 import smtplib
+import ssl
 from email.message import EmailMessage
 
 from travelpilot_api.settings import settings
@@ -12,6 +12,10 @@ _development_outbox: list[dict[str, str]] = []
 
 
 def _send_sync(to_email: str, subject: str, link: str) -> None:
+    if settings.force_development_email_outbox and settings.app_env.lower() == "development":
+        _development_outbox.append({"email": to_email, "subject": subject, "link": link})
+        logger.info("development_email to=%s subject=%s link=%s", to_email, subject, link)
+        return
     if not settings.smtp_host:
         if settings.app_env.lower() == "production":
             raise RuntimeError("SMTP is required in production")

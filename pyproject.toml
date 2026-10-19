@@ -36,6 +36,7 @@ packages = [
   "travelpilot_api.api",
   "travelpilot_api.api.v1",
   "travelpilot_api.schemas",
+  "travelpilot_api.advisor",
   "travelpilot_worker",
   "travelpilot_core",
   "travelpilot_core.agents",

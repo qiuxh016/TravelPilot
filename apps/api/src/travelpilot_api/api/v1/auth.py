@@ -657,9 +657,6 @@ async def export_account(user: UserModel = Depends(get_current_user),
     grouped["advisor_run_events"] = (await session.scalars(select(AdvisorRunEventModel).where(
         AdvisorRunEventModel.owner_id == user.id,
     ).order_by(AdvisorRunEventModel.created_at))).all()
-    grouped["advisor_run_events"] = (await session.scalars(select(AdvisorRunEventModel).where(
-        AdvisorRunEventModel.owner_id == user.id,
-    ).order_by(AdvisorRunEventModel.created_at))).all()
     poi_ids = {item.poi_id for item in wishlist}
     poi_ids.update(item.poi_id for item in plan_nodes)
     pois = (await session.scalars(select(PoiModel).where(PoiModel.id.in_(poi_ids)))).all() if poi_ids else []
@@ -667,8 +664,7 @@ async def export_account(user: UserModel = Depends(get_current_user),
 
     def encode(model):
         mapper = inspect(type(model))
-        return jsonable_encoder({column.name: getattr(model, prop.key)
-                                 for prop in mapper.column_attrs for column in prop.columns})
+        return jsonable_encoder({prop.key: getattr(model, prop.key) for prop in mapper.column_attrs})
 
     return {
         "format": "travelpilot-account-export-v1",

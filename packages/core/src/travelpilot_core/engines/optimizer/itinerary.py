@@ -58,6 +58,8 @@ def build_itinerary(
     transfer_buffer_min: int = 0,
     max_pois_per_day: int = 6,
     start_travel_min: list[int] | None = None,
+    day_start_minutes: dict[date, int] | None = None,
+    reserved_break_windows: dict[date, list[tuple[int, int]]] | None = None,
 ) -> tuple[list[Visit], list[str]]:
     """Group nearby POIs, order each day by proximity, then validate capacity.
 
@@ -75,6 +77,11 @@ def build_itinerary(
         len(start_travel_min) != count or any(value < 0 for value in start_travel_min)
     ):
         raise ValueError("start travel estimates do not match candidates")
+    for day, windows in (reserved_break_windows or {}).items():
+        if not start_date <= day <= end_date or any(
+            not 0 <= start < end <= 24 * 60 for start, end in windows
+        ):
+            raise ValueError("reserved break window is invalid or outside the trip")
     days = (end_date - start_date).days + 1
     indexed = list(enumerate(candidates))
     groups = cluster_places([candidate for _, candidate in indexed])
@@ -95,7 +102,7 @@ def build_itinerary(
         day = start_date + timedelta(days=day_index)
         remaining = bucket[:]
         previous: tuple[int, Candidate] | None = None
-        cursor = 9 * 60
+        cursor = max(9 * 60, (day_start_minutes or {}).get(day, 9 * 60))
         while remaining:
             if previous is None:
                 if day_index == 0 and start_travel_min is not None:
@@ -121,6 +128,11 @@ def build_itinerary(
             open_at = _minutes((candidate.opening_hours or {}).get("open"), 0)
             close_at = _minutes((candidate.opening_hours or {}).get("close"), 24 * 60)
             start = max(cursor, open_at)
+            for break_start, break_end in sorted(
+                (reserved_break_windows or {}).get(day, [])
+            ):
+                if start < break_end and start + candidate.duration_min > break_start:
+                    start = break_end
             end = start + candidate.duration_min
             if len([visit for visit in visits if visit.day == day]) >= max_pois_per_day:
                 warnings.append(f"{day} 超过每日 {max_pois_per_day} 个地点：{candidate.name}")
