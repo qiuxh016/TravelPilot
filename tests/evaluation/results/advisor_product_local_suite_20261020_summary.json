@@ -1,8 +1,8 @@
 {
   "evaluation_id": "advisor_product_local_suite_v1",
-  "run_at_utc": "2026-10-19T17:24:17.092996+00:00",
+  "run_at_utc": "2026-10-20T01:31:59.427041+08:00",
   "provider_mode": "LOCAL_MODEL_STUB_FAKE_MAPS_SYNTHETIC_WEATHER_AND_ROUTE_FAILURE",
-  "source_revision": "17bd26288a0a28d61cfa042184188febf985c7b4",
+  "source_revision": "f0a32039907f77dac376e8331bd6b868a7622f0a",
   "source_tree_dirty": true,
   "scenario_count": 18,
   "passed_scenario_count": 18,
