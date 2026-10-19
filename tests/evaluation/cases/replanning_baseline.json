@@ -1,6 +1,6 @@
 {
-  "baseline_id": "weather_aware_replan_v2",
-  "dataset_version": 2,
+  "baseline_id": "weather_aware_replan_v3",
+  "dataset_version": 3,
   "description": "Synthetic deterministic cases documenting current rule-based core replan behavior. Results are not a measure of real-world itinerary quality.",
   "cases": [
     {
@@ -88,6 +88,16 @@
         {"key": "unknown-attraction", "category": "ATTRACTION", "day": "2026-10-01", "start": "13:00", "end": "14:00", "priority": 3}
       ],
       "expected_preserved": ["unknown-attraction"]
+    },
+    {
+      "id": "weather-low-confidence-profile-kept",
+      "event_type": "WEATHER_CHANGE",
+      "effective_at": "2026-10-01T12:00:00+08:00",
+      "payload": {"condition": "RAIN"},
+      "nodes": [
+        {"key": "inferred-high-sensitivity", "category": "ATTRACTION", "day": "2026-10-01", "start": "13:00", "end": "14:00", "priority": 3, "environment_profile": {"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"}, "source": "INFERRED", "confidence": 0.45}}
+      ],
+      "expected_preserved": ["inferred-high-sensitivity"]
     }
   ]
 }

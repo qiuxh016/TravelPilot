@@ -46,7 +46,7 @@ def run_comparison() -> dict:
             "evidence_aware_change_cost": sum(change["change_cost"] for change in current_diff),
         })
     return {
-        "comparison_id": "weather_replanning_category_vs_evidence_v1",
+        "comparison_id": "weather_replanning_category_vs_evidence_v2",
         "dataset_id": dataset["baseline_id"],
         "dataset_version": dataset["dataset_version"],
         "scenario_count": len(results),

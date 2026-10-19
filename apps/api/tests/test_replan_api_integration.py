@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 from travelpilot_api.api.v1 import events as events_api
-from travelpilot_api.schemas.events import ReplanRequest
+from travelpilot_api.schemas.events import ReplanConfirm, ReplanRequest
 from travelpilot_infra.db.models.plan import TripPlanModel, TripPlanNodeModel
 from travelpilot_infra.db.models.poi import PoiModel
 from travelpilot_infra.db.models.trip import TripModel
@@ -70,6 +70,9 @@ class FakeSession:
         for obj in self.added:
             if isinstance(obj, TripPlanModel) and obj.id is None:
                 obj.id = uuid4()
+            if isinstance(obj, WorkflowRunModel):
+                obj.id = obj.id or uuid4()
+                obj.created_at = obj.created_at or datetime.now(UTC)
 
     async def commit(self):
         return None
@@ -106,7 +109,8 @@ async def test_weather_replan_api_uses_route_matrix_and_never_fabricates_missing
         longitude=Decimal(104),
         suggested_duration_min=60,
         opening_hours=None,
-        environment_profile={"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"}},
+        environment_profile={"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"},
+                             "source": "EDITORIAL", "confidence": 0.9},
     )
     following_poi = PoiModel(
         id=following_id,
@@ -116,7 +120,7 @@ async def test_weather_replan_api_uses_route_matrix_and_never_fabricates_missing
         longitude=Decimal("104.1"),
         suggested_duration_min=60,
         opening_hours=None,
-        environment_profile={"exposure": "INDOOR"},
+        environment_profile={"exposure": "INDOOR", "source": "EDITORIAL", "confidence": 0.9},
     )
     candidate_poi = PoiModel(
         id=candidate_id,
@@ -134,7 +138,7 @@ async def test_weather_replan_api_uses_route_matrix_and_never_fabricates_missing
         poi_id=candidate_id,
         priority=4,
         interest_score=Decimal("0.8"),
-        environment_profile={"exposure": "INDOOR", "source": "USER"},
+        environment_profile={"exposure": "INDOOR", "source": "USER", "confidence": 0.8},
     )
     old_rows = [
         (
@@ -200,14 +204,18 @@ async def test_weather_replan_api_uses_route_matrix_and_never_fabricates_missing
     operations = {change["operation"] for change in result["diff"]}
     assert maps.calls == 1
     assert "REMOVE" in operations
-    plan = next(obj for obj in session.added if isinstance(obj, TripPlanModel))
-    assert any("地图路线耗时不可用" in warning for warning in plan.warnings) is map_failure
+    assert result["status"] == "PREVIEWED"
+    assert result["proposed_plan_status"] == "READY"
+    assert not any(isinstance(obj, TripPlanModel) for obj in session.added)
+    assert not any(isinstance(obj, TripPlanNodeModel) for obj in session.added)
+    workflow = next(obj for obj in session.added if isinstance(obj, WorkflowRunModel))
+    warnings = workflow.output_data["preview"]["warnings"]
+    assert any("地图路线耗时不可用" in warning for warning in warnings) is map_failure
     assert (
-        any("天气替换：雨天公园 → 室内博物馆" in warning for warning in plan.warnings)
+        any("天气替换：雨天公园 → 室内博物馆" in warning for warning in warnings)
         is not map_failure
     )
     assert ("ADD" in operations) is not map_failure
-    workflow = next(obj for obj in session.added if isinstance(obj, WorkflowRunModel))
     assert workflow.input_data["skill"] is None
     assert workflow.input_data["skill_applicability"]["selected"] is False
     assert workflow.input_data["skill_applicability"]["reason_code"] == "EXCLUDED_CONTEXT"
@@ -225,7 +233,7 @@ async def test_weather_replan_api_uses_route_matrix_and_never_fabricates_missing
             "ROUTE_TIME_UNKNOWN": 1,
         }
         assert "地图服务" in search["assignments"][0]["suggestion"]
-        assert any(warning.startswith("建议：") for warning in plan.warnings)
+        assert any(warning.startswith("建议：") for warning in warnings)
 
 
 @pytest.mark.asyncio
@@ -315,8 +323,12 @@ async def test_user_add_replan_requires_route_feasibility_and_preserves_booking(
     monkeypatch.setattr(events_api, "get_maps_provider", lambda: Maps())
     monkeypatch.setattr(events_api, "to_read", lambda plan, _rows: {"id": plan.id})
 
-    await events_api.create_replan(
+    result = await events_api.create_replan(
         trip_id, ReplanRequest(event_id=event.id), session=session, _trip=trip
+    )
+
+    assert result["proposed_plan_status"] == (
+        "READY" if expected_reason == "ADDED" else "INFEASIBLE"
     )
 
     workflow = next(obj for obj in session.added if isinstance(obj, WorkflowRunModel))
@@ -324,16 +336,19 @@ async def test_user_add_replan_requires_route_feasibility_and_preserves_booking(
     assert workflow.output_data["user_add"]["outcome"] == (
         "ADDED" if expected_reason == "ADDED" else "REJECTED"
     )
-    new_plan_nodes = [obj for obj in session.added if isinstance(obj, TripPlanNodeModel)]
-    fixed_after = next(node for node in new_plan_nodes if node.poi_id == fixed_id)
-    assert (fixed_after.start_time, fixed_after.end_time, fixed_after.status) == (
-        time(14), time(15), "FIXED"
+    assert not any(isinstance(obj, TripPlanModel) for obj in session.added)
+    assert not any(isinstance(obj, TripPlanNodeModel) for obj in session.added)
+    preview = next(obj for obj in session.added if isinstance(obj, WorkflowRunModel)).output_data["preview"]
+    preview_nodes = preview["nodes"]
+    fixed_after = next(node for node in preview_nodes if node["poi_id"] == str(fixed_id))
+    assert (fixed_after["start_time"], fixed_after["end_time"], fixed_after["status"]) == (
+        "14:00:00", "15:00:00", "FIXED"
     )
-    candidate_nodes = [node for node in new_plan_nodes if node.poi_id == candidate_id]
+    candidate_nodes = [node for node in preview_nodes if node["poi_id"] == str(candidate_id)]
     assert len(candidate_nodes) == (1 if expected_reason == "ADDED" else 0)
     if candidate_nodes:
-        assert candidate_nodes[0].start_time == time(11)
-        assert candidate_nodes[0].end_time == time(11, 45)
+        assert candidate_nodes[0]["start_time"] == "11:00:00"
+        assert candidate_nodes[0]["end_time"] == "11:45:00"
 
 
 @pytest.mark.asyncio
@@ -397,3 +412,193 @@ async def test_user_add_replan_rejects_event_outside_trip_dates(monkeypatch):
 
     assert error.value.status_code == 422
     assert error.value.detail == "Event is outside trip dates"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("proposed_status", ["PLAN_CONFLICT", "NEEDS_USER_INPUT"])
+async def test_replan_confirmation_rejects_non_ready_preview(proposed_status):
+    trip_id, run_id, plan_id = uuid4(), uuid4(), uuid4()
+    run = SimpleNamespace(
+        id=run_id, trip_id=trip_id, kind="REPLAN", status="PREVIEWED",
+        input_data={"source_plan_id": str(plan_id), "source_plan_version": 1},
+        output_data={"preview": {"status": proposed_status}},
+    )
+
+    class Session:
+        committed = False
+
+        async def scalar(self, statement):
+            self.statement = statement
+            return run
+
+        async def get(self, model, _identity):
+            return run if model is WorkflowRunModel else None
+
+        async def commit(self):
+            self.committed = True
+
+    session = Session()
+    with pytest.raises(HTTPException) as error:
+        await events_api.confirm_replan(
+            trip_id, run_id, ReplanConfirm(based_on_plan_id=plan_id, based_on_plan_version=1),
+            session=session, _trip=SimpleNamespace(id=trip_id),
+        )
+
+    assert error.value.status_code == 409
+    assert "unresolved conflicts" in error.value.detail
+    assert session.committed is False
+    assert session.statement._for_update_arg is not None
+
+
+@pytest.mark.asyncio
+async def test_replan_confirmation_expires_preview_before_any_plan_write():
+    trip_id, run_id, plan_id = uuid4(), uuid4(), uuid4()
+    run = SimpleNamespace(
+        id=run_id, trip_id=trip_id, kind="REPLAN", status="PREVIEWED",
+        input_data={"source_plan_id": str(plan_id), "source_plan_version": 1},
+        output_data={"preview": {"status": "READY"}},
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    class Session:
+        def __init__(self):
+            self.added = []
+            self.committed = False
+
+        async def scalar(self, statement):
+            self.run_lock_statement = statement
+            return run
+
+        async def get(self, model, _identity):
+            return run if model is WorkflowRunModel else None
+
+        async def commit(self):
+            self.committed = True
+
+    session = Session()
+    with pytest.raises(HTTPException) as error:
+        await events_api.confirm_replan(
+            trip_id, run_id, ReplanConfirm(based_on_plan_id=plan_id, based_on_plan_version=1),
+            session=session, _trip=SimpleNamespace(id=trip_id),
+        )
+
+    assert error.value.status_code == 409
+    assert "expired" in error.value.detail
+    assert run.status == "EXPIRED"
+    assert session.committed is True
+    assert session.added == []
+    assert session.run_lock_statement._for_update_arg is not None
+
+
+@pytest.mark.asyncio
+async def test_replan_confirmation_commits_once_and_repeat_returns_same_plan(monkeypatch):
+    trip_id, run_id, plan_id, event_id, poi_id = uuid4(), uuid4(), uuid4(), uuid4(), uuid4()
+    trip = SimpleNamespace(id=trip_id, status="READY")
+    poi = PoiModel(
+        id=poi_id, name="博物馆", category="MUSEUM", latitude=Decimal("30.6"),
+        longitude=Decimal("104.0"), suggested_duration_min=60, opening_hours=None,
+    )
+    source_plan = SimpleNamespace(id=plan_id, trip_id=trip_id, version=3)
+    source_node = TripPlanNodeModel(
+        id=uuid4(), plan_id=plan_id, poi_id=poi_id, day=date(2026, 10, 1),
+        start_time=time(10), end_time=time(11), priority=3, status="PLANNED", note=None,
+    )
+    old_rows = [(source_node, poi)]
+    event = SimpleNamespace(
+        id=event_id, trip_id=trip_id, event_type="TIME_DELAY", payload={"delay_min": 30},
+    )
+    run = SimpleNamespace(
+        id=run_id, trip_id=trip_id, kind="REPLAN", status="PREVIEWED",
+        input_data={"source_plan_id": str(plan_id), "source_plan_version": 3, "event_id": str(event_id)},
+        output_data={
+            "preview": {
+                "status": "READY", "warnings": [],
+                "nodes": [{
+                    "poi_id": str(poi_id), "name": "博物馆", "day": "2026-10-01",
+                    "start_time": "10:30:00", "end_time": "11:30:00",
+                    "priority": 3, "status": "PLANNED", "note": None,
+                }],
+            },
+            "diff": [],
+        },
+        created_at=datetime.now(UTC),
+    )
+
+    class Session:
+        def __init__(self):
+            self.added = []
+            self.committed = 0
+
+        async def scalar(self, statement):
+            self.run_lock_statement = statement
+            return run
+
+        async def get(self, model, identity):
+            if model is WorkflowRunModel and identity == run_id:
+                return run
+            if model is TripEventModel and identity == event_id:
+                return event
+            if model is TripModel and identity == trip_id:
+                return trip
+            if model is PoiModel and identity == poi_id:
+                return poi
+            return None
+
+        async def execute(self, _query):
+            return Result()
+
+        def add(self, obj):
+            self.added.append(obj)
+
+        def add_all(self, objects):
+            self.added.extend(objects)
+
+        async def flush(self):
+            for obj in self.added:
+                if isinstance(obj, TripPlanModel) and obj.id is None:
+                    obj.id = uuid4()
+
+        async def commit(self):
+            self.committed += 1
+
+    class Repository:
+        def __init__(self, _session):
+            pass
+
+        async def list_by_trip(self, _trip_id):
+            return [source_plan]
+
+        async def next_version(self, _trip_id):
+            return 4
+
+        async def get_with_nodes(self, _trip_id, requested_id):
+            if requested_id == plan_id:
+                return source_plan, old_rows
+            plan = next(obj for obj in session.added if isinstance(obj, TripPlanModel))
+            rows = [
+                (obj, poi) for obj in session.added
+                if isinstance(obj, TripPlanNodeModel) and obj.plan_id == plan.id
+            ]
+            return plan, rows
+
+    monkeypatch.setattr(events_api, "PlanRepository", Repository)
+    monkeypatch.setattr(events_api, "to_read", lambda plan, rows: {"id": plan.id, "version": plan.version})
+    session = Session()
+    payload = ReplanConfirm(based_on_plan_id=plan_id, based_on_plan_version=3)
+
+    first = await events_api.confirm_replan(
+        trip_id, run_id, payload, session=session, _trip=trip,
+    )
+    second = await events_api.confirm_replan(
+        trip_id, run_id, payload, session=session, _trip=trip,
+    )
+
+    plans = [obj for obj in session.added if isinstance(obj, TripPlanModel)]
+    assert len(plans) == 1
+    assert plans[0].version == 4
+    assert plans[0].status == "READY"
+    assert trip.status == "READY"
+    assert run.status == "CONFIRMED"
+    assert first["plan"]["id"] == second["plan"]["id"] == plans[0].id
+    assert session.committed == 1
+    assert session.run_lock_statement._for_update_arg is not None

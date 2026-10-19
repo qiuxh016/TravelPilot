@@ -4,7 +4,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from travelpilot_api.api.v1.advisor import _hard_limit_conflicts
+from travelpilot_api.advisor.policies import hard_limit_conflicts as _hard_limit_conflicts
 from travelpilot_core.agents.extraction import fallback_extract
 from travelpilot_core.engines.impact_analysis.replan import Node, plan_diff, replan
 from travelpilot_core.engines.optimizer.itinerary import Candidate, build_itinerary
@@ -19,6 +19,14 @@ from travelpilot_infra.providers.maps.cached import CachedMapsProvider
 from tests.evaluation.metrics.metrics import summarize
 
 CASES = json.loads((Path(__file__).parent / "cases" / "scenarios.json").read_text(encoding="utf-8"))
+
+
+def test_user_add_requires_api_candidate_lookup_instead_of_silent_core_noop():
+    when = datetime(2026, 10, 1, 9, tzinfo=UTC)
+    existing = Node(uuid4(), "已计划地点", "ATTRACTION", when.date(), time(10), time(11), 3)
+
+    with pytest.raises(ValueError, match="USER_ADD_REQUIRES_CANDIDATE_LOOKUP"):
+        replan([existing], "USER_ADD", when, {"poi_id": str(uuid4())})
 
 
 def candidate(index: int, duration: int, hours=None):
@@ -47,9 +55,13 @@ async def test_fixed_scenario(case):
         nodes = [Node(uuid4(), f"地点{index}", "ATTRACTION", when.date(),
                       time(10 + index), time(11 + index), 3,
                       environment_profile={"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"},
-                                           "source": "TEST", "confidence": 1})
+                                           "source": "EDITORIAL", "confidence": 0.9})
                  for index in range(2)]
-        payload = {"poi_id": str(nodes[0].poi_id)} if case["event_type"] == "POI_CANCELLED" else {}
+        payload = (
+            {"poi_id": str(nodes[0].poi_id)} if case["event_type"] == "POI_CANCELLED"
+            else {"condition": "RAIN"} if case["event_type"] == "WEATHER_CHANGE"
+            else {}
+        )
         revised, _ = replan(nodes, case["event_type"], when, payload)
         operations = {change["operation"] for change in plan_diff(nodes, revised, case["event_type"])}
         assert case["expect_operation"] in operations
