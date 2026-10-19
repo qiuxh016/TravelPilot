@@ -1,0 +1,278 @@
+{
+  "dataset_id": "advisor_multiturn_holdout_v2",
+  "version": 2,
+  "status": "FROZEN_NOT_SCORED",
+  "provider_mode": "synthetic_contract",
+  "frozen_before_scoring": true,
+  "holdout_protocol": {
+    "reference_datasets": [
+      "advisor_multiturn_v1",
+      "advisor_multiturn_v2",
+      "advisor_multiturn_v3",
+      "advisor_multiturn_v4",
+      "advisor_multiturn_v5",
+      "advisor_open_consultation_v2",
+      "advisor_existing_trip_agent_v3",
+      "advisor_multiturn_holdout_v1"
+    ],
+    "reference_dataset_sha256": {
+      "advisor_existing_trip_agent_v3": "1223b3999cee183e92d3cc699ac902a68b150e1ce517186b67221b577d432dd4",
+      "advisor_multiturn_holdout_v1": "8435f5bf918aa3fe3292c94302bb6f76d63c31509ce244b915670d52a8b3719e",
+      "advisor_multiturn_v1": "45ef01e073233898354b81ce1b62e615cba8fe3503a29ad6119bbb707946899a",
+      "advisor_multiturn_v2": "a9580ce99206e02438ffbf80f8d1979cc54a2093cf334d7ef0c28ab61842143c",
+      "advisor_multiturn_v3": "0d987703549307b39ced9882b13be7fcab7cf24f1eaa1568c88427a1298f9368",
+      "advisor_multiturn_v4": "07b979f1d85db8c8a4432ac85b823bb9af5cfbb527f75bb662b5f49f65879511",
+      "advisor_multiturn_v5": "a964d0bb8e3be36fdbc41f82a736e58ad9cf3af0ee0d009708c7d9cd4a6b5af9",
+      "advisor_open_consultation_v2": "2a2fa0eaa39a65bc1fb4179634038db714463083de05777ea41e285bcf1136dd"
+    },
+    "claim_boundary": "New case IDs and prompts are disjoint from declared reference sets. Synthetic action-selection holdout only; semantic independence and product-answer quality are not established.",
+    "default_case_ids": [
+      "holdout-v2-meal-local-search-11",
+      "holdout-v2-schedule-with-coordinates-12",
+      "holdout-v2-route-selected-stops-13",
+      "holdout-v2-weather-advice-14",
+      "holdout-v2-route-outage-safe-stop-15"
+    ]
+  },
+  "scope": "5 newly authored two-turn cases / 10 Agent-owned decisions. Schedule cases include saved-place coordinates; transport cases include the known place IDs required by production tools. Weather and route observations remain synthetic fixtures.",
+  "capability_contract": {
+    "registered_advisor_tools": [
+      "build_schedule_draft",
+      "get_distance_matrix",
+      "get_trip_route",
+      "get_trip_weather",
+      "search_places"
+    ],
+    "confirmation": "No model-callable action can confirm or commit a plan.",
+    "tool_arguments": "Validated against the production Pydantic input model for get_trip_route and bounded schemas for other read-only tools."
+  },
+  "cases": [
+    {
+      "id": "holdout-v2-meal-local-search-11",
+      "family": "meal",
+      "task_type": "MEAL",
+      "initial_state": {
+        "destination": "广州",
+        "trip_dates": [
+          "2026-11-14",
+          "2026-11-15"
+        ],
+        "saved_places": [],
+        "hotel_name": "广州天河城附近酒店"
+      },
+      "turns": [
+        {
+          "user": "请在广州天河找一家潮汕牛肉火锅，作为今天的晚餐候选。",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "优先离天河城近一些，只找餐馆，不要景点。",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "food_only_search",
+        "honor_current_category_scope",
+        "never_turn_restaurant_into_itinerary_stop"
+      ]
+    },
+    {
+      "id": "holdout-v2-schedule-with-coordinates-12",
+      "family": "itinerary",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "destination": "梅州",
+        "trip_dates": null,
+        "saved_places": 3,
+        "saved_place_details": [
+          {
+            "id": "place-1",
+            "name": "梅州客家博物馆",
+            "latitude": 24.3021,
+            "longitude": 116.1172
+          },
+          {
+            "id": "place-2",
+            "name": "千佛塔",
+            "latitude": 24.3101,
+            "longitude": 116.1098
+          },
+          {
+            "id": "place-3",
+            "name": "江北老街",
+            "latitude": 24.3057,
+            "longitude": 116.1212
+          }
+        ],
+        "fixed_stops": []
+      },
+      "turns": [
+        {
+          "user": "请把我这趟梅州旅行里保存的三个地方排成两天，节奏松一点。",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "日期定在11月22日到23日，按宽松节奏安排。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "ask_for_missing_trip_dates",
+        "use_supplied_saved_place_coordinates",
+        "verify_route_matrix_before_draft",
+        "no_formal_write_before_confirmation"
+      ]
+    },
+    {
+      "id": "holdout-v2-route-selected-stops-13",
+      "family": "transport",
+      "task_type": "TRANSPORT",
+      "initial_state": {
+        "destination": "成都",
+        "selected_origin_id": "origin-kwx",
+        "selected_destination_id": null,
+        "known_places": [
+          {
+            "id": "origin-kwx",
+            "name": "宽窄巷子",
+            "latitude": 30.6634,
+            "longitude": 104.055
+          },
+          {
+            "id": "destination-panda",
+            "name": "成都大熊猫繁育研究基地",
+            "latitude": 30.7338,
+            "longitude": 104.145
+          }
+        ]
+      },
+      "turns": [
+        {
+          "user": "从宽窄巷子出发，帮我查到另一个我存过的地方怎么开车。",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "目的地是成都大熊猫繁育研究基地，查驾车路线。",
+          "expected_action": "GET_TRIP_ROUTE",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "ask_for_missing_route_endpoint",
+        "use_known_place_ids",
+        "do_not_invent_route_or_duration",
+        "label_provider_and_retrieval_time"
+      ]
+    },
+    {
+      "id": "holdout-v2-weather-advice-14",
+      "family": "weather",
+      "task_type": "WEATHER",
+      "initial_state": {
+        "destination": "青岛",
+        "trip_dates": [
+          "2026-11-18",
+          "2026-11-19"
+        ],
+        "saved_places": []
+      },
+      "turns": [
+        {
+          "user": "查一下我这趟青岛行程的天气，告诉我出门要不要带伞。",
+          "expected_action": "GET_TRIP_WEATHER",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "根据查到的预报给我一个简短的出行准备建议。",
+          "expected_action": "FINISH",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "forecast_before_weather_claim",
+        "use_fixture_weather_as_synthetic_only",
+        "do_not_claim_live_provider_data"
+      ]
+    },
+    {
+      "id": "holdout-v2-route-outage-safe-stop-15",
+      "family": "cross_domain",
+      "task_type": "TRANSPORT",
+      "initial_state": {
+        "destination": "成都",
+        "route_provider": "timeout",
+        "selected_origin_id": "people-park",
+        "selected_destination_id": "wuhou-shrine",
+        "known_places": [
+          {
+            "id": "people-park",
+            "name": "人民公园",
+            "latitude": 30.663,
+            "longitude": 104.055
+          },
+          {
+            "id": "wuhou-shrine",
+            "name": "武侯祠",
+            "latitude": 30.646,
+            "longitude": 104.048
+          }
+        ]
+      },
+      "turns": [
+        {
+          "user": "请查询人民公园到武侯祠的驾车路线。",
+          "expected_action": "GET_TRIP_ROUTE",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "PARTIAL",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "如果地图服务查不到，就直接说明路线未核验，不要估算时长。",
+          "expected_action": "ASK_USER_OR_LABEL_UNVERIFIED",
+          "allowed_tools": [],
+          "expected_status": "PARTIAL",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "provider_failure_is_disclosed",
+        "never_invent_route_or_duration",
+        "do_not_retry_blindly"
+      ]
+    }
+  ]
+}

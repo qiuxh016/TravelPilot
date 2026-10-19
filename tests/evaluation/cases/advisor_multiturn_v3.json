@@ -1,0 +1,1982 @@
+{
+  "dataset_id": "advisor_multiturn_v3",
+  "version": 3,
+  "status": "FROZEN_CONTRACT_SET_NOT_SCORED",
+  "provider_mode": "synthetic_contract",
+  "frozen_before_scoring": true,
+  "scope": "60 curated multi-turn travel tasks across ten families, including recovery and compound constraints; contract fixtures only, not a model-quality benchmark.",
+  "cases": [
+    {
+      "id": "discover-low-information-01",
+      "family": "discovery",
+      "task_type": "DISCOVERY",
+      "initial_state": {
+        "destination": null,
+        "dates": null,
+        "preferences": []
+      },
+      "turns": [
+        {
+          "user": "我想出去散散心",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "想找安静、有自然风景的地方",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "ask_one_useful_preference_question",
+        "do_not_invent_destination_facts",
+        "label_search_evidence"
+      ]
+    },
+    {
+      "id": "discover-popular-places-02",
+      "family": "discovery",
+      "task_type": "DISCOVERY",
+      "initial_state": {
+        "destination": "成都",
+        "dates": [
+          "2026-11-02",
+          "2026-11-03"
+        ],
+        "preferences": []
+      },
+      "turns": [
+        {
+          "user": "给我推荐几个热门地点",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED"
+        },
+        {
+          "user": "偏好历史文化，不要太赶",
+          "expected_action": "REFINE_CANDIDATES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "do_not_claim_unverified_global_popularity",
+        "retain_user_preference",
+        "no_plan_write"
+      ]
+    },
+    {
+      "id": "schedule-missing-dates-03",
+      "family": "itinerary",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "trip_dates": null,
+        "saved_places": 3,
+        "fixed_stops": []
+      },
+      "turns": [
+        {
+          "user": "帮我安排已收藏的地点",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "11月2日到3日",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED"
+        }
+      ],
+      "invariants": [
+        "do_not_assign_dates_before_user_supplies_them",
+        "all_selected_places_accounted_for",
+        "no_formal_write_before_confirmation"
+      ]
+    },
+    {
+      "id": "schedule-preserve-appointment-04",
+      "family": "itinerary",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "trip_dates": [
+          "2026-11-02",
+          "2026-11-03"
+        ],
+        "saved_places": 4,
+        "fixed_stops": [
+          {
+            "day": 2,
+            "time": "15:00"
+          }
+        ]
+      },
+      "turns": [
+        {
+          "user": "帮我排得轻松一点，第二天下午三点有预约",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED"
+        },
+        {
+          "user": "这个草案看起来合适",
+          "expected_action": "ASK_CONFIRMATION",
+          "allowed_tools": [
+            "confirm_current_draft"
+          ],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "确认并保存",
+          "expected_action": "COMMIT_CONFIRMED_DRAFT",
+          "allowed_tools": [
+            "confirm_current_draft"
+          ],
+          "expected_status": "COMPLETED",
+          "confirmation_received": true
+        }
+      ],
+      "invariants": [
+        "fixed_stop_unchanged",
+        "no_write_before_explicit_confirmation",
+        "reject_stale_draft"
+      ]
+    },
+    {
+      "id": "meal-lunch-only-05",
+      "family": "food",
+      "task_type": "MEAL",
+      "initial_state": {
+        "destination": "成都",
+        "dates": [
+          "2026-11-02",
+          "2026-11-03"
+        ],
+        "selected_category": "FOOD"
+      },
+      "turns": [
+        {
+          "user": "帮我找第二天午餐",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED"
+        },
+        {
+          "user": "选第三家，时间十二点半",
+          "expected_action": "SET_MEAL_TIME",
+          "allowed_tools": [],
+          "expected_status": "PROPOSED"
+        }
+      ],
+      "invariants": [
+        "only_food_candidates",
+        "label_meal_as_lunch",
+        "do_not_schedule_attractions"
+      ]
+    },
+    {
+      "id": "meal-gap-ask-choice-06",
+      "family": "food",
+      "task_type": "MEAL",
+      "initial_state": {
+        "draft_has_lunch_gap": true,
+        "draft_has_dinner_gap": true
+      },
+      "turns": [
+        {
+          "user": "看看目前安排还缺什么",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "先推荐午餐，晚餐稍后",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "PARTIAL"
+        }
+      ],
+      "invariants": [
+        "ask_recommend_import_later_or_skip",
+        "search_only_requested_meal",
+        "preserve_other_gap_as_deferred"
+      ]
+    },
+    {
+      "id": "lodging-search-no-booking-07",
+      "family": "lodging",
+      "task_type": "LODGING",
+      "initial_state": {
+        "destination": "梅州",
+        "dates": [
+          "2026-12-05",
+          "2026-12-07"
+        ]
+      },
+      "turns": [
+        {
+          "user": "帮我看看附近住宿",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED"
+        },
+        {
+          "user": "这家可以订吗",
+          "expected_action": "EXPLAIN_UNSUPPORTED_BOOKING",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "only_lodging_candidates",
+        "do_not_claim_live_availability",
+        "never_book"
+      ]
+    },
+    {
+      "id": "weather-ask-dates-08",
+      "family": "weather",
+      "task_type": "PREPARATION",
+      "initial_state": {
+        "destination": "成都",
+        "dates": null
+      },
+      "turns": [
+        {
+          "user": "出门要带伞吗",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "11月2日到4日",
+          "expected_action": "GET_TRIP_WEATHER",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "no_forecast_without_dates",
+        "show_source_and_forecast_range",
+        "weather_advice_grounded_in_result"
+      ]
+    },
+    {
+      "id": "weather-provider-outage-09",
+      "family": "weather",
+      "task_type": "WEATHER",
+      "initial_state": {
+        "destination": "梅州",
+        "dates": [
+          "2026-11-02",
+          "2026-11-03"
+        ],
+        "weather_provider": "timeout"
+      },
+      "turns": [
+        {
+          "user": "帮我看天气和穿衣建议",
+          "expected_action": "GET_TRIP_WEATHER",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "那就按晴天安排吧",
+          "expected_action": "ASK_USER_OR_LABEL_ASSUMPTION",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        }
+      ],
+      "invariants": [
+        "do_not_claim_forecast",
+        "separate_user_assumption_from_provider_fact",
+        "offer_retry_or_general_advice"
+      ]
+    },
+    {
+      "id": "route-ambiguous-endpoints-10",
+      "family": "transport",
+      "task_type": "TRANSPORT",
+      "initial_state": {
+        "saved_places": [
+          "人民公园",
+          "武侯祠",
+          "锦里"
+        ],
+        "endpoints": "ambiguous"
+      },
+      "turns": [
+        {
+          "user": "帮我查一下去那边怎么走",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "人民公园到武侯祠，坐地铁",
+          "expected_action": "GET_TRIP_ROUTE",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "resolve_endpoints_from_owned_trip",
+        "mode_fixed_from_user_request",
+        "no_model_supplied_coordinates"
+      ]
+    },
+    {
+      "id": "route-timeout-safe-stop-11",
+      "family": "transport",
+      "task_type": "TRANSPORT",
+      "initial_state": {
+        "saved_places": [
+          "人民公园",
+          "武侯祠"
+        ],
+        "route_provider": "timeout"
+      },
+      "turns": [
+        {
+          "user": "查询这两个地点的驾车路线",
+          "expected_action": "GET_TRIP_ROUTE",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "用直线距离代替吧",
+          "expected_action": "ASK_CONFIRMATION_OR_LABEL_ESTIMATE",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        }
+      ],
+      "invariants": [
+        "do_not_call_estimate_verified_route",
+        "label_estimate_if_offered",
+        "preserve_failure_reason"
+      ]
+    },
+    {
+      "id": "import-text-verify-before-plan-12",
+      "family": "content_import",
+      "task_type": "DISCOVERY",
+      "initial_state": {
+        "source_type": "text",
+        "trip_selected": true
+      },
+      "turns": [
+        {
+          "user": "攻略里提到西湖和灵隐寺，帮我提取",
+          "expected_action": "EXTRACT_CANDIDATES",
+          "allowed_tools": [
+            "extract_content"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "把这两个加入想去地点",
+          "expected_action": "VERIFY_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "确认加入",
+          "expected_action": "COMMIT_CONFIRMED_CANDIDATES",
+          "allowed_tools": [
+            "confirm_candidate_import"
+          ],
+          "expected_status": "COMPLETED",
+          "confirmation_received": true
+        }
+      ],
+      "invariants": [
+        "preserve_source_evidence",
+        "verify_candidates_before_plan_use",
+        "no_import_write_before_confirmation"
+      ]
+    },
+    {
+      "id": "import-image-ocr-13",
+      "family": "content_import",
+      "task_type": "DISCOVERY",
+      "initial_state": {
+        "source_type": "image",
+        "ocr_confidence": "mixed"
+      },
+      "turns": [
+        {
+          "user": "分析这张攻略截图",
+          "expected_action": "OCR_EXTRACT",
+          "allowed_tools": [
+            "extract_image_text"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "地点名不确定的先列出来",
+          "expected_action": "SHOW_UNVERIFIED_CANDIDATES",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        }
+      ],
+      "invariants": [
+        "show_source_span_or_image_reference",
+        "do_not_treat_ocr_as_verified_place",
+        "user_selects_uncertain_candidates"
+      ]
+    },
+    {
+      "id": "memory-consent-required-14",
+      "family": "memory",
+      "task_type": "MEMORY",
+      "initial_state": {
+        "memory_enabled": true,
+        "candidate_memory": "偏好博物馆和慢节奏"
+      },
+      "turns": [
+        {
+          "user": "我喜欢博物馆和慢节奏",
+          "expected_action": "PROPOSE_MEMORY",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "可以记住",
+          "expected_action": "SAVE_CONFIRMED_MEMORY",
+          "allowed_tools": [
+            "save_preference_memory"
+          ],
+          "expected_status": "COMPLETED",
+          "confirmation_received": true
+        }
+      ],
+      "invariants": [
+        "explicit_consent_before_persist",
+        "memory_is_editable_and_deletable",
+        "no_sensitive_trait_inference"
+      ]
+    },
+    {
+      "id": "memory-current-request-wins-15",
+      "family": "memory",
+      "task_type": "GENERAL",
+      "initial_state": {
+        "long_term_memory": "偏好轻松慢节奏",
+        "current_trip_request": "想安排紧凑一天"
+      },
+      "turns": [
+        {
+          "user": "今天想排得紧凑一点",
+          "expected_action": "FOLLOW_CURRENT_REQUEST",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED"
+        },
+        {
+          "user": "明天还是轻松一些",
+          "expected_action": "UPDATE_TASK_CONSTRAINTS",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED"
+        }
+      ],
+      "invariants": [
+        "explicit_current_instruction_overrides_memory",
+        "do_not_mutate_long_term_memory",
+        "preserve_day_specific_preferences"
+      ]
+    },
+    {
+      "id": "compound-meal-and-schedule-16",
+      "family": "cross_domain",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "destination": "梅州",
+        "dates": [
+          "2026-11-02",
+          "2026-11-03"
+        ],
+        "saved_places": 3,
+        "meal_gap": "lunch"
+      },
+      "turns": [
+        {
+          "user": "帮我安排两天行程并推荐午餐",
+          "expected_action": "SEARCH_FOOD",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "每天轻松一些",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED"
+        },
+        {
+          "user": "草案看起来可以，午餐也选好了",
+          "expected_action": "ASK_CONFIRMATION_FOR_BOTH_CHANGES",
+          "allowed_tools": [
+            "confirm_current_draft",
+            "confirm_candidate_import"
+          ],
+          "expected_status": "WAITING_USER"
+        }
+      ],
+      "invariants": [
+        "keep_food_separate_from_sightseeing",
+        "retain_candidates_across_turns",
+        "no_write_before_confirmation"
+      ]
+    },
+    {
+      "id": "recovery-stale-context-17",
+      "family": "recovery",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "trip_dates": null,
+        "saved_places": 3,
+        "context_revision": 7
+      },
+      "turns": [
+        {
+          "user": "帮我安排已收藏的地点",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "11月2日到3日",
+          "context_revision_after": 8,
+          "expected_action": "REVALIDATE_TRIP_CONTEXT",
+          "allowed_tools": [],
+          "expected_status": "STALE"
+        }
+      ],
+      "invariants": [
+        "reject_answer_after_trip_context_changes",
+        "ask_user_to_restart_against_current_trip",
+        "do_not_reuse_stale_observations"
+      ]
+    },
+    {
+      "id": "recovery-cancel-pending-18",
+      "family": "recovery",
+      "task_type": "WEATHER",
+      "initial_state": {
+        "destination": "成都",
+        "dates": null,
+        "context_revision": 4
+      },
+      "turns": [
+        {
+          "user": "出行需要带伞吗",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "取消",
+          "expected_action": "CANCEL_PENDING_TASK",
+          "allowed_tools": [],
+          "expected_status": "CANCELLED"
+        }
+      ],
+      "invariants": [
+        "cancel_pending_task_without_tool_call",
+        "report_no_trip_data_change",
+        "do_not_resume_after_cancel"
+      ]
+    },
+    {
+      "id": "discover-family-19",
+      "family": "discovery",
+      "task_type": "DISCOVERY",
+      "initial_state": {
+        "destination": "成都",
+        "companions": [
+          "父母"
+        ]
+      },
+      "turns": [
+        {
+          "user": "带父母去成都玩，想轻松一点",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "喜欢历史文化，少爬坡",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "retain_companion_and_mobility_needs",
+        "do_not_invent_accessibility_facts"
+      ]
+    },
+    {
+      "id": "discover-accessible-20",
+      "family": "discovery",
+      "task_type": "DISCOVERY",
+      "initial_state": {
+        "destination": "杭州",
+        "accessibility": "unknown"
+      },
+      "turns": [
+        {
+          "user": "推荐适合轮椅出行的地方",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "无障碍设施必须逐个核实",
+          "expected_action": "ASK_USER_OR_LABEL_UNVERIFIED",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        }
+      ],
+      "invariants": [
+        "do_not_claim_unverified_accessibility",
+        "keep_accessibility_as_hard_constraint"
+      ]
+    },
+    {
+      "id": "discover-nature-21",
+      "family": "discovery",
+      "task_type": "DISCOVERY",
+      "initial_state": {
+        "destination": "未知",
+        "preferences": [
+          "自然"
+        ]
+      },
+      "turns": [
+        {
+          "user": "想去自然风景好的地方",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "国内，周末两天",
+          "expected_action": "RECOMMEND_DESTINATIONS",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "ask_destination_scope_when_missing",
+        "label_popularity_evidence"
+      ]
+    },
+    {
+      "id": "discover-budget-22",
+      "family": "discovery",
+      "task_type": "DISCOVERY",
+      "initial_state": {
+        "destination": "西安",
+        "budget": null
+      },
+      "turns": [
+        {
+          "user": "预算不高，推荐怎么玩",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "每天三百左右，不含住宿",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "clarify_budget_scope",
+        "do_not_fabricate_prices"
+      ]
+    },
+    {
+      "id": "schedule-single-stop-23",
+      "family": "itinerary",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "trip_dates": [
+          "2026-11-10",
+          "2026-11-10"
+        ],
+        "saved_places": 1
+      },
+      "turns": [
+        {
+          "user": "安排我收藏的一个地点",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "allowed_tools": [
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED"
+        },
+        {
+          "user": "先不用保存",
+          "expected_action": "KEEP_DRAFT_UNCOMMITTED",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "single_stop_needs_no_matrix",
+        "no_formal_write_without_confirmation"
+      ]
+    },
+    {
+      "id": "schedule-opening-conflict-24",
+      "family": "itinerary",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "trip_dates": [
+          "2026-11-10",
+          "2026-11-10"
+        ],
+        "opening_hours": "conflict"
+      },
+      "turns": [
+        {
+          "user": "把闭馆的博物馆也排进去",
+          "expected_action": "VERIFY_OPENING_HOURS",
+          "allowed_tools": [
+            "verify_opening_hours"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "那就不要安排它",
+          "expected_action": "REMOVE_CONFLICT_FROM_DRAFT",
+          "allowed_tools": [
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED"
+        }
+      ],
+      "invariants": [
+        "report_opening_hours_conflict",
+        "do_not_mark_unverified_hours_as_open"
+      ]
+    },
+    {
+      "id": "schedule-fixed-reservation-25",
+      "family": "itinerary",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "trip_dates": [
+          "2026-11-10",
+          "2026-11-11"
+        ],
+        "fixed_stops": [
+          {
+            "day": 1,
+            "time": "14:00"
+          }
+        ]
+      },
+      "turns": [
+        {
+          "user": "预约下午两点，其他地点围绕它安排",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "allowed_tools": [
+            "get_distance_matrix"
+          ],
+          "expected_status": "PROPOSED"
+        },
+        {
+          "user": "先给我看方案",
+          "expected_action": "ASK_CONFIRMATION",
+          "allowed_tools": [
+            "confirm_current_draft"
+          ],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "确认保存",
+          "expected_action": "COMMIT_CONFIRMED_DRAFT",
+          "allowed_tools": [
+            "confirm_current_draft"
+          ],
+          "expected_status": "COMPLETED",
+          "confirmation_received": true
+        }
+      ],
+      "invariants": [
+        "fixed_stop_unchanged",
+        "explicit_confirmation_before_write"
+      ]
+    },
+    {
+      "id": "schedule-too-many-places-26",
+      "family": "itinerary",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "trip_dates": [
+          "2026-11-10",
+          "2026-11-10"
+        ],
+        "saved_places": 9
+      },
+      "turns": [
+        {
+          "user": "一天把这些地点全逛完",
+          "expected_action": "ASK_USER_TO_RELAX_CONSTRAINT",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "删掉两个，剩下优先排",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED"
+        }
+      ],
+      "invariants": [
+        "no_silent_place_drop",
+        "explain_capacity_limit"
+      ]
+    },
+    {
+      "id": "food-breakfast-27",
+      "family": "food",
+      "task_type": "MEAL",
+      "initial_state": {
+        "destination": "成都",
+        "dates": [
+          "2026-11-10",
+          "2026-11-11"
+        ],
+        "meal_type": "BREAKFAST"
+      },
+      "turns": [
+        {
+          "user": "找第二天早餐，想吃本地小吃",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED"
+        },
+        {
+          "user": "选第二家，八点",
+          "expected_action": "SET_MEAL_TIME",
+          "allowed_tools": [],
+          "expected_status": "PROPOSED"
+        }
+      ],
+      "invariants": [
+        "only_food_candidates",
+        "label_as_breakfast",
+        "do_not_add_attractions"
+      ]
+    },
+    {
+      "id": "food-vegetarian-28",
+      "family": "food",
+      "task_type": "MEAL",
+      "initial_state": {
+        "destination": "杭州",
+        "diet": [
+          "vegetarian"
+        ]
+      },
+      "turns": [
+        {
+          "user": "找素食午餐",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "过敏原也要问店家确认",
+          "expected_action": "LABEL_DIETARY_UNVERIFIED",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "retain_dietary_constraint",
+        "do_not_guarantee_allergen_safety"
+      ]
+    },
+    {
+      "id": "food-dinner-gap-29",
+      "family": "food",
+      "task_type": "MEAL",
+      "initial_state": {
+        "draft_has_dinner_gap": true
+      },
+      "turns": [
+        {
+          "user": "晚餐空着，帮我补上",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "先推荐，暂时不加行程",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "PARTIAL"
+        }
+      ],
+      "invariants": [
+        "search_only_dinner",
+        "do_not_write_plan_automatically"
+      ]
+    },
+    {
+      "id": "food-budget-30",
+      "family": "food",
+      "task_type": "MEAL",
+      "initial_state": {
+        "destination": "广州",
+        "budget_per_person": 80
+      },
+      "turns": [
+        {
+          "user": "晚餐人均八十以内，离北京路近",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED"
+        },
+        {
+          "user": "价格不是实时的，提醒我核对",
+          "expected_action": "LABEL_PRICE_UNVERIFIED",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "preserve_price_and_area_filters",
+        "do_not_claim_live_menu_prices"
+      ]
+    },
+    {
+      "id": "lodging-near-station-31",
+      "family": "lodging",
+      "task_type": "LODGING",
+      "initial_state": {
+        "destination": "上海",
+        "station": "虹桥站"
+      },
+      "turns": [
+        {
+          "user": "找虹桥站附近住宿",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED"
+        },
+        {
+          "user": "只比较位置和评价，不要代订",
+          "expected_action": "COMPARE_LODGING",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "only_lodging_candidates",
+        "never_book"
+      ]
+    },
+    {
+      "id": "lodging-family-32",
+      "family": "lodging",
+      "task_type": "LODGING",
+      "initial_state": {
+        "destination": "北京",
+        "companions": [
+          "儿童"
+        ]
+      },
+      "turns": [
+        {
+          "user": "带孩子住哪里方便",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "靠近地铁，最好有家庭房",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "retain_family_preferences",
+        "do_not_claim_room_availability"
+      ]
+    },
+    {
+      "id": "lodging-accessibility-33",
+      "family": "lodging",
+      "task_type": "LODGING",
+      "initial_state": {
+        "destination": "成都",
+        "accessibility": "wheelchair"
+      },
+      "turns": [
+        {
+          "user": "找轮椅方便的酒店",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "无障碍房型需要我自己确认",
+          "expected_action": "LABEL_ACCESSIBILITY_UNVERIFIED",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "do_not_infer_accessible_room",
+        "keep_candidate_evidence"
+      ]
+    },
+    {
+      "id": "lodging-dates-missing-34",
+      "family": "lodging",
+      "task_type": "LODGING",
+      "initial_state": {
+        "destination": "厦门",
+        "dates": null
+      },
+      "turns": [
+        {
+          "user": "帮我看看住宿",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "12月5日到7日",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "ask_dates_before_availability_claim",
+        "never_book"
+      ]
+    },
+    {
+      "id": "lodging-booking-unsupported-35",
+      "family": "lodging",
+      "task_type": "LODGING",
+      "initial_state": {
+        "destination": "苏州"
+      },
+      "turns": [
+        {
+          "user": "帮我直接订这家酒店",
+          "expected_action": "EXPLAIN_UNSUPPORTED_BOOKING",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        },
+        {
+          "user": "那给我订房链接",
+          "expected_action": "EXPLAIN_NO_EXTERNAL_BOOKING",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "never_claim_booking",
+        "no_external_side_effect"
+      ]
+    },
+    {
+      "id": "weather-missing-destination-36",
+      "family": "weather",
+      "task_type": "WEATHER",
+      "initial_state": {
+        "destination": null,
+        "dates": [
+          "2026-11-10",
+          "2026-11-11"
+        ]
+      },
+      "turns": [
+        {
+          "user": "帮我查旅行天气",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "去成都",
+          "expected_action": "GET_TRIP_WEATHER",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "ask_destination_before_forecast",
+        "show_source_and_forecast_range"
+      ]
+    },
+    {
+      "id": "weather-heat-preparation-37",
+      "family": "weather",
+      "task_type": "PREPARATION",
+      "initial_state": {
+        "destination": "西安",
+        "dates": [
+          "2026-07-15",
+          "2026-07-16"
+        ]
+      },
+      "turns": [
+        {
+          "user": "天气热要准备什么",
+          "expected_action": "GET_TRIP_WEATHER",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "COMPLETED"
+        },
+        {
+          "user": "提醒补水和防晒",
+          "expected_action": "GIVE_GROUNDED_PREPARATION_ADVICE",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "advice_grounded_in_forecast",
+        "state_forecast_uncertainty"
+      ]
+    },
+    {
+      "id": "weather-rain-indoor-38",
+      "family": "weather",
+      "task_type": "DISCOVERY",
+      "initial_state": {
+        "destination": "成都",
+        "rain_expected": true
+      },
+      "turns": [
+        {
+          "user": "下雨天推荐室内地点",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places",
+            "get_trip_weather"
+          ],
+          "expected_status": "COMPLETED"
+        },
+        {
+          "user": "不要把博物馆当露天景点",
+          "expected_action": "FILTER_INDOOR_CANDIDATES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "prefer_indoor_candidates",
+        "keep_weather_and_search_evidence_separate"
+      ]
+    },
+    {
+      "id": "weather-old-forecast-39",
+      "family": "weather",
+      "task_type": "PREPARATION",
+      "initial_state": {
+        "destination": "北京",
+        "dates": [
+          "2026-11-10",
+          "2026-11-11"
+        ],
+        "forecast_status": "OUT_OF_RANGE"
+      },
+      "turns": [
+        {
+          "user": "一个月后需要带伞吗",
+          "expected_action": "EXPLAIN_FORECAST_RANGE",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "先给一般性准备建议",
+          "expected_action": "GIVE_NON_FORECAST_ADVICE",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "do_not_present_climate_as_forecast",
+        "label_general_advice"
+      ]
+    },
+    {
+      "id": "transport-endpoint-40",
+      "family": "transport",
+      "task_type": "TRANSPORT",
+      "initial_state": {
+        "saved_places": [
+          "酒店",
+          "景点"
+        ],
+        "origin": null
+      },
+      "turns": [
+        {
+          "user": "从酒店去景点怎么走",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "用我当前旅行里的酒店",
+          "expected_action": "GET_TRIP_ROUTE",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "resolve_only_owner_scoped_places",
+        "do_not_invent_origin"
+      ]
+    },
+    {
+      "id": "transport-mode-41",
+      "family": "transport",
+      "task_type": "TRANSPORT",
+      "initial_state": {
+        "saved_places": [
+          "西湖",
+          "灵隐寺"
+        ]
+      },
+      "turns": [
+        {
+          "user": "查公交路线，不要驾车",
+          "expected_action": "GET_TRIP_ROUTE",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "COMPLETED"
+        },
+        {
+          "user": "显示换乘和步行段",
+          "expected_action": "PRESENT_ROUTE_SEGMENTS",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "respect_requested_mode",
+        "label_simulated_or_verified_route"
+      ]
+    },
+    {
+      "id": "transport-ownership-42",
+      "family": "transport",
+      "task_type": "TRANSPORT",
+      "initial_state": {
+        "saved_places": [
+          "owned_place"
+        ],
+        "foreign_place_reference": true
+      },
+      "turns": [
+        {
+          "user": "查另一个账号收藏地点的路线",
+          "expected_action": "REJECT_UNOWNED_PLACE",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        },
+        {
+          "user": "那只查我的地点",
+          "expected_action": "ASK_USER_FOR_SECOND_ENDPOINT",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        }
+      ],
+      "invariants": [
+        "never_access_foreign_trip_data",
+        "no_model_supplied_coordinates"
+      ]
+    },
+    {
+      "id": "transport-accessibility-43",
+      "family": "transport",
+      "task_type": "TRANSPORT",
+      "initial_state": {
+        "saved_places": [
+          "地铁站",
+          "景点"
+        ],
+        "mobility_need": "limited_walking"
+      },
+      "turns": [
+        {
+          "user": "少走路的路线怎么去",
+          "expected_action": "GET_TRIP_ROUTE",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "步行距离无法保证时告诉我",
+          "expected_action": "LABEL_MOBILITY_LIMIT",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "do_not_guarantee_accessibility_without_evidence",
+        "preserve_mobility_need"
+      ]
+    },
+    {
+      "id": "import-link-unavailable-44",
+      "family": "content_import",
+      "task_type": "DISCOVERY",
+      "initial_state": {
+        "source_type": "social_link",
+        "fetch_available": false
+      },
+      "turns": [
+        {
+          "user": "分析这个小红书链接里的地点",
+          "expected_action": "EXPLAIN_LINK_UNAVAILABLE",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "我粘贴攻略文字给你",
+          "expected_action": "EXTRACT_CANDIDATES",
+          "allowed_tools": [
+            "extract_content"
+          ],
+          "expected_status": "PARTIAL"
+        }
+      ],
+      "invariants": [
+        "do_not_claim_link_was_read",
+        "offer_supported_import_path"
+      ]
+    },
+    {
+      "id": "import-text-duplicate-45",
+      "family": "content_import",
+      "task_type": "DISCOVERY",
+      "initial_state": {
+        "source_type": "text",
+        "duplicates": true
+      },
+      "turns": [
+        {
+          "user": "提取这段攻略中的地点",
+          "expected_action": "EXTRACT_CANDIDATES",
+          "allowed_tools": [
+            "extract_content"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "重复地点合并后先让我检查",
+          "expected_action": "SHOW_DEDUPLICATED_CANDIDATES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "WAITING_USER"
+        }
+      ],
+      "invariants": [
+        "retain_source_spans",
+        "deduplicate_without_auto_import"
+      ]
+    },
+    {
+      "id": "import-image-low-confidence-46",
+      "family": "content_import",
+      "task_type": "DISCOVERY",
+      "initial_state": {
+        "source_type": "image",
+        "ocr_confidence": "low"
+      },
+      "turns": [
+        {
+          "user": "识别这张模糊截图里的地点",
+          "expected_action": "OCR_EXTRACT",
+          "allowed_tools": [
+            "extract_image_text"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "不确定的名字标出来，不要猜",
+          "expected_action": "SHOW_UNCERTAIN_OCR",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        }
+      ],
+      "invariants": [
+        "preserve_ocr_confidence",
+        "do_not_claim_unverified_place"
+      ]
+    },
+    {
+      "id": "import-unverified-city-47",
+      "family": "content_import",
+      "task_type": "DISCOVERY",
+      "initial_state": {
+        "source_type": "text",
+        "city": "unknown"
+      },
+      "turns": [
+        {
+          "user": "攻略里写着古城和博物馆，帮我找出来",
+          "expected_action": "EXTRACT_CANDIDATES",
+          "allowed_tools": [
+            "extract_content"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "地点属于哪个城市还要确认",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        }
+      ],
+      "invariants": [
+        "do_not_guess_city",
+        "separate_extraction_from_map_verification"
+      ]
+    },
+    {
+      "id": "memory-edit-48",
+      "family": "memory",
+      "task_type": "MEMORY",
+      "initial_state": {
+        "memory_enabled": true,
+        "existing_memory": "喜欢博物馆"
+      },
+      "turns": [
+        {
+          "user": "我现在更喜欢户外活动",
+          "expected_action": "ASK_MEMORY_UPDATE_CONSENT",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "可以替换旧偏好",
+          "expected_action": "UPDATE_CONFIRMED_MEMORY",
+          "allowed_tools": [
+            "save_preference_memory"
+          ],
+          "expected_status": "COMPLETED",
+          "confirmation_received": true
+        }
+      ],
+      "invariants": [
+        "explicit_consent_before_memory_write",
+        "memory_editable_and_deletable"
+      ]
+    },
+    {
+      "id": "memory-delete-49",
+      "family": "memory",
+      "task_type": "MEMORY",
+      "initial_state": {
+        "memory_enabled": true,
+        "existing_memory": "喜欢慢节奏"
+      },
+      "turns": [
+        {
+          "user": "我记住了哪些旅行偏好",
+          "expected_action": "LIST_OWNER_MEMORIES",
+          "allowed_tools": [
+            "get_personal_memory"
+          ],
+          "expected_status": "COMPLETED"
+        },
+        {
+          "user": "是否删除慢节奏这条记忆",
+          "expected_action": "ASK_CONFIRMATION",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "确认删除",
+          "expected_action": "DELETE_CONFIRMED_MEMORY",
+          "allowed_tools": [
+            "delete_personal_memory"
+          ],
+          "expected_status": "COMPLETED",
+          "confirmation_received": true
+        }
+      ],
+      "invariants": [
+        "owner_scope_memory",
+        "confirm_before_delete"
+      ]
+    },
+    {
+      "id": "memory-disable-50",
+      "family": "memory",
+      "task_type": "MEMORY",
+      "initial_state": {
+        "memory_enabled": false
+      },
+      "turns": [
+        {
+          "user": "我喜欢海边，不要记住",
+          "expected_action": "USE_SESSION_ONLY",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        },
+        {
+          "user": "之后推荐时还会保留吗",
+          "expected_action": "EXPLAIN_MEMORY_DISABLED",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "do_not_persist_without_opt_in",
+        "session_preference_not_long_term_memory"
+      ]
+    },
+    {
+      "id": "memory-sensitive-51",
+      "family": "memory",
+      "task_type": "MEMORY",
+      "initial_state": {
+        "memory_enabled": true,
+        "sensitive_inference": true
+      },
+      "turns": [
+        {
+          "user": "根据照片推断我的健康状况并记住",
+          "expected_action": "DECLINE_SENSITIVE_INFERENCE",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        },
+        {
+          "user": "只记录我明确说的饮食偏好",
+          "expected_action": "ASK_MEMORY_CONSENT",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER"
+        }
+      ],
+      "invariants": [
+        "no_sensitive_trait_inference",
+        "explicit_user_stated_preference_only"
+      ]
+    },
+    {
+      "id": "recovery-search-timeout-52",
+      "family": "recovery",
+      "task_type": "SEARCH",
+      "initial_state": {
+        "destination": "成都",
+        "search_provider": "timeout"
+      },
+      "turns": [
+        {
+          "user": "搜一下附近博物馆",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "不要编造结果，告诉我稍后重试",
+          "expected_action": "REPORT_TOOL_FAILURE",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "preserve_provider_failure_reason",
+        "no_fabricated_candidates"
+      ]
+    },
+    {
+      "id": "recovery-weather-retry-53",
+      "family": "recovery",
+      "task_type": "WEATHER",
+      "initial_state": {
+        "destination": "杭州",
+        "dates": [
+          "2026-11-10",
+          "2026-11-11"
+        ],
+        "weather_provider": "timeout"
+      },
+      "turns": [
+        {
+          "user": "查天气",
+          "expected_action": "GET_TRIP_WEATHER",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "再试一次",
+          "expected_action": "RETRY_READ_ONLY_TOOL",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "还是不行就给一般性建议",
+          "expected_action": "STOP_AFTER_BOUNDED_RETRIES",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "bounded_retry_count",
+        "do_not_claim_forecast_after_failure"
+      ]
+    },
+    {
+      "id": "recovery-idempotency-54",
+      "family": "recovery",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "idempotency_key": "same-request"
+      },
+      "turns": [
+        {
+          "user": "帮我优化行程",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "allowed_tools": [
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED"
+        },
+        {
+          "user": "网络超时后原请求重发",
+          "expected_action": "REUSE_IDEMPOTENT_RESULT",
+          "allowed_tools": [],
+          "expected_status": "PROPOSED"
+        }
+      ],
+      "invariants": [
+        "no_duplicate_user_message",
+        "do_not_create_duplicate_plan_version"
+      ]
+    },
+    {
+      "id": "recovery-invalid-action-55",
+      "family": "recovery",
+      "task_type": "GENERAL",
+      "initial_state": {
+        "model_action": "unknown_tool"
+      },
+      "turns": [
+        {
+          "user": "查询我的路线",
+          "expected_action": "REJECT_INVALID_ACTION",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "按安全策略停止并说明",
+          "expected_action": "SAFE_STOP",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED"
+        }
+      ],
+      "invariants": [
+        "tool_allowlist_enforced",
+        "invalid_action_never_executes"
+      ]
+    },
+    {
+      "id": "cross-food-schedule-56",
+      "family": "cross_domain",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "destination": "成都",
+        "dates": [
+          "2026-11-10",
+          "2026-11-11"
+        ],
+        "meal_gap": "lunch"
+      },
+      "turns": [
+        {
+          "user": "安排景点并找午餐",
+          "expected_action": "SEARCH_FOOD",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "别排太紧",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED"
+        },
+        {
+          "user": "草案可以，午餐也选好了",
+          "expected_action": "ASK_CONFIRMATION_FOR_BOTH_CHANGES",
+          "allowed_tools": [
+            "confirm_current_draft"
+          ],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "一起确认保存",
+          "expected_action": "COMMIT_CONFIRMED_DRAFT",
+          "allowed_tools": [
+            "confirm_current_draft"
+          ],
+          "expected_status": "COMPLETED",
+          "confirmation_received": true
+        }
+      ],
+      "invariants": [
+        "food_separate_from_sightseeing",
+        "one_confirmation_for_previewed_changes"
+      ]
+    },
+    {
+      "id": "cross-weather-accessibility-57",
+      "family": "cross_domain",
+      "task_type": "DISCOVERY",
+      "initial_state": {
+        "destination": "杭州",
+        "weather": "rain",
+        "mobility_need": "limited_walking"
+      },
+      "turns": [
+        {
+          "user": "下雨时找少走路的室内地点",
+          "expected_action": "GET_TRIP_WEATHER",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "COMPLETED"
+        },
+        {
+          "user": "再搜索室内候选并标注步行证据",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "PARTIAL"
+        }
+      ],
+      "invariants": [
+        "satisfy_weather_and_mobility_constraints",
+        "do_not_claim_unverified_accessibility"
+      ]
+    },
+    {
+      "id": "cross-hotel-route-58",
+      "family": "cross_domain",
+      "task_type": "LODGING",
+      "initial_state": {
+        "destination": "上海",
+        "trip_places": [
+          "车站",
+          "景点"
+        ]
+      },
+      "turns": [
+        {
+          "user": "找景点附近住宿并看交通",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED"
+        },
+        {
+          "user": "选中一家后查到景点的路线",
+          "expected_action": "GET_TRIP_ROUTE",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "PROPOSED"
+        }
+      ],
+      "invariants": [
+        "lodging_search_does_not_book",
+        "route_uses_verified_candidate_coordinates"
+      ]
+    },
+    {
+      "id": "cross-import-to-schedule-59",
+      "family": "cross_domain",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "destination": "杭州",
+        "source_type": "image",
+        "trip_dates": [
+          "2026-11-10",
+          "2026-11-11"
+        ]
+      },
+      "turns": [
+        {
+          "user": "从攻略截图提取地点并安排",
+          "expected_action": "OCR_EXTRACT",
+          "allowed_tools": [
+            "extract_image_text"
+          ],
+          "expected_status": "PARTIAL"
+        },
+        {
+          "user": "我选这两个地点",
+          "expected_action": "VERIFY_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "WAITING_USER"
+        },
+        {
+          "user": "确认加入草案，不要直接保存",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "allowed_tools": [
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED"
+        }
+      ],
+      "invariants": [
+        "verify_ocr_candidates_before_schedule",
+        "no_formal_write_before_confirmation"
+      ]
+    },
+    {
+      "id": "cross-current-preference-60",
+      "family": "cross_domain",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "long_term_memory": "slow pace",
+        "trip_dates": [
+          "2026-11-10",
+          "2026-11-11"
+        ]
+      },
+      "turns": [
+        {
+          "user": "今天安排紧凑，明天轻松",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED"
+        },
+        {
+          "user": "按每天不同节奏调整",
+          "expected_action": "UPDATE_DAY_SPECIFIC_CONSTRAINTS",
+          "allowed_tools": [
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED"
+        }
+      ],
+      "invariants": [
+        "current_request_overrides_memory",
+        "preserve_day_specific_constraints"
+      ]
+    }
+  ]
+}

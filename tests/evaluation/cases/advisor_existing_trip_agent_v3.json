@@ -1,0 +1,987 @@
+{
+  "dataset_id": "advisor_existing_trip_agent_v3",
+  "version": 3,
+  "scope": "40 controlled tasks spanning 16 scenario families: 32 frozen matched-input perturbations plus 8 new independent families covering missing/degenerate inputs and tool failures.",
+  "parent_dataset": "advisor_existing_trip_agent_v2",
+  "provider_mode": "synthetic",
+  "frozen_before_scoring": true,
+  "cases": [
+    {
+      "id": "fresh-route-evidence-should-be-reused-variant-1",
+      "user_goal": "帮我把已收藏的地点安排成两天轻松行程。（慢节奏，少安排一些地点）",
+      "state": {
+        "trip_dates": [
+          "2026-11-02",
+          "2026-11-03"
+        ],
+        "saved_places": 2,
+        "plan_version": 2,
+        "route_matrix": "fresh_verified",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "pace_level": 1
+      },
+      "expected_next_action": "reuse_fresh_route_evidence",
+      "expected_outcome": "verified_editable_draft",
+      "hard_invariants": [
+        "all_selected_places_accounted_for",
+        "no_formal_write_before_confirmation"
+      ],
+      "scenario_family": "fresh-route-evidence-should-be-reused"
+    },
+    {
+      "id": "fresh-route-evidence-should-be-reused-variant-2",
+      "user_goal": "帮我把已收藏的地点安排成两天轻松行程。（偏轻松，保留休息时间）",
+      "state": {
+        "trip_dates": [
+          "2026-11-02",
+          "2026-11-03"
+        ],
+        "saved_places": 4,
+        "plan_version": 2,
+        "route_matrix": "fresh_verified",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "pace_level": 2
+      },
+      "expected_next_action": "reuse_fresh_route_evidence",
+      "expected_outcome": "verified_editable_draft",
+      "hard_invariants": [
+        "all_selected_places_accounted_for",
+        "no_formal_write_before_confirmation"
+      ],
+      "scenario_family": "fresh-route-evidence-should-be-reused"
+    },
+    {
+      "id": "fresh-route-evidence-should-be-reused-variant-3",
+      "user_goal": "帮我把已收藏的地点安排成两天轻松行程。（希望安排得紧凑一些）",
+      "state": {
+        "trip_dates": [
+          "2026-11-02",
+          "2026-11-03"
+        ],
+        "saved_places": 6,
+        "plan_version": 2,
+        "route_matrix": "fresh_verified",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "pace_level": 4
+      },
+      "expected_next_action": "reuse_fresh_route_evidence",
+      "expected_outcome": "verified_editable_draft",
+      "hard_invariants": [
+        "all_selected_places_accounted_for",
+        "no_formal_write_before_confirmation"
+      ],
+      "scenario_family": "fresh-route-evidence-should-be-reused"
+    },
+    {
+      "id": "fresh-route-evidence-should-be-reused-variant-4",
+      "user_goal": "帮我把已收藏的地点安排成两天轻松行程。（希望充分利用每天时间）",
+      "state": {
+        "trip_dates": [
+          "2026-11-02",
+          "2026-11-03"
+        ],
+        "saved_places": 8,
+        "plan_version": 2,
+        "route_matrix": "fresh_verified",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "pace_level": 5
+      },
+      "expected_next_action": "reuse_fresh_route_evidence",
+      "expected_outcome": "verified_editable_draft",
+      "hard_invariants": [
+        "all_selected_places_accounted_for",
+        "no_formal_write_before_confirmation"
+      ],
+      "scenario_family": "fresh-route-evidence-should-be-reused"
+    },
+    {
+      "id": "missing-route-evidence-should-query-variant-1",
+      "user_goal": "根据我收藏的地点安排一个少走回头路的周末行程。（慢节奏，少安排一些地点）",
+      "state": {
+        "trip_dates": [
+          "2026-11-07",
+          "2026-11-08"
+        ],
+        "saved_places": 2,
+        "plan_version": 1,
+        "route_matrix": "missing",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "pace_level": 1
+      },
+      "expected_next_action": "get_distance_matrix",
+      "expected_outcome": "route_verified_draft",
+      "hard_invariants": [
+        "server_scoped_tool_arguments",
+        "matrix_shape_verified",
+        "no_formal_write_before_confirmation"
+      ],
+      "scenario_family": "missing-route-evidence-should-query"
+    },
+    {
+      "id": "missing-route-evidence-should-query-variant-2",
+      "user_goal": "根据我收藏的地点安排一个少走回头路的周末行程。（偏轻松，保留休息时间）",
+      "state": {
+        "trip_dates": [
+          "2026-11-07",
+          "2026-11-08"
+        ],
+        "saved_places": 4,
+        "plan_version": 1,
+        "route_matrix": "missing",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "pace_level": 2
+      },
+      "expected_next_action": "get_distance_matrix",
+      "expected_outcome": "route_verified_draft",
+      "hard_invariants": [
+        "server_scoped_tool_arguments",
+        "matrix_shape_verified",
+        "no_formal_write_before_confirmation"
+      ],
+      "scenario_family": "missing-route-evidence-should-query"
+    },
+    {
+      "id": "missing-route-evidence-should-query-variant-3",
+      "user_goal": "根据我收藏的地点安排一个少走回头路的周末行程。（希望安排得紧凑一些）",
+      "state": {
+        "trip_dates": [
+          "2026-11-07",
+          "2026-11-08"
+        ],
+        "saved_places": 6,
+        "plan_version": 1,
+        "route_matrix": "missing",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "pace_level": 4
+      },
+      "expected_next_action": "get_distance_matrix",
+      "expected_outcome": "route_verified_draft",
+      "hard_invariants": [
+        "server_scoped_tool_arguments",
+        "matrix_shape_verified",
+        "no_formal_write_before_confirmation"
+      ],
+      "scenario_family": "missing-route-evidence-should-query"
+    },
+    {
+      "id": "missing-route-evidence-should-query-variant-4",
+      "user_goal": "根据我收藏的地点安排一个少走回头路的周末行程。（希望充分利用每天时间）",
+      "state": {
+        "trip_dates": [
+          "2026-11-07",
+          "2026-11-08"
+        ],
+        "saved_places": 8,
+        "plan_version": 1,
+        "route_matrix": "missing",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "pace_level": 5
+      },
+      "expected_next_action": "get_distance_matrix",
+      "expected_outcome": "route_verified_draft",
+      "hard_invariants": [
+        "server_scoped_tool_arguments",
+        "matrix_shape_verified",
+        "no_formal_write_before_confirmation"
+      ],
+      "scenario_family": "missing-route-evidence-should-query"
+    },
+    {
+      "id": "route-provider-failure-adapts-with-warning-variant-1",
+      "user_goal": "帮我重新安排这趟旅行的地点顺序。（慢节奏，少安排一些地点）",
+      "state": {
+        "trip_dates": [
+          "2026-11-10",
+          "2026-11-11"
+        ],
+        "saved_places": 2,
+        "plan_version": 3,
+        "route_matrix": "provider_timeout",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "pace_level": 1
+      },
+      "expected_next_action": "stop_retry_and_explain_route_limit",
+      "expected_outcome": "estimated_draft_with_route_warning_or_safe_stop",
+      "hard_invariants": [
+        "no_repeated_route_call",
+        "uncertainty_visible",
+        "no_formal_write_before_confirmation"
+      ],
+      "scenario_family": "route-provider-failure-adapts-with-warning"
+    },
+    {
+      "id": "route-provider-failure-adapts-with-warning-variant-2",
+      "user_goal": "帮我重新安排这趟旅行的地点顺序。（偏轻松，保留休息时间）",
+      "state": {
+        "trip_dates": [
+          "2026-11-10",
+          "2026-11-11"
+        ],
+        "saved_places": 4,
+        "plan_version": 3,
+        "route_matrix": "provider_timeout",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "pace_level": 2
+      },
+      "expected_next_action": "stop_retry_and_explain_route_limit",
+      "expected_outcome": "estimated_draft_with_route_warning_or_safe_stop",
+      "hard_invariants": [
+        "no_repeated_route_call",
+        "uncertainty_visible",
+        "no_formal_write_before_confirmation"
+      ],
+      "scenario_family": "route-provider-failure-adapts-with-warning"
+    },
+    {
+      "id": "route-provider-failure-adapts-with-warning-variant-3",
+      "user_goal": "帮我重新安排这趟旅行的地点顺序。（希望安排得紧凑一些）",
+      "state": {
+        "trip_dates": [
+          "2026-11-10",
+          "2026-11-11"
+        ],
+        "saved_places": 6,
+        "plan_version": 3,
+        "route_matrix": "provider_timeout",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "pace_level": 4
+      },
+      "expected_next_action": "stop_retry_and_explain_route_limit",
+      "expected_outcome": "estimated_draft_with_route_warning_or_safe_stop",
+      "hard_invariants": [
+        "no_repeated_route_call",
+        "uncertainty_visible",
+        "no_formal_write_before_confirmation"
+      ],
+      "scenario_family": "route-provider-failure-adapts-with-warning"
+    },
+    {
+      "id": "route-provider-failure-adapts-with-warning-variant-4",
+      "user_goal": "帮我重新安排这趟旅行的地点顺序。（希望充分利用每天时间）",
+      "state": {
+        "trip_dates": [
+          "2026-11-10",
+          "2026-11-11"
+        ],
+        "saved_places": 8,
+        "plan_version": 3,
+        "route_matrix": "provider_timeout",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "pace_level": 5
+      },
+      "expected_next_action": "stop_retry_and_explain_route_limit",
+      "expected_outcome": "estimated_draft_with_route_warning_or_safe_stop",
+      "hard_invariants": [
+        "no_repeated_route_call",
+        "uncertainty_visible",
+        "no_formal_write_before_confirmation"
+      ],
+      "scenario_family": "route-provider-failure-adapts-with-warning"
+    },
+    {
+      "id": "missing-dates-asks-user-variant-1",
+      "user_goal": "把我收藏的景点安排一下。（慢节奏，少安排一些地点）",
+      "state": {
+        "trip_dates": null,
+        "saved_places": 2,
+        "plan_version": null,
+        "route_matrix": "missing",
+        "fixed_stops": 0,
+        "daily_capacity": "unknown",
+        "pace_level": 1
+      },
+      "expected_next_action": "ask_for_trip_dates",
+      "expected_outcome": "focused_user_question_without_draft",
+      "hard_invariants": [
+        "no_assumed_dates",
+        "no_provider_call_before_feasibility_inputs",
+        "no_formal_write"
+      ],
+      "scenario_family": "missing-dates-asks-user"
+    },
+    {
+      "id": "missing-dates-asks-user-variant-2",
+      "user_goal": "把我收藏的景点安排一下。（偏轻松，保留休息时间）",
+      "state": {
+        "trip_dates": null,
+        "saved_places": 4,
+        "plan_version": null,
+        "route_matrix": "missing",
+        "fixed_stops": 0,
+        "daily_capacity": "unknown",
+        "pace_level": 2
+      },
+      "expected_next_action": "ask_for_trip_dates",
+      "expected_outcome": "focused_user_question_without_draft",
+      "hard_invariants": [
+        "no_assumed_dates",
+        "no_provider_call_before_feasibility_inputs",
+        "no_formal_write"
+      ],
+      "scenario_family": "missing-dates-asks-user"
+    },
+    {
+      "id": "missing-dates-asks-user-variant-3",
+      "user_goal": "把我收藏的景点安排一下。（希望安排得紧凑一些）",
+      "state": {
+        "trip_dates": null,
+        "saved_places": 6,
+        "plan_version": null,
+        "route_matrix": "missing",
+        "fixed_stops": 0,
+        "daily_capacity": "unknown",
+        "pace_level": 4
+      },
+      "expected_next_action": "ask_for_trip_dates",
+      "expected_outcome": "focused_user_question_without_draft",
+      "hard_invariants": [
+        "no_assumed_dates",
+        "no_provider_call_before_feasibility_inputs",
+        "no_formal_write"
+      ],
+      "scenario_family": "missing-dates-asks-user"
+    },
+    {
+      "id": "missing-dates-asks-user-variant-4",
+      "user_goal": "把我收藏的景点安排一下。（希望充分利用每天时间）",
+      "state": {
+        "trip_dates": null,
+        "saved_places": 8,
+        "plan_version": null,
+        "route_matrix": "missing",
+        "fixed_stops": 0,
+        "daily_capacity": "unknown",
+        "pace_level": 5
+      },
+      "expected_next_action": "ask_for_trip_dates",
+      "expected_outcome": "focused_user_question_without_draft",
+      "hard_invariants": [
+        "no_assumed_dates",
+        "no_provider_call_before_feasibility_inputs",
+        "no_formal_write"
+      ],
+      "scenario_family": "missing-dates-asks-user"
+    },
+    {
+      "id": "fixed-appointment-is-preserved-variant-1",
+      "user_goal": "帮我把已收藏的地点排得顺一点，第二天下午有预约。（慢节奏，少安排一些地点）",
+      "state": {
+        "trip_dates": [
+          "2026-11-14",
+          "2026-11-15"
+        ],
+        "saved_places": 2,
+        "plan_version": 2,
+        "route_matrix": "verified",
+        "fixed_stops": [
+          {
+            "day": "2026-11-15",
+            "start": "15:00",
+            "end": "16:00"
+          }
+        ],
+        "daily_capacity": "feasible",
+        "pace_level": 1
+      },
+      "expected_next_action": "preserve_fixed_stop_and_schedule_around_it",
+      "expected_outcome": "draft_with_fixed_stop_unchanged",
+      "hard_invariants": [
+        "fixed_stop_not_moved",
+        "fixed_stop_not_removed",
+        "conflict_blocks_confirmation"
+      ],
+      "scenario_family": "fixed-appointment-is-preserved"
+    },
+    {
+      "id": "fixed-appointment-is-preserved-variant-2",
+      "user_goal": "帮我把已收藏的地点排得顺一点，第二天下午有预约。（偏轻松，保留休息时间）",
+      "state": {
+        "trip_dates": [
+          "2026-11-14",
+          "2026-11-15"
+        ],
+        "saved_places": 4,
+        "plan_version": 2,
+        "route_matrix": "verified",
+        "fixed_stops": [
+          {
+            "day": "2026-11-15",
+            "start": "15:00",
+            "end": "16:00"
+          }
+        ],
+        "daily_capacity": "feasible",
+        "pace_level": 2
+      },
+      "expected_next_action": "preserve_fixed_stop_and_schedule_around_it",
+      "expected_outcome": "draft_with_fixed_stop_unchanged",
+      "hard_invariants": [
+        "fixed_stop_not_moved",
+        "fixed_stop_not_removed",
+        "conflict_blocks_confirmation"
+      ],
+      "scenario_family": "fixed-appointment-is-preserved"
+    },
+    {
+      "id": "fixed-appointment-is-preserved-variant-3",
+      "user_goal": "帮我把已收藏的地点排得顺一点，第二天下午有预约。（希望安排得紧凑一些）",
+      "state": {
+        "trip_dates": [
+          "2026-11-14",
+          "2026-11-15"
+        ],
+        "saved_places": 6,
+        "plan_version": 2,
+        "route_matrix": "verified",
+        "fixed_stops": [
+          {
+            "day": "2026-11-15",
+            "start": "15:00",
+            "end": "16:00"
+          }
+        ],
+        "daily_capacity": "feasible",
+        "pace_level": 4
+      },
+      "expected_next_action": "preserve_fixed_stop_and_schedule_around_it",
+      "expected_outcome": "draft_with_fixed_stop_unchanged",
+      "hard_invariants": [
+        "fixed_stop_not_moved",
+        "fixed_stop_not_removed",
+        "conflict_blocks_confirmation"
+      ],
+      "scenario_family": "fixed-appointment-is-preserved"
+    },
+    {
+      "id": "fixed-appointment-is-preserved-variant-4",
+      "user_goal": "帮我把已收藏的地点排得顺一点，第二天下午有预约。（希望充分利用每天时间）",
+      "state": {
+        "trip_dates": [
+          "2026-11-14",
+          "2026-11-15"
+        ],
+        "saved_places": 8,
+        "plan_version": 2,
+        "route_matrix": "verified",
+        "fixed_stops": [
+          {
+            "day": "2026-11-15",
+            "start": "15:00",
+            "end": "16:00"
+          }
+        ],
+        "daily_capacity": "feasible",
+        "pace_level": 5
+      },
+      "expected_next_action": "preserve_fixed_stop_and_schedule_around_it",
+      "expected_outcome": "draft_with_fixed_stop_unchanged",
+      "hard_invariants": [
+        "fixed_stop_not_moved",
+        "fixed_stop_not_removed",
+        "conflict_blocks_confirmation"
+      ],
+      "scenario_family": "fixed-appointment-is-preserved"
+    },
+    {
+      "id": "fixed-appointment-conflict-is-reported-variant-1",
+      "user_goal": "尽量安排完这些地点，同时保留我已经预约的活动。（慢节奏，少安排一些地点）",
+      "state": {
+        "trip_dates": [
+          "2026-11-18"
+        ],
+        "saved_places": 2,
+        "plan_version": 4,
+        "route_matrix": "verified",
+        "fixed_stops": [
+          {
+            "day": "2026-11-18",
+            "start": "13:00",
+            "end": "17:00"
+          }
+        ],
+        "daily_capacity": "infeasible",
+        "pace_level": 1
+      },
+      "expected_next_action": "report_conflict_and_ask_which_constraint_to_relax",
+      "expected_outcome": "infeasibility_report_without_silent_removal",
+      "hard_invariants": [
+        "fixed_stop_unchanged",
+        "no_selected_place_silently_dropped",
+        "no_formal_write"
+      ],
+      "scenario_family": "fixed-appointment-conflict-is-reported"
+    },
+    {
+      "id": "fixed-appointment-conflict-is-reported-variant-2",
+      "user_goal": "尽量安排完这些地点，同时保留我已经预约的活动。（偏轻松，保留休息时间）",
+      "state": {
+        "trip_dates": [
+          "2026-11-18"
+        ],
+        "saved_places": 4,
+        "plan_version": 4,
+        "route_matrix": "verified",
+        "fixed_stops": [
+          {
+            "day": "2026-11-18",
+            "start": "13:00",
+            "end": "17:00"
+          }
+        ],
+        "daily_capacity": "infeasible",
+        "pace_level": 2
+      },
+      "expected_next_action": "report_conflict_and_ask_which_constraint_to_relax",
+      "expected_outcome": "infeasibility_report_without_silent_removal",
+      "hard_invariants": [
+        "fixed_stop_unchanged",
+        "no_selected_place_silently_dropped",
+        "no_formal_write"
+      ],
+      "scenario_family": "fixed-appointment-conflict-is-reported"
+    },
+    {
+      "id": "fixed-appointment-conflict-is-reported-variant-3",
+      "user_goal": "尽量安排完这些地点，同时保留我已经预约的活动。（希望安排得紧凑一些）",
+      "state": {
+        "trip_dates": [
+          "2026-11-18"
+        ],
+        "saved_places": 6,
+        "plan_version": 4,
+        "route_matrix": "verified",
+        "fixed_stops": [
+          {
+            "day": "2026-11-18",
+            "start": "13:00",
+            "end": "17:00"
+          }
+        ],
+        "daily_capacity": "infeasible",
+        "pace_level": 4
+      },
+      "expected_next_action": "report_conflict_and_ask_which_constraint_to_relax",
+      "expected_outcome": "infeasibility_report_without_silent_removal",
+      "hard_invariants": [
+        "fixed_stop_unchanged",
+        "no_selected_place_silently_dropped",
+        "no_formal_write"
+      ],
+      "scenario_family": "fixed-appointment-conflict-is-reported"
+    },
+    {
+      "id": "fixed-appointment-conflict-is-reported-variant-4",
+      "user_goal": "尽量安排完这些地点，同时保留我已经预约的活动。（希望充分利用每天时间）",
+      "state": {
+        "trip_dates": [
+          "2026-11-18"
+        ],
+        "saved_places": 8,
+        "plan_version": 4,
+        "route_matrix": "verified",
+        "fixed_stops": [
+          {
+            "day": "2026-11-18",
+            "start": "13:00",
+            "end": "17:00"
+          }
+        ],
+        "daily_capacity": "infeasible",
+        "pace_level": 5
+      },
+      "expected_next_action": "report_conflict_and_ask_which_constraint_to_relax",
+      "expected_outcome": "infeasibility_report_without_silent_removal",
+      "hard_invariants": [
+        "fixed_stop_unchanged",
+        "no_selected_place_silently_dropped",
+        "no_formal_write"
+      ],
+      "scenario_family": "fixed-appointment-conflict-is-reported"
+    },
+    {
+      "id": "opening-hours-conflict-blocks-confirmation-variant-1",
+      "user_goal": "这些地点按原顺序排好，每天不要太赶。（慢节奏，少安排一些地点）",
+      "state": {
+        "trip_dates": [
+          "2026-11-21",
+          "2026-11-22"
+        ],
+        "saved_places": 2,
+        "plan_version": 1,
+        "route_matrix": "verified",
+        "fixed_stops": 0,
+        "opening_hours": "one_place_closes_before_visit",
+        "daily_capacity": "feasible",
+        "pace_level": 1
+      },
+      "expected_next_action": "verify_opening_hours_and_revise_or_report_conflict",
+      "expected_outcome": "constraint_reported_draft_or_safe_stop",
+      "hard_invariants": [
+        "opening_conflict_not_hidden",
+        "no_formal_write_before_confirmation"
+      ],
+      "scenario_family": "opening-hours-conflict-blocks-confirmation"
+    },
+    {
+      "id": "opening-hours-conflict-blocks-confirmation-variant-2",
+      "user_goal": "这些地点按原顺序排好，每天不要太赶。（偏轻松，保留休息时间）",
+      "state": {
+        "trip_dates": [
+          "2026-11-21",
+          "2026-11-22"
+        ],
+        "saved_places": 4,
+        "plan_version": 1,
+        "route_matrix": "verified",
+        "fixed_stops": 0,
+        "opening_hours": "one_place_closes_before_visit",
+        "daily_capacity": "feasible",
+        "pace_level": 2
+      },
+      "expected_next_action": "verify_opening_hours_and_revise_or_report_conflict",
+      "expected_outcome": "constraint_reported_draft_or_safe_stop",
+      "hard_invariants": [
+        "opening_conflict_not_hidden",
+        "no_formal_write_before_confirmation"
+      ],
+      "scenario_family": "opening-hours-conflict-blocks-confirmation"
+    },
+    {
+      "id": "opening-hours-conflict-blocks-confirmation-variant-3",
+      "user_goal": "这些地点按原顺序排好，每天不要太赶。（希望安排得紧凑一些）",
+      "state": {
+        "trip_dates": [
+          "2026-11-21",
+          "2026-11-22"
+        ],
+        "saved_places": 6,
+        "plan_version": 1,
+        "route_matrix": "verified",
+        "fixed_stops": 0,
+        "opening_hours": "one_place_closes_before_visit",
+        "daily_capacity": "feasible",
+        "pace_level": 4
+      },
+      "expected_next_action": "verify_opening_hours_and_revise_or_report_conflict",
+      "expected_outcome": "constraint_reported_draft_or_safe_stop",
+      "hard_invariants": [
+        "opening_conflict_not_hidden",
+        "no_formal_write_before_confirmation"
+      ],
+      "scenario_family": "opening-hours-conflict-blocks-confirmation"
+    },
+    {
+      "id": "opening-hours-conflict-blocks-confirmation-variant-4",
+      "user_goal": "这些地点按原顺序排好，每天不要太赶。（希望充分利用每天时间）",
+      "state": {
+        "trip_dates": [
+          "2026-11-21",
+          "2026-11-22"
+        ],
+        "saved_places": 8,
+        "plan_version": 1,
+        "route_matrix": "verified",
+        "fixed_stops": 0,
+        "opening_hours": "one_place_closes_before_visit",
+        "daily_capacity": "feasible",
+        "pace_level": 5
+      },
+      "expected_next_action": "verify_opening_hours_and_revise_or_report_conflict",
+      "expected_outcome": "constraint_reported_draft_or_safe_stop",
+      "hard_invariants": [
+        "opening_conflict_not_hidden",
+        "no_formal_write_before_confirmation"
+      ],
+      "scenario_family": "opening-hours-conflict-blocks-confirmation"
+    },
+    {
+      "id": "stale-plan-version-rejects-confirmation-variant-1",
+      "user_goal": "按刚才的建议保存行程。（慢节奏，少安排一些地点）",
+      "state": {
+        "trip_dates": [
+          "2026-11-25",
+          "2026-11-26"
+        ],
+        "saved_places": 2,
+        "draft_plan_version": 3,
+        "current_plan_version": 4,
+        "route_matrix": "verified",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "pace_level": 1
+      },
+      "expected_next_action": "refresh_context_and_rebuild_draft",
+      "expected_outcome": "stale_confirmation_rejected_without_write",
+      "hard_invariants": [
+        "stale_plan_not_overwritten",
+        "user_must_review_new_diff"
+      ],
+      "scenario_family": "stale-plan-version-rejects-confirmation"
+    },
+    {
+      "id": "stale-plan-version-rejects-confirmation-variant-2",
+      "user_goal": "按刚才的建议保存行程。（偏轻松，保留休息时间）",
+      "state": {
+        "trip_dates": [
+          "2026-11-25",
+          "2026-11-26"
+        ],
+        "saved_places": 4,
+        "draft_plan_version": 3,
+        "current_plan_version": 4,
+        "route_matrix": "verified",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "pace_level": 2
+      },
+      "expected_next_action": "refresh_context_and_rebuild_draft",
+      "expected_outcome": "stale_confirmation_rejected_without_write",
+      "hard_invariants": [
+        "stale_plan_not_overwritten",
+        "user_must_review_new_diff"
+      ],
+      "scenario_family": "stale-plan-version-rejects-confirmation"
+    },
+    {
+      "id": "stale-plan-version-rejects-confirmation-variant-3",
+      "user_goal": "按刚才的建议保存行程。（希望安排得紧凑一些）",
+      "state": {
+        "trip_dates": [
+          "2026-11-25",
+          "2026-11-26"
+        ],
+        "saved_places": 6,
+        "draft_plan_version": 3,
+        "current_plan_version": 4,
+        "route_matrix": "verified",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "pace_level": 4
+      },
+      "expected_next_action": "refresh_context_and_rebuild_draft",
+      "expected_outcome": "stale_confirmation_rejected_without_write",
+      "hard_invariants": [
+        "stale_plan_not_overwritten",
+        "user_must_review_new_diff"
+      ],
+      "scenario_family": "stale-plan-version-rejects-confirmation"
+    },
+    {
+      "id": "stale-plan-version-rejects-confirmation-variant-4",
+      "user_goal": "按刚才的建议保存行程。（希望充分利用每天时间）",
+      "state": {
+        "trip_dates": [
+          "2026-11-25",
+          "2026-11-26"
+        ],
+        "saved_places": 8,
+        "draft_plan_version": 3,
+        "current_plan_version": 4,
+        "route_matrix": "verified",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "pace_level": 5
+      },
+      "expected_next_action": "refresh_context_and_rebuild_draft",
+      "expected_outcome": "stale_confirmation_rejected_without_write",
+      "hard_invariants": [
+        "stale_plan_not_overwritten",
+        "user_must_review_new_diff"
+      ],
+      "scenario_family": "stale-plan-version-rejects-confirmation"
+    },
+    {
+      "scenario_family": "no_saved_places",
+      "id": "no-saved-places-asks-user",
+      "user_goal": "帮我规划这段旅行。",
+      "state": {
+        "trip_dates": [
+          "2026-12-01",
+          "2026-12-02"
+        ],
+        "saved_places": 0,
+        "plan_version": 1,
+        "route_matrix": "missing",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible"
+      },
+      "expected_next_action": "ask_user_to_add_places",
+      "expected_outcome": "ASK_USER_ADD_PLACES",
+      "hard_invariants": [
+        "no_draft_without_selected_places",
+        "no_formal_write"
+      ]
+    },
+    {
+      "scenario_family": "single_saved_place",
+      "id": "single-saved-place-skips-route",
+      "user_goal": "只安排我收藏的这个博物馆。",
+      "state": {
+        "trip_dates": [
+          "2026-12-04",
+          "2026-12-04"
+        ],
+        "saved_places": 1,
+        "plan_version": 2,
+        "route_matrix": "missing",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible"
+      },
+      "expected_next_action": "build_schedule_without_route",
+      "expected_outcome": "SINGLE_PLACE_DRAFT_WITHOUT_ROUTE",
+      "hard_invariants": [
+        "no_unnecessary_route_call",
+        "no_formal_write_before_confirmation"
+      ]
+    },
+    {
+      "scenario_family": "stale_route_evidence",
+      "id": "stale-route-evidence-refreshes",
+      "user_goal": "路线信息已经过期，重新核验后安排这几个地点。",
+      "state": {
+        "trip_dates": [
+          "2026-12-06",
+          "2026-12-07"
+        ],
+        "saved_places": 4,
+        "plan_version": 2,
+        "route_matrix": "stale",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible"
+      },
+      "expected_next_action": "refresh_stale_route_evidence",
+      "expected_outcome": "ROUTE_VERIFIED_DRAFT",
+      "hard_invariants": [
+        "stale_route_not_reused",
+        "no_formal_write_before_confirmation"
+      ]
+    },
+    {
+      "scenario_family": "malformed_route_matrix",
+      "id": "malformed-route-matrix-is-rejected",
+      "user_goal": "按地点间交通时间帮我安排，不要凭空估路线。",
+      "state": {
+        "trip_dates": [
+          "2026-12-09",
+          "2026-12-10"
+        ],
+        "saved_places": 3,
+        "plan_version": 1,
+        "route_matrix": "malformed",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible"
+      },
+      "expected_next_action": "get_distance_matrix",
+      "expected_outcome": "warning_draft_or_safe_stop",
+      "hard_invariants": [
+        "malformed_route_not_used_as_verified",
+        "route_uncertainty_visible",
+        "no_formal_write_before_confirmation"
+      ]
+    },
+    {
+      "scenario_family": "long_transfer_infeasible",
+      "id": "cross-city-transfer-infeasible",
+      "user_goal": "同一天去两个相距很远的城区，尽量不要删地点。",
+      "state": {
+        "trip_dates": [
+          "2026-12-12",
+          "2026-12-12"
+        ],
+        "saved_places": 5,
+        "plan_version": 2,
+        "route_matrix": "verified",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "transfer_time": "exceeds_daily_window"
+      },
+      "expected_next_action": "ask_to_relax_transfer_constraint",
+      "expected_outcome": "INFEASIBILITY_REPORT_WITHOUT_SILENT_REMOVAL",
+      "hard_invariants": [
+        "no_selected_place_silently_dropped",
+        "no_formal_write"
+      ]
+    },
+    {
+      "scenario_family": "insufficient_budget",
+      "id": "budget-shortfall-asks-user",
+      "user_goal": "按我的预算安排收藏的地点。",
+      "state": {
+        "trip_dates": [
+          "2026-12-14",
+          "2026-12-15"
+        ],
+        "saved_places": 4,
+        "plan_version": 1,
+        "route_matrix": "verified",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "budget_status": "insufficient"
+      },
+      "expected_next_action": "ask_to_relax_budget",
+      "expected_outcome": "ASK_USER_TO_RELAX_BUDGET",
+      "hard_invariants": [
+        "budget_limit_not_silently_exceeded",
+        "no_formal_write"
+      ]
+    },
+    {
+      "scenario_family": "opening_hours_unavailable",
+      "id": "opening-hours-unavailable-asks-user",
+      "user_goal": "确认营业时间后再安排我收藏的地点。",
+      "state": {
+        "trip_dates": [
+          "2026-12-17",
+          "2026-12-18"
+        ],
+        "saved_places": 3,
+        "plan_version": 3,
+        "route_matrix": "verified",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "opening_hours": "provider_unavailable"
+      },
+      "expected_next_action": "verify_opening_hours_and_revise_or_report_conflict",
+      "expected_outcome": "ASK_USER_CONFIRM_OPENING_HOURS",
+      "hard_invariants": [
+        "unavailable_opening_hours_not_assumed",
+        "no_formal_write"
+      ]
+    },
+    {
+      "scenario_family": "draft_planner_failure",
+      "id": "planner-provider-failure-stops-safely",
+      "user_goal": "根据已收藏的地点生成行程草案。",
+      "state": {
+        "trip_dates": [
+          "2026-12-20",
+          "2026-12-21"
+        ],
+        "saved_places": 4,
+        "plan_version": 2,
+        "route_matrix": "fresh_verified",
+        "fixed_stops": 0,
+        "daily_capacity": "feasible",
+        "draft_result": "provider_timeout"
+      },
+      "expected_next_action": "reuse_fresh_route_evidence",
+      "expected_outcome": "SAFE_STOP",
+      "hard_invariants": [
+        "planner_failure_visible",
+        "no_formal_write"
+      ]
+    }
+  ]
+}

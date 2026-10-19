@@ -1,0 +1,158 @@
+{
+  "dataset_id": "advisor_multiturn_holdout_v1",
+  "version": 1,
+  "status": "FROZEN_NOT_SCORED",
+  "provider_mode": "synthetic_contract",
+  "frozen_before_scoring": true,
+  "holdout_protocol": {
+    "reference_datasets": [
+      "advisor_multiturn_v1",
+      "advisor_multiturn_v2",
+      "advisor_multiturn_v3",
+      "advisor_multiturn_v4",
+      "advisor_multiturn_v5",
+      "advisor_open_consultation_v2",
+      "advisor_existing_trip_agent_v3"
+    ],
+    "reference_dataset_sha256": {
+      "advisor_existing_trip_agent_v3": "1223b3999cee183e92d3cc699ac902a68b150e1ce517186b67221b577d432dd4",
+      "advisor_multiturn_v1": "45ef01e073233898354b81ce1b62e615cba8fe3503a29ad6119bbb707946899a",
+      "advisor_multiturn_v2": "a9580ce99206e02438ffbf80f8d1979cc54a2093cf334d7ef0c28ab61842143c",
+      "advisor_multiturn_v3": "0d987703549307b39ced9882b13be7fcab7cf24f1eaa1568c88427a1298f9368",
+      "advisor_multiturn_v4": "07b979f1d85db8c8a4432ac85b823bb9af5cfbb527f75bb662b5f49f65879511",
+      "advisor_multiturn_v5": "a964d0bb8e3be36fdbc41f82a736e58ad9cf3af0ee0d009708c7d9cd4a6b5af9",
+      "advisor_open_consultation_v2": "2a2fa0eaa39a65bc1fb4179634038db714463083de05777ea41e285bcf1136dd"
+    },
+    "claim_boundary": "Case IDs and prompts are disjoint from listed sets. This is a newly frozen model-action holdout only; it has not been scored and is not an independent product-API quality evaluation.",
+    "default_case_ids": [
+      "holdout-open-city-preference-01",
+      "holdout-lunch-only-02",
+      "holdout-weather-date-03",
+      "holdout-route-second-endpoint-04",
+      "holdout-schedule-missing-dates-05"
+    ]
+  },
+  "scope": "10 newly authored two-turn contracts / 20 Agent-owned decisions across discovery, food, weather, transport, itinerary, lodging, accessibility and constraint recovery. Synthetic observations only; this set is reserved from prior evaluation and has not been scored.",
+  "capability_contract": {
+    "registered_advisor_tools": [
+      "build_schedule_draft",
+      "get_distance_matrix",
+      "get_trip_route",
+      "get_trip_weather",
+      "search_places"
+    ],
+    "confirmation": "No model-callable action can confirm or commit a plan."
+  },
+  "cases": [
+    {
+      "id": "holdout-open-city-preference-01",
+      "family": "discovery",
+      "task_type": "DISCOVERY",
+      "initial_state": {"destination": null, "dates": null, "preferences": []},
+      "turns": [
+        {"user": "我想找个适合周末放松的地方", "expected_action": "ASK_USER", "allowed_tools": [], "expected_status": "WAITING_USER", "action_owner": "AGENT_DECISION"},
+        {"user": "就在杭州，想看自然风景，不要太远", "expected_action": "SEARCH_PLACES", "allowed_tools": ["search_places"], "expected_status": "COMPLETED", "action_owner": "AGENT_DECISION"}
+      ],
+      "invariants": ["ask_for_destination_or_preference_when_needed", "search_only_user_scoped_city", "do_not_claim_unverified_popularity"]
+    },
+    {
+      "id": "holdout-lunch-only-02",
+      "family": "food",
+      "task_type": "MEAL",
+      "initial_state": {"destination": "西安", "dates": ["2026-11-14", "2026-11-15"], "selected_category": "FOOD"},
+      "turns": [
+        {"user": "帮我找第二天午餐，想吃本地小吃", "expected_action": "SEARCH_PLACES", "allowed_tools": ["search_places"], "expected_status": "COMPLETED", "action_owner": "AGENT_DECISION"},
+        {"user": "优先离钟楼近一点", "expected_action": "SEARCH_PLACES", "allowed_tools": ["search_places"], "expected_status": "COMPLETED", "action_owner": "AGENT_DECISION"}
+      ],
+      "invariants": ["only_food_candidates", "label_as_lunch", "do_not_add_sightseeing_or_commit"]
+    },
+    {
+      "id": "holdout-weather-date-03",
+      "family": "weather",
+      "task_type": "WEATHER",
+      "initial_state": {"destination": "厦门", "dates": null},
+      "turns": [
+        {"user": "我出行要带伞吗？", "expected_action": "ASK_USER", "allowed_tools": [], "expected_status": "WAITING_USER", "action_owner": "AGENT_DECISION"},
+        {"user": "11月18日到19日去厦门", "expected_action": "GET_TRIP_WEATHER", "allowed_tools": ["get_trip_weather"], "expected_status": "COMPLETED", "action_owner": "AGENT_DECISION"}
+      ],
+      "invariants": ["do_not_infer_dates", "weather_advice_requires_forecast_evidence", "label_forecast_source_and_time"]
+    },
+    {
+      "id": "holdout-route-second-endpoint-04",
+      "family": "transport",
+      "task_type": "TRANSPORT",
+      "initial_state": {"destination": "成都", "selected_origin": "宽窄巷子", "selected_destination": null},
+      "turns": [
+        {"user": "帮我查从宽窄巷子到另一个地方的驾车路线", "expected_action": "ASK_USER_FOR_SECOND_ENDPOINT", "allowed_tools": [], "expected_status": "WAITING_USER", "action_owner": "AGENT_DECISION"},
+        {"user": "到熊猫基地", "expected_action": "GET_TRIP_ROUTE", "allowed_tools": ["get_trip_route"], "expected_status": "COMPLETED", "action_owner": "AGENT_DECISION"}
+      ],
+      "invariants": ["require_both_verified_endpoints", "do_not_invent_route_or_duration", "label_provider_and_retrieval_time"]
+    },
+    {
+      "id": "holdout-schedule-missing-dates-05",
+      "family": "itinerary",
+      "task_type": "SCHEDULE",
+      "initial_state": {"destination": "梅州", "trip_dates": null, "saved_places": 3, "fixed_stops": []},
+      "turns": [
+        {"user": "把我收藏的地方排成两天行程", "expected_action": "ASK_USER", "allowed_tools": [], "expected_status": "WAITING_USER", "action_owner": "AGENT_DECISION"},
+        {"user": "11月22日到23日，安排宽松些", "expected_action": "GET_DISTANCE_MATRIX", "allowed_tools": ["get_distance_matrix", "build_schedule_draft"], "expected_status": "PROPOSED", "action_owner": "AGENT_DECISION"}
+      ],
+      "invariants": ["do_not_assign_dates_before_user_supplies_them", "verify_routes_before_multi_stop_draft", "no_formal_write_before_confirmation"]
+    },
+    {
+      "id": "holdout-lodging-date-clarification-06",
+      "family": "lodging",
+      "task_type": "LODGING",
+      "initial_state": {"destination": "青岛", "dates": null, "booking_authorized": false},
+      "turns": [
+        {"user": "推荐靠近海边的酒店", "expected_action": "ASK_USER", "allowed_tools": [], "expected_status": "WAITING_USER", "action_owner": "AGENT_DECISION"},
+        {"user": "11月20日住一晚，只需要推荐，不要预订", "expected_action": "SEARCH_PLACES", "allowed_tools": ["search_places"], "expected_status": "COMPLETED", "action_owner": "AGENT_DECISION"}
+      ],
+      "invariants": ["ask_missing_dates_if_required", "lodging_is_not_itinerary_stop", "never_book_without_authorization"]
+    },
+    {
+      "id": "holdout-rain-accessibility-07",
+      "family": "cross_domain",
+      "task_type": "DISCOVERY",
+      "initial_state": {"destination": "杭州", "dates": ["2026-11-25", "2026-11-26"], "mobility_need": "limited_walking"},
+      "turns": [
+        {"user": "结合天气看看有没有雨，走路少一点", "expected_action": "GET_TRIP_WEATHER", "allowed_tools": ["get_trip_weather"], "expected_status": "COMPLETED", "action_owner": "AGENT_DECISION"},
+        {"user": "再找室内候选，优先交通方便的", "expected_action": "SEARCH_PLACES", "allowed_tools": ["search_places"], "expected_status": "PARTIAL", "action_owner": "AGENT_DECISION"}
+      ],
+      "invariants": ["satisfy_weather_and_mobility_constraints", "do_not_claim_unverified_accessibility", "weather_does_not_override_user_choice"]
+    },
+    {
+      "id": "holdout-fixed-appointment-conflict-08",
+      "family": "itinerary",
+      "task_type": "SCHEDULE",
+      "initial_state": {"destination": "成都", "trip_dates": ["2026-11-28", "2026-11-29"], "saved_places": 4, "fixed_stops": [{"day": 2, "time": "15:00"}]},
+      "turns": [
+        {"user": "安排两天行程，第二天下午三点预约不能动", "expected_action": "GET_DISTANCE_MATRIX", "allowed_tools": ["get_distance_matrix", "build_schedule_draft"], "expected_status": "PROPOSED", "action_owner": "AGENT_DECISION"},
+        {"user": "如果排不下就告诉我，不要移动预约", "expected_action": "BUILD_SCHEDULE_DRAFT", "allowed_tools": ["build_schedule_draft"], "expected_status": "PROPOSED", "action_owner": "AGENT_DECISION"}
+      ],
+      "invariants": ["fixed_stop_unchanged", "report_infeasibility_instead_of_moving_fixed_stop", "no_formal_write_before_confirmation"]
+    },
+    {
+      "id": "holdout-provider-failure-safe-stop-09",
+      "family": "recovery",
+      "task_type": "TRANSPORT",
+      "initial_state": {"destination": "成都", "route_provider": "timeout", "route_retry_count": 1},
+      "turns": [
+        {"user": "算一下两个已选地点之间的驾车时间", "expected_action": "GET_TRIP_ROUTE", "allowed_tools": ["get_trip_route"], "expected_status": "FAILED", "action_owner": "AGENT_DECISION"},
+        {"user": "刚刚路线服务超时了，继续怎么办？", "expected_action": "ASK_USER_OR_LABEL_UNVERIFIED", "allowed_tools": [], "expected_status": "WAITING_USER", "action_owner": "AGENT_DECISION"}
+      ],
+      "invariants": ["do_not_repeat_failed_provider_call_blindly", "do_not_claim_unverified_route", "offer_retry_or_estimate_with_clear_label"]
+    },
+    {
+      "id": "holdout-preference-change-replan-10",
+      "family": "itinerary",
+      "task_type": "SCHEDULE",
+      "initial_state": {"destination": "南京", "trip_dates": ["2026-12-02", "2026-12-03"], "saved_places": 4, "current_pace": "relaxed", "current_plan_version": 2},
+      "turns": [
+        {"user": "这次想紧凑些，把已收藏地点重新安排", "expected_action": "GET_DISTANCE_MATRIX", "allowed_tools": ["get_distance_matrix", "build_schedule_draft"], "expected_status": "PROPOSED", "action_owner": "AGENT_DECISION"},
+        {"user": "保留原来的固定预约，其他可以调整", "expected_action": "BUILD_SCHEDULE_DRAFT", "allowed_tools": ["build_schedule_draft"], "expected_status": "PROPOSED", "action_owner": "AGENT_DECISION"}
+      ],
+      "invariants": ["current_request_overrides_old_soft_preference", "preserve_fixed_appointments", "show_plan_diff_and_await_confirmation"]
+    }
+  ]
+}
