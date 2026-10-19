@@ -1,0 +1,181 @@
+{
+  "evaluation_id": "advisor_product_local_suite_v1",
+  "run_at_utc": "2026-10-19T17:24:17.092996+00:00",
+  "provider_mode": "LOCAL_MODEL_STUB_FAKE_MAPS_SYNTHETIC_WEATHER_AND_ROUTE_FAILURE",
+  "source_revision": "17bd26288a0a28d61cfa042184188febf985c7b4",
+  "source_tree_dirty": true,
+  "scenario_count": 18,
+  "passed_scenario_count": 18,
+  "turn_count": 22,
+  "temporary_account_deletions": 18,
+  "formal_write_prevented_scenarios": 18,
+  "scenarios": [
+    {
+      "scenario_id": "schedule-two-turn",
+      "passed": true,
+      "turn_count": 2,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 7,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "schedule-route-weather",
+      "passed": true,
+      "turn_count": 2,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 12,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "schedule-proposal-edit",
+      "passed": true,
+      "turn_count": 2,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 11,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "lunch-only",
+      "passed": true,
+      "turn_count": 1,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 7,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "lunch-weather-preparation",
+      "passed": true,
+      "turn_count": 1,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 9,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "lunch-weather-weather-outage",
+      "passed": true,
+      "turn_count": 1,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 7,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "mixed-attraction-lunch",
+      "passed": true,
+      "turn_count": 1,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 6,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "mixed-attraction-lunch-draft",
+      "passed": true,
+      "turn_count": 1,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 8,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "lodging-only",
+      "passed": true,
+      "turn_count": 1,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 8,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "destination-discovery",
+      "passed": true,
+      "turn_count": 1,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 9,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "general-trip-question",
+      "passed": true,
+      "turn_count": 1,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 7,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "weather-preparation",
+      "passed": true,
+      "turn_count": 1,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 7,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "route-weather-preparation",
+      "passed": true,
+      "turn_count": 1,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 10,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "unsupported-intercity-weather",
+      "passed": true,
+      "turn_count": 1,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 9,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "route-weather-route-outage",
+      "passed": true,
+      "turn_count": 1,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 9,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "route-weather-weather-outage",
+      "passed": true,
+      "turn_count": 1,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 8,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "weather-indoor-search",
+      "passed": true,
+      "turn_count": 1,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 7,
+      "failed_checks": []
+    },
+    {
+      "scenario_id": "route-provider-outage",
+      "passed": true,
+      "turn_count": 2,
+      "temporary_account_deleted": true,
+      "formal_write_prevented": true,
+      "check_count": 8,
+      "failed_checks": []
+    }
+  ],
+  "limitations": [
+    "Deterministic local model responses do not establish live-model quality.",
+    "Fake Maps and synthetic weather/failure providers do not establish live provider quality.",
+    "The suite verifies these bounded service journeys, not broad task coverage or human utility."
+  ]
+}
