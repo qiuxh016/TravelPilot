@@ -1,21 +1,21 @@
 import { expect, test } from "@playwright/test";
 
-test("信息确认和继续排程分成不同结构化选项", async ({ page }) => {
+test("日期建议显示为可点选方案，继续排程不代表保存确认", async ({ page }) => {
   const sessionId = "confirmation-options-session";
   const now = "2026-10-20T08:00:00Z";
   const messages = [
     { id: "user-1", role: "user", content: "鑫丰特色餐饮", payload: null, created_at: now },
     {
       id: "assistant-1", role: "assistant",
-      content: "好的，已整理为第 1 天午餐安排。需要我把鑫丰特色餐饮作为第 1 天午餐的待确认安排吗？",
+      content: "鼓浪屿与文化线适合放在同一天。要不要我把这条线放到10/23，再帮你安排10/24和10/25？",
       payload: { agent_task: {
-        task_id: "meal-confirmation-task", task_type: "SCHEDULE", status: "WAITING_USER",
-        goal: "安排第1天午餐",
-        context_revision: 0, turn_number: 2, answers: ["鑫丰特色餐饮"],
-        question: "需要我把鑫丰特色餐饮作为第 1 天午餐的待确认安排吗？",
+        task_id: "route-date-confirmation-task", task_type: "SCHEDULE", status: "WAITING_USER",
+        goal: "安排鼓浪屿文化线和后续日期",
+        context_revision: 0, turn_number: 2, answers: ["鼓浪屿文化线"],
+        question: "要不要我把这条线放到10/23，再帮你安排10/24和10/25？",
         confirmation_options: [
-          { label: "确认，加入安排", answer: "确认，按当前选择加入安排" },
-          { label: "返回调整", answer: "先不确认，我想调整这项安排" },
+          { label: "可以，按这个时间继续", answer: "可以，按你刚才建议的日期和时间继续安排" },
+          { label: "换个日期或时间", answer: "我想调整刚才建议的日期或时间，先不要按原时间安排" },
           { label: "暂不安排", answer: "暂不安排这项内容" },
         ],
       } }, created_at: now,
@@ -99,14 +99,24 @@ test("信息确认和继续排程分成不同结构化选项", async ({ page }) 
   });
 
   await page.goto(`/advisor?sessionId=${sessionId}`);
+  const chatPanel = page.locator(".advisor-chat");
+  await expect(chatPanel).toBeVisible();
+  const desktopLayout = (await page.evaluate(() => window.innerWidth)) > 900;
+  expect(await chatPanel.evaluate((element) => getComputedStyle(element).position))
+    .toBe(desktopLayout ? "sticky" : "static");
+  if (desktopLayout) {
+    expect(await chatPanel.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(500);
+    expect(await page.locator(".advisor-messages").evaluate((element) => getComputedStyle(element).maxHeight)).toBe("none");
+  }
   const choiceCard = page.getByRole("region", { name: "等待你补充" });
   await expect(choiceCard).toBeVisible();
-  await expect(choiceCard).toContainText("鑫丰特色餐饮");
-  await expect(choiceCard).toContainText("当前任务：安排第1天午餐");
+  await expect(page.getByText("鑫丰特色餐饮", { exact: true }).first()).toBeVisible();
+  await expect(choiceCard).toContainText("当前任务：安排鼓浪屿文化线和后续日期");
   await expect(page.getByText("攻略线索：《梅州一日游攻略》提到：周一闭馆，其余时间开放 · 尚未核验")).toBeVisible();
-  await expect(choiceCard.getByRole("button", { name: "确认，加入安排" })).toBeVisible();
-  await choiceCard.getByRole("button", { name: "确认，加入安排" }).click();
-  await expect.poll(() => submittedAnswers.at(-1)).toBe("确认，按当前选择加入安排");
+  await expect(choiceCard.getByRole("button", { name: "可以，按这个时间继续" })).toBeVisible();
+  await expect(choiceCard.getByRole("button", { name: "自定义回答" })).toHaveCount(0);
+  await choiceCard.getByRole("button", { name: "可以，按这个时间继续" }).click();
+  await expect.poll(() => submittedAnswers.at(-1)).toBe("可以，按你刚才建议的日期和时间继续安排");
   const continueCard = page.getByRole("region", { name: "等待你补充" });
   await expect(continueCard.getByRole("button", { name: "继续，生成待确认建议" })).toBeVisible();
   await continueCard.getByRole("button", { name: "继续，生成待确认建议" }).click();

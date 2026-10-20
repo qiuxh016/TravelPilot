@@ -150,16 +150,34 @@ function readAdvisorTask(payload: Record<string, unknown> | null): AdvisorTaskSn
   if (typeof task.status !== "string" || typeof task.task_type !== "string"
     || typeof task.turn_number !== "number" || !Array.isArray(task.answers)) return null;
   const question = typeof task.question === "string" ? task.question.trim() : "";
-  const confirmationQuestion = /^(?:需要我把|要我把|需要我将|要我将)/.test(question)
-    && question.replace(/[？?]+$/, "").endsWith("吗")
-    && /作为|加入|安排|添加|更新/.test(question);
-  const confirmationOptions = Array.isArray(task.confirmation_options)
-    ? task.confirmation_options
-    : confirmationQuestion && Array.isArray(task.answers) && task.answers.length > 0 ? [
+  const answers = task.answers;
+  const asksForAction = /(?:需要我|要我|要不要我|是否把|是否将|可以把|可不可以把)/.test(question)
+    && /作为|加入|安排|添加|更新|放到|排到|挪到/.test(question)
+    && /[？?]|吗/.test(question);
+  const isTimeProposal = /\d{1,2}[/月-]\d{1,2}日?|\d{1,2}:\d{2}|这一天|当天|这个日期|这天/.test(question);
+  const preferenceParts = question.includes("还是") ? question.split("还是", 2) : [];
+  const preferenceLeft = preferenceParts[0]?.replace(/^.*?(更喜欢|更偏好|偏好|选择|选|喜欢)\s*/, "").trim();
+  const preferenceRight = preferenceParts[1]?.replace(/[？?].*$/, "").trim();
+  const generatedOptions = asksForAction && answers.length > 0
+    ? isTimeProposal ? [
+      { label: "可以，按这个时间继续", answer: "可以，按你刚才建议的日期和时间继续安排" },
+      { label: "换个日期或时间", answer: "我想调整刚才建议的日期或时间，先不要按原时间安排" },
+      { label: "暂不安排", answer: "暂不安排这项内容" },
+    ] : [
       { label: "确认，加入安排", answer: "确认，按当前选择加入安排" },
       { label: "返回调整", answer: "先不确认，我想调整这项安排" },
       { label: "暂不安排", answer: "暂不安排这项内容" },
-    ] : [];
+    ]
+    : answers.length > 0 && preferenceLeft && preferenceRight
+      && preferenceLeft.length <= 40 && preferenceRight.length <= 40
+      ? [
+        { label: preferenceLeft, answer: `我选${preferenceLeft}` },
+        { label: preferenceRight, answer: `我选${preferenceRight}` },
+      ]
+      : [];
+  const confirmationOptions = Array.isArray(task.confirmation_options) && task.confirmation_options.length
+    ? task.confirmation_options
+    : generatedOptions;
   return { ...task, confirmation_options: confirmationOptions } as AdvisorTaskSnapshot;
 }
 
@@ -1316,8 +1334,8 @@ export default function AdvisorPage() {
                     {taskLabel.nextStep && <p><strong>接下来</strong>{taskLabel.nextStep}</p>}
                   </section>}
                   {isLatestAssistantMessage && task?.status === "WAITING_USER" && task.question && <section className="advisor-pending-question" aria-label="等待你补充">
-                    <div><strong>{confirmationOptions.length ? "请确认这一步" : "这一步需要你来决定"}</strong><p>{task.question}</p><small>当前任务：{task.goal}</small><small>{confirmationOptions.length ? "选择一个操作即可继续；正式行程仍会在预览后单独确认。" : "点选即可继续原任务；也可以在下方输入自己的答案。"}</small></div>
-                    {confirmationOptions.length > 0 && <div className="advisor-pending-quick-replies" aria-label="确认安排选项">
+                    <div><strong>{confirmationOptions.length ? "选一个继续" : "这一步需要你来决定"}</strong><p>{task.question}</p><small>当前任务：{task.goal}</small><small>{confirmationOptions.length ? "点击即可接着处理当前任务；正式行程仍会在保存前单独确认。" : "点选即可继续原任务；也可以在下方直接补充自己的想法。"}</small></div>
+                    {confirmationOptions.length > 0 && <div className="advisor-pending-quick-replies" aria-label="可选操作">
                       {confirmationOptions.map((option) => <button key={option.label} type="button" disabled={busy || active.status !== "ACTIVE"} onClick={() => void submitMessage(undefined, option.answer)}>{option.label}</button>)}
                     </div>}
                     {!confirmationOptions.length && (/时间|几点|时段/.test(task.question) || /用餐.{0,6}(?:何时|什么时候)/.test(task.question)) && <div className="advisor-pending-quick-replies" aria-label="常用时间选项">

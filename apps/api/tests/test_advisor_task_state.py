@@ -42,6 +42,26 @@ def test_completed_meal_proposal_confirmation_becomes_clickable_actions():
     ]
 
 
+def test_date_reschedule_question_becomes_clickable_choices():
+    snapshot = AdvisorTaskSnapshot(
+        task_id="route-date-task",
+        task_type="SCHEDULE",
+        status="WAITING_USER",
+        goal="将鼓浪屿文化线安排到合适日期",
+        context_revision=3,
+        turn_number=3,
+        answers=["鼓浪屿文化线", "尽量不要太赶"],
+        question="要不要我把这条线放到10/23，再帮你安排10/24和10/25？",
+        action_summary="建议调整每日游览顺序",
+    )
+
+    assert [(option.label, option.answer) for option in snapshot.confirmation_options] == [
+        ("可以，按这个时间继续", "可以，按你刚才建议的日期和时间继续安排"),
+        ("换个日期或时间", "我想调整刚才建议的日期或时间，先不要按原时间安排"),
+        ("暂不安排", "暂不安排这项内容"),
+    ]
+
+
 def test_action_confirmation_offers_continue_without_granting_commit_consent():
     snapshot = AdvisorTaskSnapshot(
         task_id="schedule-task",
@@ -62,18 +82,22 @@ def test_action_confirmation_offers_continue_without_granting_commit_consent():
     ]
 
 
-def test_preference_question_does_not_become_yes_no_confirmation():
+def test_binary_preference_question_becomes_clickable_choices_after_context_is_known():
     snapshot = AdvisorTaskSnapshot(
         task_id="search-task",
         task_type="SEARCH",
         status="WAITING_USER",
         goal="推荐餐馆",
         context_revision=2,
-        turn_number=1,
+        turn_number=2,
+        answers=["想找梅州的餐馆"],
         question="你更喜欢客家菜还是潮汕菜？",
         action_summary="了解口味偏好",
     )
-    assert snapshot.confirmation_options == []
+    assert [(option.label, option.answer) for option in snapshot.confirmation_options] == [
+        ("客家菜", "我选客家菜"),
+        ("潮汕菜", "我选潮汕菜"),
+    ]
 
 
 def test_confirmation_question_without_a_prior_user_choice_remains_open_ended():

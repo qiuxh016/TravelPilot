@@ -1,5 +1,6 @@
 """Typed, user-visible lifecycle snapshot for the latest Advisor task."""
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -47,19 +48,49 @@ class AdvisorTaskSnapshot(BaseModel):
 
 
 def confirmation_options_for(question: str) -> list[AdvisorConfirmationOption]:
-    """Turn a completed proposal's yes/no confirmation into explicit actions."""
-    normalized = question.strip().rstrip("？?")
-    if not normalized or not normalized.endswith("吗"):
+    """Turn a concrete next-step question into concise, actionable replies."""
+    raw_question = question.strip()
+    normalized = raw_question.rstrip("？?")
+    if not normalized or not (
+        raw_question.endswith(("？", "?"))
+        or re.search(r"(?:吗|是否|要不要|可不可以|行不行)$", normalized)
+    ):
         return []
-    asks_to_commit = any(phrase in normalized for phrase in ("需要我把", "要我把", "需要我将", "要我将"))
-    proposes_an_action = any(verb in normalized for verb in ("作为", "加入", "安排", "添加", "更新"))
-    if asks_to_commit and proposes_an_action:
+
+    asks_for_confirmation = any(
+        phrase in normalized
+        for phrase in ("需要我", "要我", "要不要我", "是否把", "是否将", "可以把", "可不可以把")
+    )
+    proposes_an_action = any(verb in normalized for verb in ("作为", "加入", "安排", "添加", "更新", "放到", "排到", "挪到"))
+    if asks_for_confirmation and proposes_an_action:
+        date_or_time_proposal = bool(
+            re.search(r"\d{1,2}[/月-]\d{1,2}日?", normalized)
+            or re.search(r"\d{1,2}:\d{2}", normalized)
+            or any(word in normalized for word in ("这一天", "当天", "这个日期", "这天"))
+        )
+        if date_or_time_proposal:
+            return [
+                AdvisorConfirmationOption(label="可以，按这个时间继续", answer="可以，按你刚才建议的日期和时间继续安排"),
+                AdvisorConfirmationOption(label="换个日期或时间", answer="我想调整刚才建议的日期或时间，先不要按原时间安排"),
+                AdvisorConfirmationOption(label="暂不安排", answer="暂不安排这项内容"),
+            ]
         return [
             AdvisorConfirmationOption(label="确认，加入安排", answer="确认，按当前选择加入安排"),
             AdvisorConfirmationOption(label="返回调整", answer="先不确认，我想调整这项安排"),
             AdvisorConfirmationOption(label="暂不安排", answer="暂不安排这项内容"),
         ]
-    asks_to_continue = any(phrase in normalized for phrase in ("要我", "需要我", "要不要我"))
+
+    if "还是" in normalized and raw_question.endswith(("？", "?")):
+        left, right = normalized.rsplit("还是", 1)
+        left = re.sub(r"^.*?(?:更喜欢|更偏好|偏好|选择|选|喜欢)\s*", "", left).strip(" ，,：:是")
+        right = re.split(r"[，,。；;]", right, maxsplit=1)[0].strip(" ，,。；;？?吗")
+        if left and right and len(left) <= 40 and len(right) <= 40:
+            return [
+                AdvisorConfirmationOption(label=left, answer=f"我选{left}"),
+                AdvisorConfirmationOption(label=right, answer=f"我选{right}"),
+            ]
+
+    asks_to_continue = any(phrase in normalized for phrase in ("要我", "需要我", "要不要我", "是否要"))
     proposes_a_next_step = any(verb in normalized for verb in ("排出来", "生成", "推荐", "查询", "按日期安排"))
     if asks_to_continue and proposes_a_next_step:
         return [
