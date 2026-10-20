@@ -129,12 +129,14 @@ test("攻略导入文本可提取、确认保存、重开并删除记录", async
 
   await expect(page.getByRole("heading", { name: "梅州学宫" })).toBeVisible();
   await expect(page.getByText("周一闭馆，其余时间开放").first()).toBeVisible();
-  await expect(page.getByText("原文依据：上午11:00参观梅州学宫")).toBeVisible();
+  await expect(page.getByText(/置信度|匹配度/)).toHaveCount(0);
+  await page.getByText("查看攻略原文").click();
+  await expect(page.getByText(sourceText).last()).toBeVisible();
   expect(state.getImportedText()).toBe(sourceText);
 
   await page.getByLabel(/梅州学宫 ·/).check();
-  await page.getByRole("button", { name: "保存 1 个地点与 1 条攻略要点" }).click();
-  await expect(page.getByText("攻略识别 · IMPORTED")).toBeVisible();
+  await page.getByRole("button", { name: "确认保存所选内容（2）" }).click();
+  await expect(page.getByRole("heading", { name: "攻略整理结果" })).toBeVisible();
   expect(state.getConfirmationPayload()).toEqual({ candidate_ids: [candidateId], fact_ids: [factId] });
 
   await page.getByText(/这段旅行的攻略导入记录/).click();
@@ -161,9 +163,9 @@ test("图片 OCR 结果填入原文框，失败分段可重试且保留本地兜
   }));
   await page.getByLabel(/识别文字/).fill("梅州一日游攻略，梅州学宫开放时间攻略");
   await page.getByRole("button", { name: "提取地点" }).click();
-  await expect(page.getByText(/本地规则保留地点或攻略细节/)).toBeVisible();
+  await expect(page.getByText(/已整理出可用内容，部分段落还没读完/)).toBeVisible();
   await page.getByRole("button", { name: "缩小片段重试 1 个失败片段" }).click();
-  await expect(page.getByRole("heading", { name: "攻略识别 · PARTIAL" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "攻略整理结果" })).toBeVisible();
 });
 
 test("旧版超过地点上限的失败记录可按新上限重新提取整篇攻略", async ({ page }) => {
@@ -182,6 +184,6 @@ test("旧版超过地点上限的失败记录可按新上限重新提取整篇�
   await page.getByRole("button", { name: "提取地点" }).click();
   await expect(page.getByText(/超过单次确认上限/)).toBeVisible();
   await page.getByRole("button", { name: "按新上限重新提取整篇攻略" }).click();
-  await expect(page.getByRole("heading", { name: "攻略识别 · NEEDS_CONFIRMATION" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "攻略整理结果" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "梅州学宫" })).toBeVisible();
 });

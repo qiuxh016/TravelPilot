@@ -479,11 +479,14 @@ async def _extract_places_once(
             "suggestion, confidence, action, evidence. Categories: ATTRACTION, FOOD, LODGING, OTHER. Do not invent "
             "places. Use action=mention unless the text explicitly asks to add or remove. Fact fields: kind, title, "
             "content, evidence, related_places, confidence. Preserve distinct ticket/booking, opening-hours, visit-time, "
-            "duration, food, route/order, transport, lodging and practical-tip details. Keep content concise but retain "
-            "exact times, amounts, order and conditions. Keep place suggestions and fact content to one short phrase. "
-            "Do not restate facts already captured in another field. Evidence is the shortest exact quote from input; "
-            "do not repeat whole paragraphs. Never present guide claims as verified facts. JSON only; confidence is a "
-            "number from 0 to 1; maximum 20 places and 40 facts.\n"
+            "duration, food, route/order, transport, lodging and practical-tip details. Select only details a traveler "
+            "is likely to act on: exact visit times, closures, tickets, named food/lodging, route or transport advice, "
+            "and concise practical warnings. Omit history, promotional language, generic descriptions, photo spots, "
+            "and repeated or low-value details unless they affect a travel decision. Keep at most 8 places and 12 "
+            "distinct facts for each input segment. Keep content concise but retain exact times, amounts, order and "
+            "conditions. Keep place suggestions and fact content to one short phrase. Do not restate facts already "
+            "captured in another field. Evidence is the shortest exact quote from input; do not repeat paragraphs. "
+            "Never present guide claims as verified facts. JSON only; confidence is a number from 0 to 1.\n"
         ) + additional_instructions[:4000]
     else:
         extraction_input = json.dumps({

@@ -11,6 +11,41 @@ type TripImportToolProps = {
   onImported?: () => void;
 };
 
+const FACT_PRIORITY: Record<ImportedGuideFact["kind"], number> = {
+  TICKET: 9, OPENING_HOURS: 8, FOOD: 7, ACCOMMODATION: 6, TRANSPORT: 6,
+  ROUTE: 5, SUGGESTED_TIME: 5, TIP: 3, OTHER: 1,
+};
+
+function recommendedFacts(facts: ImportedGuideFact[]) {
+  const seen = new Set<string>();
+  return facts
+    .filter((fact) => {
+      const places = [...fact.related_places].sort().join("/");
+      const key = `${fact.kind}:${places}:${fact.content.toLocaleLowerCase().replace(/[\s，。；：、“”‘’,.!?！？]/g, "")}`;
+      if (!fact.content.trim() || seen.has(key)) return false;
+      seen.add(key);
+      return fact.kind !== "OTHER";
+    })
+    .sort((a, b) => {
+      const score = (fact: ImportedGuideFact) => FACT_PRIORITY[fact.kind] +
+        (/\d{1,2}[:：点时]|闭馆|营业|开放|预约|门票|停车|步行|打车|地铁|公交|午餐|晚餐|早餐/.test(fact.content) ? 2 : 0) +
+        Math.min(fact.content.length, 80) / 200;
+      return score(b) - score(a);
+    })
+    .slice(0, 6);
+}
+
+function defaultFactIds(facts: ImportedGuideFact[]) {
+  return recommendedFacts(facts).filter((fact) => !fact.saved).map((fact) => fact.id);
+}
+
+function defaultCandidateIds(entities: ImportedContent["entities"]) {
+  return entities.flatMap((entity) => {
+    const best = [...entity.candidates].sort((a, b) => b.score - a.score)[0];
+    return best && !best.confirmed ? [best.id] : [];
+  });
+}
+
 function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" | "onImported">) {
   const [text, setText] = useState("");
   const [content, setContent] = useState<ImportedContent | null>(null);
@@ -38,8 +73,8 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
       const result = await getImportedContent(id);
       setContent({ ...result, guide_facts: result.guide_facts ?? [] });
       setText(result.text);
-      setSelected(result.entities.flatMap((entity) => entity.candidates.filter((candidate) => !candidate.confirmed).map((candidate) => candidate.id)));
-      setSelectedFactIds(result.guide_facts.filter((fact) => !fact.saved).map((fact) => fact.id));
+      setSelected(defaultCandidateIds(result.entities));
+      setSelectedFactIds(defaultFactIds(result.guide_facts));
       setFactsDirty(false);
     } catch (err) { setError(err instanceof Error ? err.message : "打开导入记录失败"); }
     finally { setBusy(false); }
@@ -85,8 +120,8 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
     try {
       const response = await importContent(tripId, text);
       const result = { ...response, guide_facts: response.guide_facts ?? [] };
-      setContent(result); setSelected([]);
-      setSelectedFactIds(result.guide_facts.map((fact) => fact.id));
+      setContent(result); setSelected(defaultCandidateIds(result.entities));
+      setSelectedFactIds(defaultFactIds(result.guide_facts));
       setFactsDirty(false); await refreshHistory();
     }
     catch (err) { setError(err instanceof Error ? err.message : "导入失败"); }
@@ -130,7 +165,7 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
       const response = await retryContentExtraction(content.id);
       const result = { ...response, guide_facts: response.guide_facts ?? [] };
       setContent(result);
-      setSelectedFactIds((current) => [...new Set([...current, ...result.guide_facts.map((fact) => fact.id)])]);
+      setSelectedFactIds((current) => [...new Set([...current, ...defaultFactIds(result.guide_facts)])]);
       await refreshHistory();
     } catch (err) { setError(err instanceof Error ? err.message : "重试失败片段失败"); }
     finally { setBusy(false); }
@@ -145,13 +180,11 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
     FOOD: "餐饮", TRANSPORT: "交通与路线", ROUTE: "交通与路线",
     ACCOMMODATION: "住宿", TIP: "其他提醒", OTHER: "其他提醒",
   };
-  const groupedFacts = content?.guide_facts.reduce<Record<string, ImportedGuideFact[]>>((groups, fact) => {
-    const label = factGroupLabels[fact.kind];
-    (groups[label] ??= []).push(fact);
-    return groups;
-  }, {}) ?? {};
   const retryWholeGuide = content?.extraction_metadata?.failure_code === "RESULT_LIMIT_EXCEEDED";
   const hasRetryableFailures = Boolean(content?.extraction_metadata?.failed_chunks?.length || retryWholeGuide);
+  const suggestedFacts = content ? recommendedFacts(content.guide_facts) : [];
+  const suggestedFactIds = new Set(suggestedFacts.map((fact) => fact.id));
+  const otherFacts = content?.guide_facts.filter((fact) => !suggestedFactIds.has(fact.id)) ?? [];
 
   return <>
     <div className="trip-import-intro"><p className="eyebrow">导入攻略</p><h2>把攻略里的地点和实用细节留下来</h2><p>识别地点后匹配地图候选；同时提取购票、推荐时段、美食、路线和出行提示。核对原文依据后，由你选择哪些要点附加到已确认地点。</p></div>
@@ -174,23 +207,25 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
       <button className="primary" disabled={busy}>{busy ? "正在识别…" : "提取地点"}</button>
     </form>
     {error && <p className="trip-import-error" role="alert">{error}</p>}
-    {content && <section className="trip-import-results"><h3>攻略识别 · {content.status}</h3>{content.error && <p role="status">{content.error}</p>}
-      {content.extraction_metadata?.duplicate_source_id && <p className={styles.duplicateNotice} role="status">发现这段旅行中已有相同原文的导入记录（{content.extraction_metadata.duplicate_source_id.slice(0, 8)}…）。请检查是否重复保存地点或攻略要点。</p>}
-      {content.extraction_metadata && content.extraction_metadata.total_chunks! > 1 && <p role="status">模型完成 {content.extraction_metadata.completed_chunks ?? 0}/{content.extraction_metadata.total_chunks} 段</p>}
-      {!!content.extraction_metadata?.fallback_chunks?.length && <p className={styles.fallbackNotice} role="status">{content.extraction_metadata.fallback_chunks.length} 段已用本地规则保留地点或攻略细节，置信度偏低，请对照原文核对；失败片段仍可重试。</p>}
+    {content && <section className="trip-import-results"><h3>攻略整理结果</h3>
+      {content.status === "PARTIAL" && <p className={styles.resultSummary} role="status">已整理出可用内容，部分段落还没读完。下面先显示实用重点；保存前可展开原文核对。</p>}
+      {content.status === "FAILED" && content.error && <p role="status">{content.error}</p>}
       {hasRetryableFailures && (content.extraction_metadata?.retry_attempts ?? 0) < 2
         ? <button type="button" disabled={busy} onClick={() => void retryFailedParts()}>{busy ? "正在重试…" : retryWholeGuide ? "按新上限重新提取整篇攻略" : `缩小片段重试 ${content.extraction_metadata?.failed_chunks?.length ?? 0} 个失败片段`}</button>
         : hasRetryableFailures && <p role="status">失败片段已达到重试次数上限；可以删除这条记录后重新导入原文。</p>}
-      <blockquote>{content.text}</blockquote>
+      <details className={styles.sourceText}><summary>查看攻略原文</summary><blockquote>{content.text}</blockquote></details>
       {!!content.guide_facts.length && <section className="trip-guide-facts" aria-label="攻略细节">
-        <div><h3>识别到的攻略细节</h3><p>要点已保存在本次导入记录。勾选的内容会附加到对应已确认地点的旅行备注；请按原文核对，模型提取不等于事实核验。</p></div>
-        {Object.entries(groupedFacts).map(([group, facts]) => <section className={styles.factGroup} key={group}>
+        <div><h3>为你整理的实用信息</h3><p>已优先挑出时间、预约、餐饮、住宿和路线等内容。确认后会加入旅行备注。</p></div>
+        {Object.entries(suggestedFacts.reduce<Record<string, ImportedGuideFact[]>>((groups, fact) => {
+          const label = factGroupLabels[fact.kind]; (groups[label] ??= []).push(fact); return groups;
+        }, {})).map(([group, facts]) => <section className={styles.factGroup} key={group}>
           <h4 className={styles.groupTitle}>{group}</h4>
           {facts.map((fact) => <article className="trip-guide-fact" key={fact.id}>
             <input aria-label={`保存${fact.title}`} type="checkbox" checked={selectedFactIds.includes(fact.id) || Boolean(fact.saved)} disabled={Boolean(fact.saved) || busy} onChange={() => setSelectedFactIds((current) => current.includes(fact.id) ? current.filter((id) => id !== fact.id) : [...current, fact.id])} />
             <div className={styles.factContent}>
-              <strong>{fact.title}</strong><small>{fact.related_places.length ? `关联地点：${fact.related_places.join("、")}` : "旅行级攻略提示"} · 来源：用户原文{fact.edited ? " · 用户已编辑" : ""} · 尚未核验 · 提取置信度 {Math.round(fact.confidence * 100)}%</small>
-              <span>{fact.content}</span>{fact.evidence && <small>原文依据：{fact.evidence}</small>}{fact.saved && <small>已保存</small>}
+              <strong>{fact.title}</strong><small>{fact.related_places.length ? `适用于：${fact.related_places.join("、")}` : "适用于这段旅行"}{fact.edited ? " · 已编辑" : ""}{fact.saved ? " · 已保存" : ""}</small>
+              <span>{fact.content}</span>
+              {(fact.evidence || fact.confidence < 0.6) && <details className={styles.factEvidence}><summary>查看原文依据</summary><span>{fact.evidence || "原文未提供可引用片段"}</span>{fact.confidence < 0.6 && <small>这条内容来自自动整理，建议对照原文核实。</small>}</details>}
               {!fact.saved && content.status !== "IMPORTED" && <details className={styles.factEditor}><summary>编辑、关联或删除</summary>
                 <label>标题<input value={fact.title} maxLength={100} onChange={(event) => editFact(fact.id, { title: event.target.value })} /></label>
                 <label>内容<textarea value={fact.content} maxLength={600} rows={3} onChange={(event) => editFact(fact.id, { content: event.target.value })} /></label>
@@ -208,20 +243,44 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
             </div>
           </article>)}
         </section>)}
+        {!!otherFacts.length && <details className={styles.moreFacts}><summary>查看其他 {otherFacts.length} 条识别信息</summary>
+          {Object.entries(otherFacts.reduce<Record<string, ImportedGuideFact[]>>((groups, fact) => {
+            const label = factGroupLabels[fact.kind]; (groups[label] ??= []).push(fact); return groups;
+          }, {})).map(([group, facts]) => <section className={styles.factGroup} key={group}>
+            <h4 className={styles.groupTitle}>{group}</h4>
+            {facts.map((fact) => <article className="trip-guide-fact" key={fact.id}>
+              <input aria-label={`保存${fact.title}`} type="checkbox" checked={selectedFactIds.includes(fact.id) || Boolean(fact.saved)} disabled={Boolean(fact.saved) || busy} onChange={() => setSelectedFactIds((current) => current.includes(fact.id) ? current.filter((id) => id !== fact.id) : [...current, fact.id])} />
+              <div className={styles.factContent}><strong>{fact.title}</strong><span>{fact.content}</span>
+                {fact.evidence && <details className={styles.factEvidence}><summary>查看原文依据</summary><span>{fact.evidence}</span></details>}
+                {!fact.saved && content.status !== "IMPORTED" && <details className={styles.factEditor}><summary>编辑或删除</summary>
+                  <label>标题<input value={fact.title} maxLength={100} onChange={(event) => editFact(fact.id, { title: event.target.value })} /></label>
+                  <label>内容<textarea value={fact.content} maxLength={600} rows={3} onChange={(event) => editFact(fact.id, { content: event.target.value })} /></label>
+                  <label>分类<select value={fact.kind} onChange={(event) => editFact(fact.id, { kind: event.target.value as ImportedGuideFact["kind"] })}><option value="SUGGESTED_TIME">游览与时间</option><option value="TICKET">票务与预约</option><option value="OPENING_HOURS">开放时间</option><option value="FOOD">餐饮</option><option value="TRANSPORT">交通方式</option><option value="ROUTE">路线顺序</option><option value="ACCOMMODATION">住宿</option><option value="TIP">其他提醒</option><option value="OTHER">其他</option></select></label>
+                  <label>关联地点<select value={fact.related_places[0] ?? ""} onChange={(event) => editFact(fact.id, { related_places: event.target.value ? [event.target.value] : [] })}><option value="">旅行级提示（不关联地点）</option>{content.entities.map((entity) => <option key={entity.id} value={entity.name}>{entity.name}</option>)}</select></label>
+                  <button type="button" onClick={() => { setContent((current) => current ? { ...current, guide_facts: current.guide_facts.filter((item) => item.id !== fact.id) } : current); setSelectedFactIds((current) => current.filter((id) => id !== fact.id)); setFactsDirty(true); }}>删除此要点</button>
+                </details>}</div>
+            </article>)}
+          </section>)}
+        </details>}
         {factsDirty && <button type="button" disabled={busy} onClick={() => void saveFactEdits()}>保存攻略要点修改</button>}
       </section>}
       {!content.entities.length && !content.guide_facts.length && content.status !== "FAILED" && <p>没有提取到地点或可记录的攻略细节。可以检查文字后重新提取。</p>}
-      {content.entities.map((entity) => <article className="layer" key={entity.id}>
-        <span className="index">置信度 {Math.round(entity.confidence * 100)}%</span><h3>{entity.name}</h3>
-        {entity.suggestion && <p>{entity.suggestion}</p>}
-        {entity.evidence ? <blockquote>原文依据：{entity.evidence}</blockquote> : <p>模型未提供可引用的原文依据，请对照上方攻略确认。</p>}
-        {entity.candidates.length === 0 && <p>没有找到地图候选，可以稍后手动添加。</p>}
-        {entity.candidates.map((candidate) => <label key={candidate.id} className="candidate-row">
+      {content.entities.map((entity) => {
+        const best = [...entity.candidates].sort((a, b) => b.score - a.score)[0];
+        const alternatives = entity.candidates.filter((candidate) => candidate.id !== best?.id);
+        const renderCandidate = (candidate: typeof entity.candidates[number]) => <label key={candidate.id} className="candidate-row">
           <input type="checkbox" checked={selected.includes(candidate.id) || candidate.confirmed} disabled={candidate.confirmed || busy} onChange={() => toggle(candidate.id)} />
-          <span>{candidate.name} · {candidate.address} · 匹配度 {Math.round(candidate.score * 100)}%{candidate.confirmed ? " · 已加入" : ""}<small className={styles.candidateSource}>{candidate.provider === "amap" ? "高德地图候选" : candidate.provider === "fake" ? "模拟地图候选" : `${candidate.provider} 地图候选`} · 仅匹配地点，营业时间与票务未核验</small></span>
-        </label>)}
-      </article>)}
-      {content.status === "NEEDS_CONFIRMATION" && <button className="primary" disabled={busy || (selected.length === 0 && selectedFactIds.length === 0)} onClick={() => void confirm()}>保存 {selected.length} 个地点与 {selectedFactIds.length} 条攻略要点</button>}
+          <span>{candidate.name} · {candidate.address}{candidate.confirmed ? " · 已加入" : ""}<small className={styles.candidateSource}>地图匹配结果，营业时间与票务信息尚未核实</small></span>
+        </label>;
+        return <article className="layer" key={entity.id}>
+          <h3>{entity.name}</h3>
+          {entity.suggestion && <p>{entity.suggestion}</p>}
+          {best ? renderCandidate(best) : <p>暂时没有找到地图结果，原文信息仍已保留。</p>}
+          {!!alternatives.length && <details className={styles.moreFacts}><summary>更换地点匹配（{alternatives.length}）</summary>{alternatives.map(renderCandidate)}</details>}
+          {entity.evidence && <details className={styles.factEvidence}><summary>查看攻略中的对应文字</summary><span>{entity.evidence}</span></details>}
+        </article>;
+      })}
+      {content.status === "NEEDS_CONFIRMATION" && <button className="primary" disabled={busy || (selected.length === 0 && selectedFactIds.length === 0)} onClick={() => void confirm()}>确认保存所选内容（{selected.length + selectedFactIds.length}）</button>}
       {content.status === "IMPORTED" && <Link className={styles.advisorLink} href={`/advisor?tripId=${tripId}`}>让 AI 顾问基于已保存地点继续规划 ↗</Link>}
     </section>}
   </>;
