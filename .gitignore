@@ -35,3 +35,10 @@ TravelPilot_项目规划.md
 tests/evaluation/reviews/*private_key*.json
 tests/evaluation/results/*blind_review*key*.private.json
 
+# Per-run model outputs and review packets may contain conversation data.
+# Keep them local; retain only these already-reviewed aggregate artifacts.
+tests/evaluation/results/*.json
+!tests/evaluation/results/advisor_product_local_suite_20261020_summary.json
+tests/evaluation/reviews/*.json
+!tests/evaluation/reviews/advisor_product_quality_review_user_authorized_20261020_v4.json
+
