@@ -108,6 +108,19 @@ def test_two_day_distribution_with_lunch_breaks_remains_a_schedule_request():
     assert plan.stage("SCHEDULE") is not None
 
 
+@pytest.mark.parametrize(
+    "goal",
+    [
+        "帮我找午餐和晚餐的地方",
+        "推荐早餐、午餐和晚餐",
+    ],
+)
+def test_multiple_meal_types_do_not_force_all_candidates_into_first_meal(goal):
+    from travelpilot_api.advisor.interpretation import _planning_category_request
+
+    assert _planning_category_request(goal) == ("FOOD", None)
+
+
 def test_explicit_attraction_schedule_plus_lunch_runs_both_scoped_stages():
     from travelpilot_api.advisor.interpretation import _is_schedule_recommendation_request
 

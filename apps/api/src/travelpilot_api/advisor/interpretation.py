@@ -376,14 +376,18 @@ def _planning_category_request(content: str) -> tuple[str | None, str | None]:
                 start = index + len(term)
         return False
 
-    meal_type = next((
+    meal_types = [
         kind for kind, terms in (
             ("BREAKFAST", ("早餐", "早饭")),
             ("LUNCH", ("午餐", "午饭", "中饭")),
             ("DINNER", ("晚餐", "晚饭")),
             ("SNACK", ("夜宵", "小吃", "下午茶")),
         ) if has_positive_term(terms)
-    ), None)
+    ]
+    # A single request may cover several meals. The downstream candidate model
+    # stores one meal_type, so keep the meal domain but leave the specific meal
+    # unset instead of incorrectly labeling every result as the first match.
+    meal_type = meal_types[0] if len(meal_types) == 1 else None
     food_terms = ("美食", "吃饭", "吃什么", "餐厅", "餐馆", "饭店", "用餐", "火锅", "小吃", "咖啡", "早餐", "午餐", "午饭", "中饭", "晚餐", "晚饭", "夜宵", "下午茶")
     lodging_terms = ("酒店", "住宿", "民宿", "住哪里", "住哪儿", "旅馆")
     if meal_type or has_positive_term(food_terms):
