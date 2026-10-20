@@ -47,6 +47,51 @@ function defaultCandidateIds(entities: ImportedContent["entities"]) {
   });
 }
 
+function guideNarrative(content: ImportedContent, selectedFactIds: string[]) {
+  const facts = content.guide_facts.filter((fact) => fact.saved || selectedFactIds.includes(fact.id));
+  const names = (category: string) => content.entities
+    .filter((entity) => entity.category === category)
+    .map((entity) => entity.name)
+    .slice(0, 4);
+  const attractions = names("ATTRACTION");
+  const foodPlaces = names("FOOD");
+  const lodgingPlaces = names("LODGING");
+  const visitNotes = facts.filter((fact) => ["SUGGESTED_TIME", "ROUTE", "TRANSPORT"].includes(fact.kind));
+  const foodNotes = facts.filter((fact) => fact.kind === "FOOD");
+  const lodgingNotes = facts.filter((fact) => fact.kind === "ACCOMMODATION");
+  const reminders = facts.filter((fact) => ["TICKET", "OPENING_HOURS", "TIP"].includes(fact.kind));
+  const shortFacts = (items: ImportedGuideFact[]) => {
+    const selected = items.slice(0, 2).map((fact) => {
+      const value = fact.content.trim();
+      return value.length > 96 ? `${value.slice(0, 95).trimEnd()}…` : value;
+    }).filter(Boolean);
+    return selected.join("；");
+  };
+  const attractionTotal = content.entities.filter((entity) => entity.category === "ATTRACTION").length;
+  const suggestions = content.entities.map((entity) => entity.suggestion?.trim()).filter((value): value is string => Boolean(value)).slice(0, 2);
+  const clauses = [
+    attractions.length ? `这份攻略提到了${attractions.join("、")}${attractionTotal > attractions.length ? "等景点" : ""}` : "这份攻略",
+    suggestions.length ? `游览时可参考${suggestions.join("；")}` : "",
+    shortFacts(visitNotes),
+    foodPlaces.length || foodNotes.length
+      ? `吃饭可以考虑${[foodPlaces.join("、"), shortFacts(foodNotes)].filter(Boolean).join("；")}`
+      : "",
+    lodgingPlaces.length || lodgingNotes.length
+      ? `住宿可以关注${[lodgingPlaces.join("、"), shortFacts(lodgingNotes)].filter(Boolean).join("；")}`
+      : "",
+    reminders.length ? `还要留意${shortFacts(reminders)}` : "",
+  ].filter(Boolean);
+
+  if (!clauses.length) return "暂时没有提取到可直接用于旅行的地点或实用信息，可以展开核对原文，或调整攻略内容后重新识别。";
+  const hasOpeningDetails = facts.some((fact) => fact.kind === "OPENING_HOURS");
+  const hasTicketDetails = facts.some((fact) => fact.kind === "TICKET");
+  const reminder = [
+    hasOpeningDetails ? "开放时间" : "",
+    hasTicketDetails ? "购票预约" : "",
+  ].filter(Boolean).join("和");
+  return `${clauses.join("；")}。${reminder ? `${reminder}来自攻略原文，出发前请再核实。` : "内容来自攻略原文，保存前可展开核对。"}`;
+}
+
 function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" | "onImported">) {
   const router = useRouter();
   const [text, setText] = useState("");
@@ -57,7 +102,7 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
   const [factsDirty, setFactsDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [ocrConfidence, setOcrConfidence] = useState<number | null>(null);
+  const [ocrRecognized, setOcrRecognized] = useState(false);
   const resultsRef = useRef<HTMLElement>(null);
 
   async function askAdvisorToPlan() {
@@ -150,10 +195,9 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
       const result = await recognizeContentImage(tripId, file);
       if (!result.text.trim()) {
         setError("没有识别到文字。可以换一张更清晰的图片，或直接粘贴文字。");
-        setOcrConfidence(null);
       } else {
         setText(result.text);
-        setOcrConfidence(result.confidence);
+        setOcrRecognized(true);
       }
     } catch (err) { setError(err instanceof Error ? err.message : "图片文字识别失败"); }
     finally { setBusy(false); input.value = ""; }
@@ -230,12 +274,9 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
   const suggestedFactIds = new Set(suggestedFacts.map((fact) => fact.id));
   const otherFacts = content?.guide_facts.filter((fact) => !suggestedFactIds.has(fact.id)) ?? [];
   const activeStep = !content ? 0 : content.status === "IMPORTED" ? 2 : 1;
-  const categoryCounts = content ? [
-    { label: "景点", count: content.entities.filter((entity) => entity.category === "ATTRACTION").length },
-    { label: "美食", count: content.entities.filter((entity) => entity.category === "FOOD").length + content.guide_facts.filter((fact) => fact.kind === "FOOD").length },
-    { label: "住宿", count: content.entities.filter((entity) => entity.category === "LODGING").length + content.guide_facts.filter((fact) => fact.kind === "ACCOMMODATION").length },
-    { label: "其他实用信息", count: content.guide_facts.filter((fact) => !["FOOD", "ACCOMMODATION"].includes(fact.kind)).length },
-  ].filter((item) => item.count > 0) : [];
+  const guideSummary = content ? guideNarrative(content, selectedFactIds) : "";
+  const selectedPlaceCount = content?.entities.reduce((count, entity) => count + entity.candidates.filter((candidate) => selected.includes(candidate.id) || candidate.confirmed).length, 0) ?? 0;
+  const selectedFactCount = content?.guide_facts.filter((fact) => selectedFactIds.includes(fact.id) || fact.saved).length ?? 0;
 
   return <>
     <div className="trip-import-intro"><p className="eyebrow">导入攻略</p><h2>把攻略里的地点和实用细节留下来</h2><p>识别地点后匹配地图候选；同时提取购票、推荐时段、美食、路线和出行提示。核对原文依据后，由你选择哪些要点附加到已确认地点。</p></div>
@@ -259,11 +300,20 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
       </article>)}</div>
     </details>}
     <form className={`${styles.importComposer} trip-import-form trip-form`} onSubmit={submit}>
-      <label>{ocrConfidence === null ? "攻略原文" : `识别文字（OCR 平均置信度 ${Math.round(ocrConfidence * 100)}%，请校对）`}<textarea required rows={8} maxLength={20000} value={text} onChange={(event) => setText(event.target.value)} /></label>
-      <button className="primary" disabled={busy}>{busy ? "正在识别…" : "提取地点"}</button>
+      <label>{ocrRecognized ? "图片识别文字（请校对）" : "攻略原文"}<textarea required rows={8} maxLength={20000} value={text} onChange={(event) => { setText(event.target.value); setOcrRecognized(false); }} /></label>
+      <button className="primary" disabled={busy}>{busy ? "正在整理攻略…" : "整理攻略"}</button>
     </form>
     {error && <p className="trip-import-error" role="alert">{error}</p>}
     {content && <section className="trip-import-results" ref={resultsRef}><header className={styles.resultHeading}><div><h3>攻略整理结果</h3><p>{content.status === "IMPORTED" ? "攻略信息已保存到这段旅行，可以继续让顾问结合行程分析。" : "请快速核对自动整理的重点，勾选需要保留的内容。"}</p></div>{content.status === "IMPORTED" && <span className={styles.savedMark}>已保存</span>}</header>
+      <section className={styles.guideSummary} aria-label="攻略重点">
+        <p>{guideSummary}</p>
+        {content.status === "NEEDS_CONFIRMATION" && <div className={styles.summaryActions}>
+          <span>已选 {selectedPlaceCount} 个地点 · {selectedFactCount} 条实用信息</span>
+          <button className="primary" type="button" disabled={busy || (selected.length === 0 && selectedFactIds.length === 0)} onClick={() => void confirm()}>
+            确认保存重点
+          </button>
+        </div>}
+      </section>
       {content.status === "IMPORTED" && <section className={styles.advisorStart}>
         <div><strong>下一步：让顾问结合整段旅行整理建议</strong><p>顾问会读取当前行程和已确认的攻略内容，检查景点顺路、时间安排、餐饮、住宿与票务；只有你确认草案后才更新正式计划。</p></div>
         <button type="button" className="primary" disabled={busy} onClick={() => void askAdvisorToPlan()}>{busy ? "正在准备旅行上下文…" : "和顾问一起整理行程"} ↗</button>
@@ -274,10 +324,9 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
         ? <button type="button" disabled={busy} onClick={() => void retryFailedParts()}>{busy ? "正在重试…" : retryWholeGuide ? "按新上限重新提取整篇攻略" : `缩小片段重试 ${content.extraction_metadata?.failed_chunks?.length ?? 0} 个失败片段`}</button>
         : hasRetryableFailures && <p role="status">失败片段已达到重试次数上限；可以删除这条记录后重新导入原文。</p>}
       <details className={styles.sourceText}><summary>查看攻略原文</summary><blockquote>{content.text}</blockquote></details>
-      {!!categoryCounts.length && <div className={styles.categorySummary} aria-label="识别内容分类">
-        {categoryCounts.map((item) => <div key={item.label}><strong>{item.count}</strong><span>{item.label}</span></div>)}
-      </div>}
-      {!!content.guide_facts.length && <section className="trip-guide-facts" aria-label="攻略细节">
+      {(!!content.guide_facts.length || !!content.entities.length) && <details className={styles.reviewDetails}>
+        <summary>核对地点与攻略细节</summary>
+        {!!content.guide_facts.length && <section className="trip-guide-facts" aria-label="攻略细节">
         <div><h3>为你整理的实用信息</h3><p>已优先挑出时间、预约、餐饮、住宿和路线等内容。确认后会加入旅行备注。</p></div>
         {Object.entries(suggestedFacts.reduce<Record<string, ImportedGuideFact[]>>((groups, fact) => {
           const label = factGroupLabels[fact.kind]; (groups[label] ??= []).push(fact); return groups;
@@ -288,7 +337,7 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
             <div className={styles.factContent}>
               <strong>{fact.title}</strong><small>{fact.related_places.length ? `适用于：${fact.related_places.join("、")}` : "适用于这段旅行"}{fact.edited ? " · 已编辑" : ""}{fact.saved ? " · 已保存" : ""}</small>
               <span>{fact.content}</span>
-              {(fact.evidence || fact.confidence < 0.6) && <details className={styles.factEvidence}><summary>查看原文依据</summary><span>{fact.evidence || "原文未提供可引用片段"}</span>{fact.confidence < 0.6 && <small>这条内容来自自动整理，建议对照原文核实。</small>}</details>}
+              {fact.evidence && <details className={styles.factEvidence}><summary>查看原文依据</summary><span>{fact.evidence}</span></details>}
               {!fact.saved && content.status !== "IMPORTED" && <details className={styles.factEditor}><summary>编辑、关联或删除</summary>
                 <label>标题<input value={fact.title} maxLength={100} onChange={(event) => editFact(fact.id, { title: event.target.value })} /></label>
                 <label>内容<textarea value={fact.content} maxLength={600} rows={3} onChange={(event) => editFact(fact.id, { content: event.target.value })} /></label>
@@ -327,7 +376,6 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
         </details>}
         {factsDirty && <button type="button" disabled={busy} onClick={() => void saveFactEdits()}>保存攻略要点修改</button>}
       </section>}
-      {!content.entities.length && !content.guide_facts.length && content.status !== "FAILED" && <p>没有提取到地点或可记录的攻略细节。可以检查文字后重新提取。</p>}
       {content.entities.map((entity) => {
         const best = [...entity.candidates].sort((a, b) => b.score - a.score)[0];
         const alternatives = entity.candidates.filter((candidate) => candidate.id !== best?.id);
@@ -343,7 +391,7 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
           {entity.evidence && <details className={styles.factEvidence}><summary>查看攻略中的对应文字</summary><span>{entity.evidence}</span></details>}
         </article>;
       })}
-      {content.status === "NEEDS_CONFIRMATION" && <button className="primary" disabled={busy || (selected.length === 0 && selectedFactIds.length === 0)} onClick={() => void confirm()}>确认保存所选内容（{selected.length + selectedFactIds.length}）</button>}
+      </details>}
     </section>}
   </>;
 }

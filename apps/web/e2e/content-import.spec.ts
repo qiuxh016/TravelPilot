@@ -139,8 +139,12 @@ test("攻略导入文本可提取、确认保存、重开并删除记录", async
   const state = await mockWorkspace(page);
   const sourceText = "梅州一日游攻略\n上午11:00参观梅州学宫\n周一闭馆，其余时间开放";
   await page.getByLabel("攻略原文").fill(sourceText);
-  await page.getByRole("button", { name: "提取地点" }).click();
+  await page.getByRole("button", { name: "整理攻略" }).click();
 
+  await expect(page.getByLabel("攻略重点")).toContainText("梅州学宫");
+  await expect(page.getByLabel("攻略重点")).toContainText("出发前请再核实");
+  await expect(page.getByLabel(/梅州学宫 ·/)).not.toBeVisible();
+  await page.getByText("核对地点与攻略细节").click();
   await expect(page.getByRole("heading", { name: "梅州学宫" })).toBeVisible();
   await expect(page.getByText("周一闭馆，其余时间开放").first()).toBeVisible();
   await expect(page.getByText(/置信度|匹配度/)).toHaveCount(0);
@@ -149,7 +153,7 @@ test("攻略导入文本可提取、确认保存、重开并删除记录", async
   expect(state.getImportedText()).toBe(sourceText);
 
   await page.getByLabel(/梅州学宫 ·/).check();
-  await page.getByRole("button", { name: "确认保存所选内容（2）" }).click();
+  await page.getByRole("button", { name: "确认保存重点" }).click();
   await expect(page.getByRole("heading", { name: "攻略整理结果" })).toBeVisible();
   expect(state.getConfirmationPayload()).toEqual({ candidate_ids: [candidateId], fact_ids: [factId] });
 
@@ -164,10 +168,10 @@ test("攻略导入文本可提取、确认保存、重开并删除记录", async
 test("已确认攻略可带入旅行上下文交给顾问生成行程建议", async ({ page }, testInfo) => {
   const state = await mockWorkspace(page);
   await page.getByLabel("攻略原文").fill("梅州一日游攻略\n上午11:00参观梅州学宫\n周一闭馆，其余时间开放");
-  await page.getByRole("button", { name: "提取地点" }).click();
-  await page.getByRole("button", { name: "确认保存所选内容（2）" }).click();
+  await page.getByRole("button", { name: "整理攻略" }).click();
+  await page.getByRole("button", { name: "确认保存重点" }).click();
   await expect(page.getByRole("list", { name: "攻略整理流程" }).getByText("顾问调整计划")).toBeVisible();
-  await expect(page.getByLabel("识别内容分类").getByText("景点")).toBeVisible();
+  await expect(page.getByLabel("攻略重点")).toContainText("梅州学宫");
   const screenshotDirectory = process.env.TRAVELPILOT_SCREENSHOT_DIR;
   if (screenshotDirectory) {
     await page.screenshot({ path: `${screenshotDirectory}/${testInfo.project.name}.png` });
@@ -195,7 +199,7 @@ test("图片 OCR 结果填入原文框，失败分段可重试且保留本地兜
     fallback_chunks: [{ index: 0, start: 0, end: 20 }],
   }));
   await page.getByLabel(/识别文字/).fill("梅州一日游攻略，梅州学宫开放时间攻略");
-  await page.getByRole("button", { name: "提取地点" }).click();
+  await page.getByRole("button", { name: "整理攻略" }).click();
   await expect(page.getByText(/已整理出可用内容，部分段落还没读完/)).toBeVisible();
   await page.getByRole("button", { name: "缩小片段重试 1 个失败片段" }).click();
   await expect(page.getByRole("heading", { name: "攻略整理结果" })).toBeVisible();
@@ -214,9 +218,10 @@ test("旧版超过地点上限的失败记录可按新上限重新提取整篇�
   state.setRetryResponse(guide("NEEDS_CONFIRMATION", "梅州多日攻略"));
 
   await page.getByLabel("攻略原文").fill("梅州多日攻略：包含多个地点和游览细节");
-  await page.getByRole("button", { name: "提取地点" }).click();
+  await page.getByRole("button", { name: "整理攻略" }).click();
   await expect(page.getByText(/超过单次确认上限/)).toBeVisible();
   await page.getByRole("button", { name: "按新上限重新提取整篇攻略" }).click();
   await expect(page.getByRole("heading", { name: "攻略整理结果" })).toBeVisible();
+  await page.getByText("核对地点与攻略细节").click();
   await expect(page.getByRole("heading", { name: "梅州学宫" })).toBeVisible();
 });
