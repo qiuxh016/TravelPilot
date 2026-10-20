@@ -209,6 +209,7 @@ export type AdvisorTaskSnapshot = {
   status: "WAITING_USER" | "PROPOSED" | "COMPLETED" | "PARTIAL" | "CANCELLED" | "STALE" | "FAILED";
   goal: string; context_revision: number; turn_number: number; answers: string[];
   question: string | null; action_summary: string;
+  confirmation_options?: { label: string; answer: string }[];
 };
 export type AdvisorTransportRoute = {
   status: "VERIFIED" | "SIMULATED"; mode: "DRIVING" | "WALKING" | "TRANSIT";
@@ -248,7 +249,8 @@ export type AdvisorDraftWeather = {
   plan_impacts?: { candidate_id: string; name: string; day: string; reason: string }[];
 };
 export type AdvisorAttentionItem = { kind: "MEAL_MISSING" | "OPEN_GAP" | "EMPTY_DAY" | "REST_CHECK" | "LODGING_MISSING" | "ORIGIN_MISSING" | "TRANSPORT_UNVERIFIED"; day: string; meal_type?: "LUNCH" | "DINNER"; from?: string; to?: string; hours?: number };
-export type AdvisorDraft = { version: number; context_revision: number; generated_at: string; selected_candidate_ids: string[]; attention_items?: AdvisorAttentionItem[]; lodging?: { candidate_id: string; name: string; address: string | null; provider: string; verification_status: string | null }[]; applied_personal_memories?: { id: string; category: string; text: string; constraint_type: "PREFERENCE" | "HARD_LIMIT" }[]; transport?: { status: "NOT_REQUIRED" | "VERIFIED" | "SIMULATED" | "UNAVAILABLE"; source: string | null; retrieved_at: string | null }; origin_leg?: { status: "NOT_PROVIDED" | "VERIFIED" | "SIMULATED" | "UNRESOLVED" | "UNAVAILABLE"; from: string | null; duration_min: number | null; source: string | null; retrieved_at: string | null }; warnings: string[]; weather?: AdvisorDraftWeather; trip_changes?: { before: Record<string, string | number | null>; after: Record<string, string | number | null> } | null; pace_change: { before: number; after: number } | null; changes: AdvisorChange[]; change_summary: Record<string, number>; stops: AdvisorStop[] };
+export type AdvisorTransportTransition = { day: string; from_candidate_id: string; from_name: string; to_candidate_id: string; to_name: string; duration_min: number; status: "VERIFIED" | "SIMULATED" | "ESTIMATED"; source: string | null };
+export type AdvisorDraft = { version: number; context_revision: number; generated_at: string; selected_candidate_ids: string[]; attention_items?: AdvisorAttentionItem[]; lodging?: { candidate_id: string; name: string; address: string | null; provider: string; verification_status: string | null }[]; applied_personal_memories?: { id: string; category: string; text: string; constraint_type: "PREFERENCE" | "HARD_LIMIT" }[]; transport?: { status: "NOT_REQUIRED" | "VERIFIED" | "SIMULATED" | "UNAVAILABLE"; source: string | null; retrieved_at: string | null }; transitions?: AdvisorTransportTransition[]; origin_leg?: { status: "NOT_PROVIDED" | "VERIFIED" | "SIMULATED" | "UNRESOLVED" | "UNAVAILABLE"; from: string | null; duration_min: number | null; source: string | null; retrieved_at: string | null }; warnings: string[]; weather?: AdvisorDraftWeather; trip_changes?: { before: Record<string, string | number | null>; after: Record<string, string | number | null> } | null; pace_change: { before: number; after: number } | null; changes: AdvisorChange[]; change_summary: Record<string, number>; stops: AdvisorStop[] };
 export type AdvisorSession = {
   id: string; mode: "discover" | "destination" | "existing"; trip_id: string | null; destination: string;
   start_date: string | null; end_date: string | null; budget: string | number | null; pace_level: number;
@@ -388,9 +390,13 @@ export type ContentEntity = {
   id: string; name: string; category: string; suggestion: string | null;
   evidence: string | null; confidence: number; candidates: Candidate[];
 };
+export type ImportedGuideFact = {
+  id: string; kind: "TICKET" | "OPENING_HOURS" | "SUGGESTED_TIME" | "FOOD" | "ROUTE" | "TRANSPORT" | "ACCOMMODATION" | "TIP" | "OTHER";
+  title: string; content: string; evidence: string | null; related_places: string[]; confidence: number; saved?: boolean;
+};
 export type ImportedContent = {
   id: string; trip_id: string; content_type: string; text: string;
-  status: string; error: string | null; created_at: string; entities: ContentEntity[];
+  status: string; error: string | null; created_at: string; entities: ContentEntity[]; guide_facts: ImportedGuideFact[];
 };
 export type OcrText = { text: string; confidence: number | null; stored: boolean };
 export const recognizeContentImage = (tripId: string, file: File) => {
@@ -402,9 +408,9 @@ export const importContent = (tripId: string, text: string) =>
   request<ImportedContent>(`/api/v1/trips/${tripId}/content`, {
     method: "POST", body: JSON.stringify({ content_type: "TEXT", text }),
   });
-export const confirmCandidates = (contentId: string, candidateIds: string[]) =>
+export const confirmCandidates = (contentId: string, candidateIds: string[], factIds: string[] = []) =>
   request<ImportedContent>(`/api/v1/content/${contentId}/confirm`, {
-    method: "POST", body: JSON.stringify({ candidate_ids: candidateIds }),
+    method: "POST", body: JSON.stringify({ candidate_ids: candidateIds, fact_ids: factIds }),
   });
 
 export type TripEvent = { id: string; trip_id: string; event_type: string; effective_at: string; effective_timezone_offset_minutes: number; payload: Record<string, unknown>; created_at: string };

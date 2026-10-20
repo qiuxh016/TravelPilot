@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
-import { confirmCandidates, importContent, recognizeContentImage, type ImportedContent } from "../lib/api";
+import { confirmCandidates, importContent, recognizeContentImage, type ImportedContent, type ImportedGuideFact } from "../lib/api";
 
 type TripImportToolProps = {
   tripId: string;
@@ -14,6 +14,7 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
   const [text, setText] = useState("");
   const [content, setContent] = useState<ImportedContent | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  const [selectedFactIds, setSelectedFactIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [ocrConfidence, setOcrConfidence] = useState<number | null>(null);
@@ -38,7 +39,12 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
-    try { setContent(await importContent(tripId, text)); setSelected([]); }
+    try {
+      const response = await importContent(tripId, text);
+      const result = { ...response, guide_facts: response.guide_facts ?? [] };
+      setContent(result); setSelected([]);
+      setSelectedFactIds(result.guide_facts.map((fact) => fact.id));
+    }
     catch (err) { setError(err instanceof Error ? err.message : "导入失败"); }
     finally { setBusy(false); }
   }
@@ -46,7 +52,10 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
   async function confirm() {
     if (!content || selected.length === 0) return;
     setBusy(true); setError("");
-    try { setContent(await confirmCandidates(content.id, selected)); setSelected([]); onImported?.(); }
+    try {
+      const response = await confirmCandidates(content.id, selected, selectedFactIds);
+      setContent({ ...response, guide_facts: response.guide_facts ?? [] }); setSelected([]); onImported?.();
+    }
     catch (err) { setError(err instanceof Error ? err.message : "确认失败"); }
     finally { setBusy(false); }
   }
@@ -56,7 +65,7 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
   }
 
   return <>
-    <div className="trip-import-intro"><p className="eyebrow">导入攻略</p><h2>把攻略里的地点，收进这段旅行</h2><p>粘贴文字或上传截图识别文字。系统会列出地点候选，只有你确认的地点才会加入 Wishlist。</p></div>
+    <div className="trip-import-intro"><p className="eyebrow">导入攻略</p><h2>把攻略里的地点和实用细节留下来</h2><p>识别地点后匹配地图候选；同时提取购票、推荐时段、美食、路线和出行提示。核对原文依据后，由你选择哪些要点附加到已确认地点。</p></div>
     <section className="trip-import-image layer">
       <h3>从攻略截图识别文字</h3>
       <label>选择图片（JPEG、PNG 或 WebP，最多 10 MB）<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(event) => void recognizeImage(event)} /></label>
@@ -67,7 +76,15 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
       <button className="primary" disabled={busy}>{busy ? "正在识别…" : "提取地点"}</button>
     </form>
     {error && <p className="trip-import-error" role="alert">{error}</p>}
-    {content && <section className="trip-import-results"><h3>抽取结果 · {content.status}</h3>{content.error && <p>{content.error}</p>}<blockquote>{content.text}</blockquote>
+    {content && <section className="trip-import-results"><h3>攻略识别 · {content.status}</h3>{content.error && <p role="status">{content.error}</p>}<blockquote>{content.text}</blockquote>
+      {!!content.guide_facts.length && <section className="trip-guide-facts" aria-label="攻略细节">
+        <div><h3>识别到的攻略细节</h3><p>要点已保存在本次导入记录。勾选的内容会附加到对应已确认地点的旅行备注；请按原文核对，模型提取不等于事实核验。</p></div>
+        {content.guide_facts.map((fact: ImportedGuideFact) => <label className="trip-guide-fact" key={fact.id}>
+          <input type="checkbox" checked={selectedFactIds.includes(fact.id) || Boolean(fact.saved)} disabled={Boolean(fact.saved) || busy} onChange={() => setSelectedFactIds((current) => current.includes(fact.id) ? current.filter((id) => id !== fact.id) : [...current, fact.id])} />
+          <span><strong>{fact.title}</strong><small>{fact.related_places.length ? `关联地点：${fact.related_places.join("、")}` : "攻略整体提示"} · 提取置信度 {Math.round(fact.confidence * 100)}%</small><span>{fact.content}</span>{fact.evidence && <small>原文依据：{fact.evidence}</small>}{fact.saved && <small>已保存到旅行地点备注</small>}</span>
+        </label>)}
+      </section>}
+      {!content.entities.length && !content.guide_facts.length && content.status !== "FAILED" && <p>没有提取到地点或可记录的攻略细节。可以检查文字后重新提取。</p>}
       {content.entities.map((entity) => <article className="layer" key={entity.id}>
         <span className="index">置信度 {Math.round(entity.confidence * 100)}%</span><h3>{entity.name}</h3>
         {entity.suggestion && <p>{entity.suggestion}</p>}
@@ -78,7 +95,7 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
           {candidate.name} · {candidate.address} · 匹配度 {Math.round(candidate.score * 100)}%{candidate.confirmed ? " · 已加入" : ""}
         </label>)}
       </article>)}
-      <button className="primary" disabled={busy || selected.length === 0} onClick={() => void confirm()}>确认并加入 Wishlist</button>
+      <button className="primary" disabled={busy || selected.length === 0} onClick={() => void confirm()}>确认 {selected.length} 个地点并保存所选攻略要点</button>
     </section>}
   </>;
 }

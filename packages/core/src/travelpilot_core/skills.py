@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SKILLS_ROOT = Path(__file__).resolve().parent / "skills"
 _ALLOWED = {"content-import", "weather-replan"}
-_PINNED_VERSIONS = {"content-import": "1.0.0", "weather-replan": "1.0.0"}
+_PINNED_VERSIONS = {"content-import": "1.1.0", "weather-replan": "1.0.0"}
 _MAX_BYTES = 12_000
 
 
