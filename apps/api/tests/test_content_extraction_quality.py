@@ -18,6 +18,8 @@ from travelpilot_api.schemas.content import ConfirmCandidates
 from travelpilot_core.agents.extraction import (
     Extraction,
     GuideFact,
+    PlaceMention,
+    _merge_extractions,
     _split_guide_text,
     extract_places,
     fallback_extract,
@@ -148,6 +150,22 @@ def test_guide_chunker_preserves_all_input_characters_and_respects_chunk_limit()
     natural_chunks = _split_guide_text(natural_text)
     assert natural_chunks[0].endswith("\n")
     assert "".join(natural_chunks) == natural_text
+
+
+def test_guide_merge_keeps_more_than_twenty_places_from_multiple_chunks():
+    chunks = [
+        Extraction(places=[
+            PlaceMention(name=f"旅行地点{i:02}", confidence=0.8)
+            for i in range(start, start + 12)
+        ])
+        for start in (0, 12)
+    ]
+
+    merged = _merge_extractions(chunks)
+
+    assert len(merged.places) == 24
+    assert merged.places[-1].name == "旅行地点23"
+    assert len(ConfirmCandidates(candidate_ids=[uuid4() for _ in range(24)]).candidate_ids) == 24
 
 
 @pytest.mark.asyncio

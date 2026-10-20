@@ -40,7 +40,10 @@ class RequestedTask(BaseModel):
 
 
 class Extraction(BaseModel):
-    places: list[PlaceMention] = Field(max_length=20)
+    # A full guide may mention more than 20 distinct places across chunks.
+    # Keep the per-model-chunk prompt limit small, but allow the merged result
+    # to retain all candidates instead of failing the entire import.
+    places: list[PlaceMention] = Field(max_length=100)
     guide_facts: list[GuideFact] = Field(default_factory=list, max_length=40)
     search_queries: list[str] = Field(default_factory=list, max_length=5)
     requested_tasks: list[RequestedTask] = Field(default_factory=list, max_length=7)
@@ -421,7 +424,7 @@ def _merge_extractions(extractions: list[Extraction]) -> Extraction:
             tasks.setdefault((task.kind, task.evidence), task)
     merged_places = list(places.values())
     merged_facts = list(facts.values())
-    if len(merged_places) > 20 or len(merged_facts) > 40:
+    if len(merged_places) > 100 or len(merged_facts) > 40:
         raise TextExtractionFailure(
             {"place_count": len(merged_places), "fact_count": len(merged_facts)},
             {"failure_code": "RESULT_LIMIT_EXCEEDED"},

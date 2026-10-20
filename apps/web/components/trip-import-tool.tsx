@@ -150,6 +150,8 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
     (groups[label] ??= []).push(fact);
     return groups;
   }, {}) ?? {};
+  const retryWholeGuide = content?.extraction_metadata?.failure_code === "RESULT_LIMIT_EXCEEDED";
+  const hasRetryableFailures = Boolean(content?.extraction_metadata?.failed_chunks?.length || retryWholeGuide);
 
   return <>
     <div className="trip-import-intro"><p className="eyebrow">导入攻略</p><h2>把攻略里的地点和实用细节留下来</h2><p>识别地点后匹配地图候选；同时提取购票、推荐时段、美食、路线和出行提示。核对原文依据后，由你选择哪些要点附加到已确认地点。</p></div>
@@ -176,9 +178,9 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
       {content.extraction_metadata?.duplicate_source_id && <p className={styles.duplicateNotice} role="status">发现这段旅行中已有相同原文的导入记录（{content.extraction_metadata.duplicate_source_id.slice(0, 8)}…）。请检查是否重复保存地点或攻略要点。</p>}
       {content.extraction_metadata && content.extraction_metadata.total_chunks! > 1 && <p role="status">模型完成 {content.extraction_metadata.completed_chunks ?? 0}/{content.extraction_metadata.total_chunks} 段</p>}
       {!!content.extraction_metadata?.fallback_chunks?.length && <p className={styles.fallbackNotice} role="status">{content.extraction_metadata.fallback_chunks.length} 段已用本地规则保留地点或攻略细节，置信度偏低，请对照原文核对；失败片段仍可重试。</p>}
-      {!!content.extraction_metadata?.failed_chunks?.length && (content.extraction_metadata.retry_attempts ?? 0) < 2
-        ? <button type="button" disabled={busy} onClick={() => void retryFailedParts()}>{busy ? "正在重试…" : `只重试 ${content.extraction_metadata.failed_chunks.length} 个失败片段`}</button>
-        : !!content.extraction_metadata?.failed_chunks?.length && <p role="status">失败片段已达到重试次数上限；可以删除这条记录后重新导入原文。</p>}
+      {hasRetryableFailures && (content.extraction_metadata?.retry_attempts ?? 0) < 2
+        ? <button type="button" disabled={busy} onClick={() => void retryFailedParts()}>{busy ? "正在重试…" : retryWholeGuide ? "按新上限重新提取整篇攻略" : `只重试 ${content.extraction_metadata?.failed_chunks?.length ?? 0} 个失败片段`}</button>
+        : hasRetryableFailures && <p role="status">失败片段已达到重试次数上限；可以删除这条记录后重新导入原文。</p>}
       <blockquote>{content.text}</blockquote>
       {!!content.guide_facts.length && <section className="trip-guide-facts" aria-label="攻略细节">
         <div><h3>识别到的攻略细节</h3><p>要点已保存在本次导入记录。勾选的内容会附加到对应已确认地点的旅行备注；请按原文核对，模型提取不等于事实核验。</p></div>

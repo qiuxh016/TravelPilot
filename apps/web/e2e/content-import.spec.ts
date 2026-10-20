@@ -6,14 +6,14 @@ const entityId = "00000000-0000-4000-8000-000000000003";
 const candidateId = "00000000-0000-4000-8000-000000000004";
 const factId = "00000000-0000-4000-8000-000000000005";
 
-function guide(status: string, text: string, metadata: Record<string, unknown> | null = null) {
+function guide(status: string, text: string, metadata: Record<string, unknown> | null = null, error: string | null = null) {
   return {
     id: contentId,
     trip_id: tripId,
     content_type: "TEXT",
     text,
     status,
-    error: null,
+    error,
     skill_name: "攻略导入",
     skill_version: "1.1.0",
     skill_applicability: null,
@@ -60,6 +60,7 @@ async function mockWorkspace(page: import("@playwright/test").Page) {
   const history: Array<Record<string, unknown>> = [];
   let current = guide("NEEDS_CONFIRMATION", "梅州一日游攻略\n上午11:00参观梅州学宫\n周一闭馆，其余时间开放");
   let retryResponse: Record<string, unknown> | null = null;
+  let importResponse: Record<string, unknown> | null = null;
   let confirmationPayload: Record<string, unknown> | null = null;
   let importedText = "";
 
@@ -89,7 +90,7 @@ async function mockWorkspace(page: import("@playwright/test").Page) {
       await route.fulfill({ json: { text: "午餐推荐鑫丰特色餐饮", confidence: 0.97, stored: false } });
     } else if (path === `/api/v1/trips/${tripId}/content` && request.method() === "POST") {
       importedText = (request.postDataJSON() as { text: string }).text;
-      current = (retryResponse ?? guide("NEEDS_CONFIRMATION", importedText)) as typeof current;
+      current = (importResponse ?? retryResponse ?? guide("NEEDS_CONFIRMATION", importedText)) as typeof current;
       history.unshift({ id: contentId, content_type: "TEXT", status: current.status, error: null,
         extraction_metadata: null, created_at: current.created_at });
       await route.fulfill({ status: 201, json: current });
@@ -116,6 +117,7 @@ async function mockWorkspace(page: import("@playwright/test").Page) {
     getImportedText: () => importedText,
     getConfirmationPayload: () => confirmationPayload,
     setRetryResponse: (value: Record<string, unknown>) => { retryResponse = value; },
+    setImportResponse: (value: Record<string, unknown>) => { importResponse = value; },
   };
 }
 
@@ -162,4 +164,24 @@ test("图片 OCR 结果填入原文框，失败分段可重试且保留本地兜
   await expect(page.getByText(/本地规则保留地点或攻略细节/)).toBeVisible();
   await page.getByRole("button", { name: "只重试 1 个失败片段" }).click();
   await expect(page.getByRole("heading", { name: "攻略识别 · PARTIAL" })).toBeVisible();
+});
+
+test("旧版超过地点上限的失败记录可按新上限重新提取整篇攻略", async ({ page }) => {
+  const state = await mockWorkspace(page);
+  state.setImportResponse(guide("FAILED", "梅州多日攻略", {
+    failure_code: "RESULT_LIMIT_EXCEEDED",
+    total_chunks: null,
+    completed_chunks: null,
+    retry_attempts: 0,
+    failed_chunks: [],
+    fallback_chunks: [],
+  }, "攻略信息量超过单次确认上限；请按行程日期或主题拆分后导入。"));
+  state.setRetryResponse(guide("NEEDS_CONFIRMATION", "梅州多日攻略"));
+
+  await page.getByLabel("攻略原文").fill("梅州多日攻略：包含多个地点和游览细节");
+  await page.getByRole("button", { name: "提取地点" }).click();
+  await expect(page.getByText(/超过单次确认上限/)).toBeVisible();
+  await page.getByRole("button", { name: "按新上限重新提取整篇攻略" }).click();
+  await expect(page.getByRole("heading", { name: "攻略识别 · NEEDS_CONFIRMATION" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "梅州学宫" })).toBeVisible();
 });

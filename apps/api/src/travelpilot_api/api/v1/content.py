@@ -300,6 +300,12 @@ async def retry_content_extraction(content_id: UUID, session: AsyncSession = Dep
     if type(retry_attempts) is not int or retry_attempts >= 2:
         raise HTTPException(429, detail="This extraction has reached its retry limit")
     failed = metadata.get("failed_chunks")
+    # Older versions rejected an otherwise valid guide when the merged result
+    # exceeded the former 20-place cap. After increasing that cap, let the
+    # user retry the complete source in place instead of deleting and reimporting.
+    retry_whole_guide = metadata.get("failure_code") == "RESULT_LIMIT_EXCEEDED" and not failed
+    if retry_whole_guide:
+        failed = [{"index": 0, "start": 0, "end": len(source.text)}]
     if not isinstance(failed, list) or not failed:
         raise HTTPException(409, detail="Content has no retryable extraction failures")
     valid_ranges = []
@@ -316,7 +322,9 @@ async def retry_content_extraction(content_id: UUID, session: AsyncSession = Dep
     failed_usage = 0
     map_unavailable = False
     replaced_chunk_count = 0
-    next_chunk_index = int(metadata.get("total_chunks", 0))
+    previous_chunk_count = metadata.get("total_chunks")
+    previous_chunk_count = previous_chunk_count if type(previous_chunk_count) is int else 0
+    next_chunk_index = previous_chunk_count
     fallback_chunks = list(metadata.get("fallback_chunks", []))
     skill = select_skill_decision("content_import", context={"task": "content_import", "user_content": True})
     for item in valid_ranges:
@@ -367,11 +375,16 @@ async def retry_content_extraction(content_id: UUID, session: AsyncSession = Dep
         (chunk.get("start"), chunk.get("end")): chunk for chunk in fallback_chunks
     }.values())
     metadata["retry_attempts"] = retry_attempts + 1
-    metadata["total_chunks"] = max(
-        0, int(metadata.get("total_chunks", 0)) - len(valid_ranges) + replaced_chunk_count,
+    metadata["total_chunks"] = (
+        replaced_chunk_count if retry_whole_guide else
+        max(0, previous_chunk_count - len(valid_ranges) + replaced_chunk_count)
     )
     metadata["completed_chunks"] = max(0, metadata["total_chunks"] - len(remaining))
     metadata["complete"] = not remaining
+    if remaining:
+        metadata["failure_code"] = remaining[0].get("failure_code", "MODEL_RESPONSE_INVALID")
+    else:
+        metadata.pop("failure_code", None)
     source.extraction_metadata = metadata
     source.token_usage = (source.token_usage or 0) + failed_usage
     has_results = bool(source.guide_facts)

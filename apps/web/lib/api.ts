@@ -397,7 +397,7 @@ export type ImportedGuideFact = {
 export type ImportedContent = {
   id: string; trip_id: string; content_type: string; text: string;
   status: string; error: string | null; token_usage: number;
-  extraction_metadata: { total_chunks?: number; completed_chunks?: number; retry_attempts?: number; complete?: boolean; duplicate_source_id?: string; failed_chunks?: { index: number; start: number; end: number }[]; fallback_chunks?: { index: number; start: number; end: number }[] } | null;
+  extraction_metadata: { total_chunks?: number; completed_chunks?: number; retry_attempts?: number; complete?: boolean; failure_code?: string; duplicate_source_id?: string; failed_chunks?: { index: number; start: number; end: number }[]; fallback_chunks?: { index: number; start: number; end: number }[] } | null;
   created_at: string; entities: ContentEntity[]; guide_facts: ImportedGuideFact[];
 };
 export type ImportedContentSummary = {

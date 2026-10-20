@@ -90,7 +90,7 @@ class ContentSummaryRead(BaseModel):
 
 
 class ConfirmCandidates(BaseModel):
-    candidate_ids: list[UUID] = Field(default_factory=list, max_length=20)
+    candidate_ids: list[UUID] = Field(default_factory=list, max_length=100)
     fact_ids: list[UUID] = Field(default_factory=list, max_length=40)
 
     @model_validator(mode="after")
