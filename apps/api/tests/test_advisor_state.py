@@ -1,3 +1,4 @@
+import pytest
 from travelpilot_api.advisor.state import (
     affirms_pending_action,
     cancelled_task_reply,
@@ -314,6 +315,31 @@ def test_short_affirmative_continues_pending_action_without_reasking():
     assert "立即继续该问题所指的原任务" in result.turn_goal
     assert "不要再次询问同一个问题" in result.turn_goal
     assert "仍须在写入旅行数据前请求用户确认" in result.turn_goal
+
+
+@pytest.mark.parametrize("answer", [
+    "好的", "好的帮我确认", "确认一下", "帮我确认", "可以继续", "就按这个安排",
+])
+def test_natural_action_confirmation_variants_resume_one_pending_task(answer):
+    question = "要我现在按日期把每天的游览顺序排出来吗？"
+    result = resolve_pending_turn(
+        context={
+            "revision": 2,
+            "pending_agent_question": {
+                "task": "安排成都两日游",
+                "question": question,
+                "context_revision": 2,
+                "task_type": "SCHEDULE",
+            },
+        },
+        previous_payload=None,
+        content=answer,
+    )
+
+    assert "立即继续该问题所指的原任务" in result.turn_goal
+    assert "不要再次询问同一个问题" in result.turn_goal
+    assert "仍须在写入旅行数据前请求用户确认" in result.turn_goal
+    assert not result.invalidated and not result.cancelled
 
 
 def test_short_affirmative_does_not_match_information_question():

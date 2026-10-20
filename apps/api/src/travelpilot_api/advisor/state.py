@@ -181,7 +181,7 @@ def affirms_pending_action(question: str, answer: str) -> bool:
         return False
     affirmative_prefixes = (
         "好", "可以", "行", "没问题", "确认", "帮我确认", "继续", "请继续",
-        "按这个", "就这样", "照此", "同意",
+        "按这个", "就按", "就这样", "照此", "同意",
         "yes", "yeah", "yep", "okay", "ok", "go ahead",
     )
     if not normalized.startswith(affirmative_prefixes):
