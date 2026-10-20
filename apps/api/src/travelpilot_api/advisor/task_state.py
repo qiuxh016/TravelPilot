@@ -53,13 +53,21 @@ def confirmation_options_for(question: str) -> list[AdvisorConfirmationOption]:
         return []
     asks_to_commit = any(phrase in normalized for phrase in ("需要我把", "要我把", "需要我将", "要我将"))
     proposes_an_action = any(verb in normalized for verb in ("作为", "加入", "安排", "添加", "更新"))
-    if not asks_to_commit or not proposes_an_action:
-        return []
-    return [
-        AdvisorConfirmationOption(label="确认，加入安排", answer="确认，按当前选择加入安排"),
-        AdvisorConfirmationOption(label="返回调整", answer="先不确认，我想调整这项安排"),
-        AdvisorConfirmationOption(label="暂不安排", answer="暂不安排这项内容"),
-    ]
+    if asks_to_commit and proposes_an_action:
+        return [
+            AdvisorConfirmationOption(label="确认，加入安排", answer="确认，按当前选择加入安排"),
+            AdvisorConfirmationOption(label="返回调整", answer="先不确认，我想调整这项安排"),
+            AdvisorConfirmationOption(label="暂不安排", answer="暂不安排这项内容"),
+        ]
+    asks_to_continue = any(phrase in normalized for phrase in ("要我", "需要我", "要不要我"))
+    proposes_a_next_step = any(verb in normalized for verb in ("排出来", "生成", "推荐", "查询", "按日期安排"))
+    if asks_to_continue and proposes_a_next_step:
+        return [
+            AdvisorConfirmationOption(label="继续，生成待确认建议", answer="好的，继续生成待确认建议"),
+            AdvisorConfirmationOption(label="补充或调整要求", answer="我想先补充或调整要求"),
+            AdvisorConfirmationOption(label="暂不处理", answer="暂不处理这项任务"),
+        ]
+    return []
 
 
 def resolve_task_status(

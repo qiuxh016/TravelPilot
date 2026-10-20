@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("已明确安排时用结构化选项确认，并将答案交回同一顾问任务", async ({ page }) => {
+test("信息确认和继续排程分成不同结构化选项", async ({ page }) => {
   const sessionId = "confirmation-options-session";
   const now = "2026-10-20T08:00:00Z";
   const messages = [
@@ -30,7 +30,7 @@ test("已明确安排时用结构化选项确认，并将答案交回同一顾�
     confirmed_trip_id: null, confirmed_plan_id: null,
     created_at: now, updated_at: now, messages,
   };
-  let submittedAnswer = "";
+  const submittedAnswers: string[] = [];
   let confirmed = false;
 
   await page.route("**/api/v1/**", async (route) => {
@@ -57,14 +57,27 @@ test("已明确安排时用结构化选项确认，并将答案交回同一顾�
     }
     if (url.pathname.endsWith("/progress")) return route.fulfill({ json: [] });
     if (url.pathname.endsWith("/messages") && request.method() === "POST") {
-      submittedAnswer = (request.postDataJSON() as { content: string }).content;
+      const submittedAnswer = (request.postDataJSON() as { content: string }).content;
+      submittedAnswers.push(submittedAnswer);
+      const assistantMessage = submittedAnswers.length === 1
+        ? { id: "assistant-2", role: "assistant", content: "日期和住宿信息已核对。", payload: { agent_task: {
+          task_id: "schedule-task", task_type: "SCHEDULE", status: "WAITING_USER",
+          context_revision: 0, turn_number: 3, answers: ["鑫丰特色餐饮", "确认，按当前选择加入安排"],
+          question: "要我现在按日期把每天的游览顺序排出来吗？",
+          confirmation_options: [
+            { label: "继续，生成待确认建议", answer: "好的，继续生成待确认建议" },
+            { label: "补充或调整要求", answer: "我想先补充或调整要求" },
+            { label: "暂不处理", answer: "暂不处理这项任务" },
+          ],
+        } }, created_at: now }
+        : { id: "assistant-3", role: "assistant", content: "已继续生成待确认建议。", payload: { response_source: "TEMPLATE" }, created_at: now };
       const updated = {
         ...session,
         messages: [...messages,
-          { id: "user-2", role: "user", content: submittedAnswer, payload: null, created_at: now },
-          { id: "assistant-2", role: "assistant",
-            content: "已记录你的选择；检查行程调整预览后，再确认应用到正式行程。",
-            payload: { response_source: "TEMPLATE" }, created_at: now },
+          ...submittedAnswers.flatMap((answer, index) => [
+            { id: `user-${index + 2}`, role: "user", content: answer, payload: null, created_at: now },
+            ...(index === submittedAnswers.length - 1 ? [assistantMessage] : []),
+          ]),
         ],
       };
       return route.fulfill({ json: updated });
@@ -82,7 +95,11 @@ test("已明确安排时用结构化选项确认，并将答案交回同一顾�
   await expect(choiceCard).toContainText("鑫丰特色餐饮");
   await expect(choiceCard.getByRole("button", { name: "确认，加入安排" })).toBeVisible();
   await choiceCard.getByRole("button", { name: "确认，加入安排" }).click();
-  await expect.poll(() => submittedAnswer).toBe("确认，按当前选择加入安排");
-  await expect(page.getByText("已记录你的选择；检查行程调整预览后，再确认应用到正式行程。", { exact: true })).toBeVisible();
+  await expect.poll(() => submittedAnswers.at(-1)).toBe("确认，按当前选择加入安排");
+  const continueCard = page.getByRole("region", { name: "等待你补充" });
+  await expect(continueCard.getByRole("button", { name: "继续，生成待确认建议" })).toBeVisible();
+  await continueCard.getByRole("button", { name: "继续，生成待确认建议" }).click();
+  await expect.poll(() => submittedAnswers.at(-1)).toBe("好的，继续生成待确认建议");
+  await expect(page.getByText("已继续生成待确认建议。", { exact: true })).toBeVisible();
   expect(confirmed).toBe(false);
 });

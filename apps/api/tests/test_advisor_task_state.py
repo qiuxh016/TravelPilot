@@ -42,6 +42,26 @@ def test_completed_meal_proposal_confirmation_becomes_clickable_actions():
     ]
 
 
+def test_action_confirmation_offers_continue_without_granting_commit_consent():
+    snapshot = AdvisorTaskSnapshot(
+        task_id="schedule-task",
+        task_type="SCHEDULE",
+        status="WAITING_USER",
+        goal="按日期安排每天的游览顺序",
+        context_revision=2,
+        turn_number=2,
+        answers=["10月17日到梅州，住在市区"],
+        question="要我现在按日期把每天的游览顺序排出来吗？",
+        action_summary="生成待确认的行程建议",
+    )
+
+    assert [(option.label, option.answer) for option in snapshot.confirmation_options] == [
+        ("继续，生成待确认建议", "好的，继续生成待确认建议"),
+        ("补充或调整要求", "我想先补充或调整要求"),
+        ("暂不处理", "暂不处理这项任务"),
+    ]
+
+
 def test_preference_question_does_not_become_yes_no_confirmation():
     snapshot = AdvisorTaskSnapshot(
         task_id="search-task",
