@@ -146,6 +146,7 @@ The primary comparison is B1/B2/B3. Report deterministic planning quality separa
 
 ## Documentation map
 
+- [Next product quality roadmap: guide import and AI travel advisor](docs/product/next-quality-roadmap.md) — follow-up track after the local Agent roadmap closure; it does not change the completed local evaluation gate above.
 - [Agent Runtime architecture](docs/architecture/agent-runtime.md)
 - [Local evaluation methodology](docs/research/evaluation.md)
 - [Current local product-suite summary](tests/evaluation/results/advisor_product_local_suite_20261020_summary.json)
