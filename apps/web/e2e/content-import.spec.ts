@@ -161,11 +161,17 @@ test("攻略导入文本可提取、确认保存、重开并删除记录", async
   await expect(page.getByText(/这段旅行的攻略导入记录/)).toHaveCount(0);
 });
 
-test("已确认攻略可带入旅行上下文交给顾问生成行程建议", async ({ page }) => {
+test("已确认攻略可带入旅行上下文交给顾问生成行程建议", async ({ page }, testInfo) => {
   const state = await mockWorkspace(page);
   await page.getByLabel("攻略原文").fill("梅州一日游攻略\n上午11:00参观梅州学宫\n周一闭馆，其余时间开放");
   await page.getByRole("button", { name: "提取地点" }).click();
   await page.getByRole("button", { name: "确认保存所选内容（2）" }).click();
+  await expect(page.getByRole("list", { name: "攻略整理流程" }).getByText("顾问调整计划")).toBeVisible();
+  await expect(page.getByLabel("识别内容分类").getByText("景点")).toBeVisible();
+  const screenshotDirectory = process.env.TRAVELPILOT_SCREENSHOT_DIR;
+  if (screenshotDirectory) {
+    await page.screenshot({ path: `${screenshotDirectory}/${testInfo.project.name}.png` });
+  }
   await page.getByRole("button", { name: "和顾问一起整理行程" }).click();
   await expect(page).toHaveURL(/\/advisor\?sessionId=/);
   expect(state.getAdvisorSessionPayload()).toMatchObject({ mode: "existing", trip_id: tripId });

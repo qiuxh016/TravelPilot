@@ -58,6 +58,7 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [ocrConfidence, setOcrConfidence] = useState<number | null>(null);
+  const resultsRef = useRef<HTMLElement>(null);
 
   async function askAdvisorToPlan() {
     if (!content) return;
@@ -101,6 +102,10 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
     listTripContent(tripId).then((items) => { if (alive) setHistory(items); }).catch(() => undefined);
     return () => { alive = false; };
   }, [tripId]);
+
+  useEffect(() => {
+    if (content) resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [content?.id, content?.status]);
 
   async function refreshHistory() {
     try { setHistory(await listTripContent(tripId)); } catch { /* Current import result remains usable. */ }
@@ -224,10 +229,22 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
   const suggestedFacts = content ? recommendedFacts(content.guide_facts) : [];
   const suggestedFactIds = new Set(suggestedFacts.map((fact) => fact.id));
   const otherFacts = content?.guide_facts.filter((fact) => !suggestedFactIds.has(fact.id)) ?? [];
+  const activeStep = !content ? 0 : content.status === "IMPORTED" ? 2 : 1;
+  const categoryCounts = content ? [
+    { label: "景点", count: content.entities.filter((entity) => entity.category === "ATTRACTION").length },
+    { label: "美食", count: content.entities.filter((entity) => entity.category === "FOOD").length + content.guide_facts.filter((fact) => fact.kind === "FOOD").length },
+    { label: "住宿", count: content.entities.filter((entity) => entity.category === "LODGING").length + content.guide_facts.filter((fact) => fact.kind === "ACCOMMODATION").length },
+    { label: "其他实用信息", count: content.guide_facts.filter((fact) => !["FOOD", "ACCOMMODATION"].includes(fact.kind)).length },
+  ].filter((item) => item.count > 0) : [];
 
   return <>
     <div className="trip-import-intro"><p className="eyebrow">导入攻略</p><h2>把攻略里的地点和实用细节留下来</h2><p>识别地点后匹配地图候选；同时提取购票、推荐时段、美食、路线和出行提示。核对原文依据后，由你选择哪些要点附加到已确认地点。</p></div>
-    <section className="trip-import-image layer">
+    <ol className={styles.workflow} aria-label="攻略整理流程">
+      {["导入攻略", "核对实用信息", "顾问调整计划"].map((label, index) => <li className={index < activeStep ? styles.stepDone : index === activeStep ? styles.stepCurrent : ""} key={label}>
+        <span>{index < activeStep ? "✓" : index + 1}</span><strong>{label}</strong>
+      </li>)}
+    </ol>
+    <section className={`${styles.uploadArea} trip-import-image layer`}>
       <h3>从攻略截图识别文字</h3>
       <label>选择图片（JPEG、PNG 或 WebP，最多 10 MB）<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(event) => void recognizeImage(event)} /></label>
       <p>图片在本地 OCR 流程中临时处理，不保存原图，也不会发送给 LLM。识别出的文字会填入下方文本框供你校对。</p>
@@ -241,18 +258,25 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
         <button className={styles.historyDelete} type="button" disabled={busy} onClick={() => void deleteHistoryItem(item)}>删除记录</button>
       </article>)}</div>
     </details>}
-    <form className="trip-import-form trip-form" onSubmit={submit}>
+    <form className={`${styles.importComposer} trip-import-form trip-form`} onSubmit={submit}>
       <label>{ocrConfidence === null ? "攻略原文" : `识别文字（OCR 平均置信度 ${Math.round(ocrConfidence * 100)}%，请校对）`}<textarea required rows={8} maxLength={20000} value={text} onChange={(event) => setText(event.target.value)} /></label>
       <button className="primary" disabled={busy}>{busy ? "正在识别…" : "提取地点"}</button>
     </form>
     {error && <p className="trip-import-error" role="alert">{error}</p>}
-    {content && <section className="trip-import-results"><h3>攻略整理结果</h3>
+    {content && <section className="trip-import-results" ref={resultsRef}><header className={styles.resultHeading}><div><h3>攻略整理结果</h3><p>{content.status === "IMPORTED" ? "攻略信息已保存到这段旅行，可以继续让顾问结合行程分析。" : "请快速核对自动整理的重点，勾选需要保留的内容。"}</p></div>{content.status === "IMPORTED" && <span className={styles.savedMark}>已保存</span>}</header>
+      {content.status === "IMPORTED" && <section className={styles.advisorStart}>
+        <div><strong>下一步：让顾问结合整段旅行整理建议</strong><p>顾问会读取当前行程和已确认的攻略内容，检查景点顺路、时间安排、餐饮、住宿与票务；只有你确认草案后才更新正式计划。</p></div>
+        <button type="button" className="primary" disabled={busy} onClick={() => void askAdvisorToPlan()}>{busy ? "正在准备旅行上下文…" : "和顾问一起整理行程"} ↗</button>
+      </section>}
       {content.status === "PARTIAL" && <p className={styles.resultSummary} role="status">已整理出可用内容，部分段落还没读完。下面先显示实用重点；保存前可展开原文核对。</p>}
       {content.status === "FAILED" && content.error && <p role="status">{content.error}</p>}
       {hasRetryableFailures && (content.extraction_metadata?.retry_attempts ?? 0) < 2
         ? <button type="button" disabled={busy} onClick={() => void retryFailedParts()}>{busy ? "正在重试…" : retryWholeGuide ? "按新上限重新提取整篇攻略" : `缩小片段重试 ${content.extraction_metadata?.failed_chunks?.length ?? 0} 个失败片段`}</button>
         : hasRetryableFailures && <p role="status">失败片段已达到重试次数上限；可以删除这条记录后重新导入原文。</p>}
       <details className={styles.sourceText}><summary>查看攻略原文</summary><blockquote>{content.text}</blockquote></details>
+      {!!categoryCounts.length && <div className={styles.categorySummary} aria-label="识别内容分类">
+        {categoryCounts.map((item) => <div key={item.label}><strong>{item.count}</strong><span>{item.label}</span></div>)}
+      </div>}
       {!!content.guide_facts.length && <section className="trip-guide-facts" aria-label="攻略细节">
         <div><h3>为你整理的实用信息</h3><p>已优先挑出时间、预约、餐饮、住宿和路线等内容。确认后会加入旅行备注。</p></div>
         {Object.entries(suggestedFacts.reduce<Record<string, ImportedGuideFact[]>>((groups, fact) => {
@@ -311,7 +335,7 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
           <input type="checkbox" checked={selected.includes(candidate.id) || candidate.confirmed} disabled={candidate.confirmed || busy} onChange={() => toggle(candidate.id)} />
           <span>{candidate.name} · {candidate.address}{candidate.confirmed ? " · 已加入" : ""}<small className={styles.candidateSource}>地图匹配结果，营业时间与票务信息尚未核实</small></span>
         </label>;
-        return <article className="layer" key={entity.id}>
+        return <article className={`${styles.importPlace} layer`} key={entity.id}>
           <h3>{entity.name}</h3>
           {entity.suggestion && <p>{entity.suggestion}</p>}
           {best ? renderCandidate(best) : <p>暂时没有找到地图结果，原文信息仍已保留。</p>}
@@ -320,10 +344,6 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
         </article>;
       })}
       {content.status === "NEEDS_CONFIRMATION" && <button className="primary" disabled={busy || (selected.length === 0 && selectedFactIds.length === 0)} onClick={() => void confirm()}>确认保存所选内容（{selected.length + selectedFactIds.length}）</button>}
-      {content.status === "IMPORTED" && <section className={styles.advisorStart}>
-        <div><strong>让顾问结合整段旅行整理建议</strong><p>顾问会读取当前行程和已确认的攻略内容，检查景点顺路、时间安排、餐饮、住宿与票务；只有你确认草案后才更新正式计划。</p></div>
-        <button type="button" className="primary" disabled={busy} onClick={() => void askAdvisorToPlan()}>{busy ? "正在准备旅行上下文…" : "和顾问一起整理行程"} ↗</button>
-      </section>}
     </section>}
   </>;
 }
