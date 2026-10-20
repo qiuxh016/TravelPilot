@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
-import { confirmCandidates, importContent, recognizeContentImage, type ImportedContent, type ImportedGuideFact } from "../lib/api";
+import { confirmCandidates, importContent, recognizeContentImage, retryContentExtraction, type ImportedContent, type ImportedGuideFact } from "../lib/api";
 
 type TripImportToolProps = {
   tripId: string;
@@ -60,6 +60,18 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
     finally { setBusy(false); }
   }
 
+  async function retryFailedParts() {
+    if (!content) return;
+    setBusy(true); setError("");
+    try {
+      const response = await retryContentExtraction(content.id);
+      const result = { ...response, guide_facts: response.guide_facts ?? [] };
+      setContent(result);
+      setSelectedFactIds((current) => [...new Set([...current, ...result.guide_facts.map((fact) => fact.id)])]);
+    } catch (err) { setError(err instanceof Error ? err.message : "重试失败片段失败"); }
+    finally { setBusy(false); }
+  }
+
   function toggle(id: string) {
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   }
@@ -76,7 +88,10 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
       <button className="primary" disabled={busy}>{busy ? "正在识别…" : "提取地点"}</button>
     </form>
     {error && <p className="trip-import-error" role="alert">{error}</p>}
-    {content && <section className="trip-import-results"><h3>攻略识别 · {content.status}</h3>{content.error && <p role="status">{content.error}</p>}<blockquote>{content.text}</blockquote>
+    {content && <section className="trip-import-results"><h3>攻略识别 · {content.status}</h3>{content.error && <p role="status">{content.error}</p>}
+      {content.extraction_metadata && content.extraction_metadata.total_chunks! > 1 && <p role="status">已处理 {content.extraction_metadata.completed_chunks ?? 0}/{content.extraction_metadata.total_chunks} 段</p>}
+      {!!content.extraction_metadata?.failed_chunks?.length && <button type="button" disabled={busy} onClick={() => void retryFailedParts()}>{busy ? "正在重试…" : `只重试 ${content.extraction_metadata.failed_chunks.length} 个失败片段`}</button>}
+      <blockquote>{content.text}</blockquote>
       {!!content.guide_facts.length && <section className="trip-guide-facts" aria-label="攻略细节">
         <div><h3>识别到的攻略细节</h3><p>要点已保存在本次导入记录。勾选的内容会附加到对应已确认地点的旅行备注；请按原文核对，模型提取不等于事实核验。</p></div>
         {content.guide_facts.map((fact: ImportedGuideFact) => <label className="trip-guide-fact" key={fact.id}>

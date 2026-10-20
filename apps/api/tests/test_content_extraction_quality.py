@@ -15,7 +15,13 @@ from travelpilot_api.api.v1.content import (
     recognize_content_image,
 )
 from travelpilot_api.schemas.content import ConfirmCandidates
-from travelpilot_core.agents.extraction import _split_guide_text, extract_places, fallback_extract
+from travelpilot_core.agents.extraction import (
+    Extraction,
+    GuideFact,
+    _split_guide_text,
+    extract_places,
+    fallback_extract,
+)
 from travelpilot_infra.db.models.poi import PoiModel
 from travelpilot_infra.db.models.wishlist import WishlistItemModel
 from travelpilot_infra.db.models.workflow import ContentSourceModel
@@ -276,6 +282,39 @@ async def test_guide_import_processes_text_after_the_old_eight_thousand_characte
     assert "".join(sent_chunks) == text
     assert result.token_usage == 22 * len(requests)
     assert result.output_tokens == 2 * len(requests)
+
+
+@pytest.mark.asyncio
+async def test_guide_import_keeps_successful_chunks_and_exact_failed_ranges(monkeypatch):
+    from travelpilot_core.agents.extraction import TextExtractionFailure
+
+    text = "第一段攻略。" * 100 + "第二段攻略。" * 100
+    chunks = _split_guide_text(text)
+    calls = []
+
+    async def extract_once(chunk, **_kwargs):
+        calls.append(chunk)
+        if len(calls) == 2:
+            raise TextExtractionFailure(
+                provider_metadata={"finish_reason": "length", "usage": {"total_tokens": 9}},
+            )
+        return Extraction(
+            places=[], guide_facts=[GuideFact(kind="TIP", title="提示", content="第一段保留", confidence=0.8)],
+            token_usage=11,
+        )
+
+    monkeypatch.setattr("travelpilot_core.agents.extraction._extract_places_once", extract_once)
+    result = await extract_places(text, api_key="test", model="test", guide_import=True)
+
+    assert calls == chunks
+    assert len(chunks) == 2
+    assert result.chunk_count == 2
+    assert result.token_usage == 20
+    assert [fact.content for fact in result.guide_facts] == ["第一段保留"]
+    assert result.failed_chunks == [{
+        "index": 1, "start": len(chunks[0]), "end": len(text),
+        "failure_code": "MODEL_RESPONSE_INVALID", "finish_reason": "length",
+    }]
 
 
 @pytest.mark.asyncio

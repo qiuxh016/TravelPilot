@@ -92,9 +92,71 @@ async def _read(session: AsyncSession, content_id: UUID) -> ContentRead:
         text=source.text, status=source.status, error=source.error,
         skill_name=source.skill_name, skill_version=source.skill_version, token_usage=source.token_usage,
         skill_applicability=source.skill_applicability,
+        extraction_metadata=source.extraction_metadata,
         guide_facts=source.guide_facts or [],
         created_at=source.created_at, entities=result,
     )
+
+
+async def _save_extraction_results(
+    session: AsyncSession, source: ContentSourceModel, extraction, maps,
+) -> bool:
+    """Persist newly extracted facts and unique places; return map failure state."""
+    source.token_usage = (source.token_usage or 0) + extraction.token_usage
+    existing_facts = list(source.guide_facts or [])
+    fact_keys = {
+        (item.get("kind"), "".join(str(item.get("content", "")).split()).casefold())
+        for item in existing_facts
+    }
+    for fact in extraction.guide_facts:
+        key = (fact.kind, "".join(fact.content.split()).casefold())
+        if key in fact_keys:
+            continue
+        fact_keys.add(key)
+        existing_facts.append({
+            "id": str(uuid4()), "kind": fact.kind, "title": fact.title,
+            "content": fact.content, "evidence": fact.evidence,
+            "related_places": fact.related_places, "confidence": fact.confidence,
+        })
+    source.guide_facts = existing_facts
+
+    saved_entities = list((await session.scalars(
+        select(ExtractedEntityModel).where(ExtractedEntityModel.source_id == source.id)
+    )).all())
+    known_names = {"".join(entity.name.split()).casefold() for entity in saved_entities}
+    map_unavailable = False
+    for mention in extraction.places:
+        key = "".join(mention.name.split()).casefold()
+        if key in known_names:
+            continue
+        known_names.add(key)
+        evidence = mention.evidence if mention.evidence and mention.evidence in source.text else None
+        entity = ExtractedEntityModel(
+            source_id=source.id, name=mention.name,
+            category=_guide_place_category(mention.category, mention.name),
+            suggestion=mention.suggestion, evidence=evidence, confidence=mention.confidence,
+        )
+        session.add(entity)
+        await session.flush()
+        try:
+            places = await maps.search_place(mention.name)
+        except MapsProviderError:
+            logger.info("content_place_lookup_unavailable source_id=%s", source.id)
+            map_unavailable = True
+            continue
+        for place in places[:5]:
+            session.add(EntityCandidateModel(
+                entity_id=entity.id, provider=place.provider, provider_id=place.provider_id,
+                name=place.name, address=place.address, latitude=place.latitude,
+                longitude=place.longitude, category=place.category,
+                duration_min=place.suggested_duration_min,
+                score=1.0 if place.name == mention.name else 0.7, confirmed=False,
+            ))
+    return map_unavailable
+
+
+def _deepseek_thinking_mode() -> str | None:
+    return "disabled" if urlsplit(settings.llm_base_url).hostname == "api.deepseek.com" else None
 
 
 @router.post("/trips/{trip_id}/content", response_model=ContentRead, status_code=status.HTTP_201_CREATED)
@@ -122,52 +184,33 @@ async def create_content(trip_id: UUID, payload: ContentCreate,
         # DeepSeek enables reasoning by default. With JSON extraction, the
         # reasoning tokens can consume the whole completion budget and leave
         # message.content empty (finish_reason=length), even on HTTP 200.
-        thinking_mode = (
-            "disabled"
-            if urlsplit(settings.llm_base_url).hostname == "api.deepseek.com"
-            else None
-        )
+        thinking_mode = _deepseek_thinking_mode()
         extraction = await extract_places(payload.text, api_key=settings.llm_api_key,
                                           model=settings.llm_model, base_url=settings.llm_base_url,
                                           token_budget=settings.llm_max_tokens_per_turn,
                                           additional_instructions=skill.instructions if skill else "",
                                           thinking_mode=thinking_mode, guide_import=True)
-        source.token_usage = extraction.token_usage
-        source.guide_facts = [
-            {
-                "id": str(uuid4()), "kind": fact.kind, "title": fact.title,
-                "content": fact.content, "evidence": fact.evidence,
-                "related_places": fact.related_places, "confidence": fact.confidence,
-            }
-            for fact in extraction.guide_facts
-        ]
-        map_unavailable = False
-        for mention in extraction.places:
-            evidence = mention.evidence if mention.evidence and mention.evidence in payload.text else None
-            entity = ExtractedEntityModel(source_id=source.id, name=mention.name,
-                                          category=_guide_place_category(mention.category, mention.name),
-                                          suggestion=mention.suggestion,
-                                          evidence=evidence, confidence=mention.confidence)
-            session.add(entity)
-            await session.flush()
-            try:
-                places = await maps.search_place(mention.name)
-            except MapsProviderError:
-                logger.info("content_place_lookup_unavailable source_id=%s", source.id)
-                map_unavailable = True
-                continue
-            for place in places[:5]:
-                session.add(EntityCandidateModel(
-                    entity_id=entity.id, provider=place.provider, provider_id=place.provider_id,
-                    name=place.name, address=place.address, latitude=place.latitude,
-                    longitude=place.longitude, category=place.category,
-                    duration_min=place.suggested_duration_min,
-                    score=1.0 if place.name == mention.name else 0.7, confirmed=False,
-                ))
-        source.status = "NEEDS_CONFIRMATION" if extraction.places or extraction.guide_facts else "FAILED"
+        map_unavailable = await _save_extraction_results(session, source, extraction, maps)
+        failed = extraction.failed_chunks
+        completed = max(0, extraction.chunk_count - len(failed))
+        source.extraction_metadata = {
+            "total_chunks": extraction.chunk_count,
+            "completed_chunks": completed,
+            "failed_chunks": failed,
+            "complete": not failed,
+        }
+        has_results = bool(extraction.places or extraction.guide_facts)
+        source.status = (
+            "PARTIAL" if failed and has_results else
+            "FAILED" if failed or not has_results else
+            "NEEDS_CONFIRMATION"
+        )
+        if failed:
+            indexes = ", ".join(str(int(item["index"]) + 1) for item in failed)
+            source.error = f"已识别 {completed}/{extraction.chunk_count} 段；第 {indexes} 段未完成，可重试失败片段。"
         if map_unavailable:
-            source.error = "攻略内容已识别，但地图地点匹配暂时不可用；攻略细节已保留，可稍后重新导入匹配地点。"
-        elif source.status == "FAILED":
+            source.error = (source.error + " " if source.error else "") + "部分地点的地图匹配暂不可用，已保留攻略信息。"
+        elif source.status == "FAILED" and not failed:
             source.error = "没有识别到可用的地点或攻略细节；请检查文本后重试。"
     except TextExtractionFailure as exc:
         cause = exc.__cause__
@@ -179,13 +222,20 @@ async def create_content(trip_id: UUID, payload: ContentCreate,
             exc.provider_metadata,
         )
         source.status = "FAILED"
+        source.extraction_metadata = {
+            "total_chunks": 1, "completed_chunks": 0,
+            "failed_chunks": [{"index": 0, "start": 0, "end": len(payload.text),
+                               "failure_code": (exc.provider_metadata or {}).get("failure_code", "MODEL_RESPONSE_INVALID"),
+                               "finish_reason": (exc.provider_metadata or {}).get("finish_reason")}],
+            "complete": False,
+        }
         failure_code = (exc.provider_metadata or {}).get("failure_code")
         if failure_code == "INPUT_TOO_LONG":
             source.error = "攻略超过 20,000 字符的导入上限；请拆分后分别导入。"
         elif failure_code == "RESULT_LIMIT_EXCEEDED":
             source.error = "攻略信息量超过单次确认上限；请按行程日期或主题拆分后导入。"
         elif (exc.provider_metadata or {}).get("finish_reason") == "length":
-            source.error = "模型输出达到长度上限，攻略尚未解析完成。请缩短攻略内容后重试。"
+            source.error = "模型输出达到长度上限；本段未完成，可重试失败片段。"
         else:
             source.error = "攻略内容解析服务暂时不可用；请稍后重试。"
     except RuntimeError as exc:
@@ -195,6 +245,80 @@ async def create_content(trip_id: UUID, payload: ContentCreate,
         source.error = "攻略内容解析暂时不可用；识别未完成，请稍后重试。"
     await session.commit()
     return await _read(session, source.id)
+
+
+@router.post("/content/{content_id}/retry", response_model=ContentRead)
+async def retry_content_extraction(content_id: UUID, session: AsyncSession = Depends(get_session),
+                                   maps=Depends(get_maps_provider),
+                                   source: ContentSourceModel = Depends(get_owned_content)):
+    """Retry only failed text ranges; imported content is immutable."""
+    if source.status not in {"PARTIAL", "FAILED"} or source.status == "IMPORTED":
+        raise HTTPException(409, detail="Content has no retryable extraction failures")
+    metadata = source.extraction_metadata or {}
+    failed = metadata.get("failed_chunks")
+    if not isinstance(failed, list) or not failed:
+        raise HTTPException(409, detail="Content has no retryable extraction failures")
+    valid_ranges = []
+    for item in failed:
+        if not isinstance(item, dict):
+            continue
+        start, end, index = item.get("start"), item.get("end"), item.get("index")
+        if type(start) is int and type(end) is int and type(index) is int and 0 <= start < end <= len(source.text):
+            valid_ranges.append({**item, "start": start, "end": end, "index": index})
+    if len(valid_ranges) != len(failed):
+        raise HTTPException(409, detail="Stored retry ranges are invalid")
+
+    remaining = []
+    failed_usage = 0
+    map_unavailable = False
+    skill = select_skill_decision("content_import", context={"task": "content_import", "user_content": True})
+    for item in valid_ranges:
+        segment = source.text[item["start"]:item["end"]]
+        try:
+            extraction = await extract_places(
+                segment, api_key=settings.llm_api_key, model=settings.llm_model,
+                base_url=settings.llm_base_url, token_budget=settings.llm_max_tokens_per_turn,
+                additional_instructions=skill.skill.instructions if skill.skill else "",
+                thinking_mode=_deepseek_thinking_mode(), guide_import=True,
+            )
+        except TextExtractionFailure as exc:
+            details = exc.provider_metadata or {}
+            usage = details.get("usage")
+            if isinstance(usage, dict) and type(usage.get("total_tokens")) is int:
+                failed_usage += usage["total_tokens"]
+            remaining.append({**item,
+                              "failure_code": details.get("failure_code", "MODEL_RESPONSE_INVALID"),
+                              "finish_reason": details.get("finish_reason")})
+            continue
+        map_unavailable = await _save_extraction_results(session, source, extraction, maps) or map_unavailable
+        if extraction.failed_chunks:
+            remaining.extend({**item,
+                              "failure_code": chunk.get("failure_code", "MODEL_RESPONSE_INVALID"),
+                              "finish_reason": chunk.get("finish_reason")}
+                             for chunk in extraction.failed_chunks)
+
+    metadata["failed_chunks"] = remaining
+    metadata["completed_chunks"] = max(0, int(metadata.get("total_chunks", 0)) - len(remaining))
+    metadata["complete"] = not remaining
+    source.extraction_metadata = metadata
+    source.token_usage = (source.token_usage or 0) + failed_usage
+    has_results = bool(source.guide_facts)
+    if not has_results:
+        has_results = bool((await session.scalars(
+            select(ExtractedEntityModel.id).where(ExtractedEntityModel.source_id == source.id)
+        )).first())
+    source.status = "PARTIAL" if remaining and has_results else "FAILED" if remaining or not has_results else "NEEDS_CONFIRMATION"
+    if remaining:
+        indexes = ", ".join(str(int(item["index"]) + 1) for item in remaining)
+        source.error = f"已识别 {metadata['completed_chunks']}/{metadata.get('total_chunks', 0)} 段；第 {indexes} 段仍未完成，可再次重试。"
+    elif not has_results:
+        source.error = "失败片段已重试，但没有识别到可用的地点或攻略细节。"
+    elif map_unavailable:
+        source.error = "攻略信息已识别，但部分地点的地图匹配暂不可用。"
+    else:
+        source.error = None
+    await session.commit()
+    return await _read(session, content_id)
 
 
 @router.get("/content/{content_id}", response_model=ContentRead)

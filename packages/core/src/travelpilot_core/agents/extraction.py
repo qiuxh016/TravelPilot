@@ -48,6 +48,8 @@ class Extraction(BaseModel):
     pace_adjustment: Literal["slower", "faster", "none"] = "none"
     token_usage: int = Field(default=0, exclude=True, ge=0)
     output_tokens: int = Field(default=0, exclude=True, ge=0)
+    chunk_count: int = Field(default=0, exclude=True, ge=0)
+    failed_chunks: list[dict[str, object]] = Field(default_factory=list, exclude=True)
     finish_reason: str | None = Field(default=None, exclude=True, max_length=40)
     provider_http_status: int | None = Field(default=None, exclude=True, ge=100, le=599)
 
@@ -240,29 +242,64 @@ async def extract_places(
     """Extract advisor intent or, in guide mode, all bounded text chunks."""
     if not api_key or not model:
         if guide_import and len(text) > _GUIDE_CHUNK_TARGET_CHARS:
-            return _merge_extractions([fallback_extract(chunk) for chunk in _split_guide_text(text)])
+            chunks = _split_guide_text(text)
+            merged = _merge_extractions([fallback_extract(chunk) for chunk in chunks])
+            return merged.model_copy(update={"chunk_count": len(chunks)})
         return fallback_extract(text)
     if not guide_import or len(text) <= _GUIDE_CHUNK_TARGET_CHARS:
-        return await _extract_places_once(
+        extraction = await _extract_places_once(
             text, api_key=api_key, model=model, base_url=base_url,
             token_budget=token_budget, additional_instructions=additional_instructions,
             thinking_mode=thinking_mode, conversation_context=conversation_context,
             travel_preferences=travel_preferences, guide_import=guide_import,
         )
+        return extraction.model_copy(update={"chunk_count": 1 if guide_import else 0})
     if len(text) > _GUIDE_MAX_INPUT_CHARS:
         raise TextExtractionFailure(
             {"character_count": len(text), "maximum_characters": _GUIDE_MAX_INPUT_CHARS},
             {"failure_code": "INPUT_TOO_LONG"},
         )
 
+    chunks = _split_guide_text(text)
     extractions = []
-    for chunk in _split_guide_text(text):
-        extractions.append(await _extract_places_once(
-            chunk, api_key=api_key, model=model, base_url=base_url,
-            token_budget=min(token_budget, _GUIDE_CHUNK_TOKEN_CAP), additional_instructions=additional_instructions,
-            thinking_mode=thinking_mode, guide_import=True,
-        ))
-    return _merge_extractions(extractions)
+    failed_chunks = []
+    failed_token_usage = 0
+    failed_output_tokens = 0
+    offset = 0
+    for chunk_index, chunk in enumerate(chunks):
+        start, end = offset, offset + len(chunk)
+        offset = end
+        try:
+            extractions.append(await _extract_places_once(
+                chunk, api_key=api_key, model=model, base_url=base_url,
+                token_budget=min(token_budget, _GUIDE_CHUNK_TOKEN_CAP), additional_instructions=additional_instructions,
+                thinking_mode=thinking_mode, guide_import=True,
+            ))
+        except TextExtractionFailure as exc:
+            metadata = exc.provider_metadata or {}
+            usage = metadata.get("usage")
+            if isinstance(usage, dict):
+                failed_token_usage += int(usage.get("total_tokens", 0))
+                failed_output_tokens += int(usage.get("completion_tokens", 0))
+            failed_chunks.append({
+                "index": chunk_index,
+                "start": start,
+                "end": end,
+                "failure_code": metadata.get("failure_code", "MODEL_RESPONSE_INVALID"),
+                "finish_reason": metadata.get("finish_reason"),
+            })
+    if not extractions:
+        return Extraction(
+            places=[], guide_facts=[], token_usage=failed_token_usage,
+            output_tokens=failed_output_tokens, chunk_count=len(chunks), failed_chunks=failed_chunks,
+        )
+    merged = _merge_extractions(extractions)
+    return merged.model_copy(update={
+        "token_usage": merged.token_usage + failed_token_usage,
+        "output_tokens": merged.output_tokens + failed_output_tokens,
+        "chunk_count": len(chunks),
+        "failed_chunks": failed_chunks,
+    })
 
 
 def _split_guide_text(text: str) -> list[str]:
@@ -337,6 +374,8 @@ def _merge_extractions(extractions: list[Extraction]) -> Extraction:
         pace_adjustment=next((item.pace_adjustment for item in extractions if item.pace_adjustment != "none"), "none"),
         token_usage=sum(item.token_usage for item in extractions),
         output_tokens=sum(item.output_tokens for item in extractions),
+        chunk_count=sum(item.chunk_count for item in extractions),
+        failed_chunks=[failed for item in extractions for failed in item.failed_chunks],
         finish_reason=next((item.finish_reason for item in reversed(extractions) if item.finish_reason), None),
         provider_http_status=next((item.provider_http_status for item in reversed(extractions) if item.provider_http_status), None),
     )

@@ -62,6 +62,7 @@ class ContentRead(BaseModel):
     skill_version: str | None = None
     skill_applicability: dict | None = None
     token_usage: int = 0
+    extraction_metadata: dict | None = None
     guide_facts: list[GuideFactRead] = Field(default_factory=list)
     created_at: datetime
     entities: list[EntityRead]

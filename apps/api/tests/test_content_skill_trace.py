@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 from travelpilot_api.api.v1 import content as content_api
-from travelpilot_api.api.v1.content import create_content
+from travelpilot_api.api.v1.content import create_content, retry_content_extraction
 from travelpilot_api.schemas.content import ContentCreate
 from travelpilot_core.agents.extraction import Extraction, TextExtractionFailure
 from travelpilot_infra.db.models.workflow import ContentSourceModel
@@ -98,7 +98,7 @@ async def test_text_extraction_failure_logs_only_redacted_provider_diagnostics(m
     )
 
     assert result.status == "FAILED"
-    assert result.error == "模型输出达到长度上限，攻略尚未解析完成。请缩短攻略内容后重试。"
+    assert result.error == "模型输出达到长度上限；本段未完成，可重试失败片段。"
     assert "cause_type=ValueError" in caplog.text
     assert "'http_status': 502" in caplog.text
     assert "'finish_reason': 'length'" in caplog.text
@@ -125,3 +125,39 @@ async def test_content_import_uses_configured_per_turn_output_budget(monkeypatch
     assert captured["token_budget"] == content_api.settings.llm_max_tokens_per_turn
     assert captured["thinking_mode"] == "disabled"
     assert captured["guide_import"] is True
+
+
+@pytest.mark.asyncio
+async def test_retry_content_extraction_retries_only_failed_range(monkeypatch):
+    trip_id = uuid4()
+    source = ContentSourceModel(
+        id=uuid4(), trip_id=trip_id, content_type="TEXT", text="A" * 1000 + "FAILED RANGE",
+        status="PARTIAL", created_at=datetime.now(UTC), token_usage=20,
+        guide_facts=[{"id": str(uuid4()), "kind": "TIP", "title": "保存内容", "content": "已有结果", "confidence": 0.8}],
+        extraction_metadata={
+            "total_chunks": 2, "completed_chunks": 1, "complete": False,
+            "failed_chunks": [{"index": 1, "start": 1000, "end": 1012,
+                               "failure_code": "MODEL_RESPONSE_INVALID", "finish_reason": "length"}],
+        },
+    )
+    requested = []
+
+    async def extract(text, **_kwargs):
+        requested.append(text)
+        return Extraction(places=[], guide_facts=[])
+
+    monkeypatch.setattr(content_api, "extract_places", extract)
+
+    class Session(_Session):
+        async def get(self, model, _identity):
+            return source if model is ContentSourceModel else None
+
+    result = await retry_content_extraction(
+        source.id, session=Session(), maps=object(), source=source,
+    )
+
+    assert requested == ["FAILED RANGE"]
+    assert result.status == "NEEDS_CONFIRMATION"
+    assert result.extraction_metadata == {
+        "total_chunks": 2, "completed_chunks": 2, "complete": True, "failed_chunks": [],
+    }

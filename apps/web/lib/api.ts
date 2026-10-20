@@ -396,7 +396,9 @@ export type ImportedGuideFact = {
 };
 export type ImportedContent = {
   id: string; trip_id: string; content_type: string; text: string;
-  status: string; error: string | null; created_at: string; entities: ContentEntity[]; guide_facts: ImportedGuideFact[];
+  status: string; error: string | null; token_usage: number;
+  extraction_metadata: { total_chunks?: number; completed_chunks?: number; complete?: boolean; failed_chunks?: { index: number; start: number; end: number }[] } | null;
+  created_at: string; entities: ContentEntity[]; guide_facts: ImportedGuideFact[];
 };
 export type OcrText = { text: string; confidence: number | null; stored: boolean };
 export const recognizeContentImage = (tripId: string, file: File) => {
@@ -408,6 +410,8 @@ export const importContent = (tripId: string, text: string) =>
   request<ImportedContent>(`/api/v1/trips/${tripId}/content`, {
     method: "POST", body: JSON.stringify({ content_type: "TEXT", text }),
   });
+export const retryContentExtraction = (contentId: string) =>
+  request<ImportedContent>(`/api/v1/content/${contentId}/retry`, { method: "POST" });
 export const confirmCandidates = (contentId: string, candidateIds: string[], factIds: string[] = []) =>
   request<ImportedContent>(`/api/v1/content/${contentId}/confirm`, {
     method: "POST", body: JSON.stringify({ candidate_ids: candidateIds, fact_ids: factIds }),
