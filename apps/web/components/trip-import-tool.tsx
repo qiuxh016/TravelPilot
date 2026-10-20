@@ -174,7 +174,8 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
     {error && <p className="trip-import-error" role="alert">{error}</p>}
     {content && <section className="trip-import-results"><h3>攻略识别 · {content.status}</h3>{content.error && <p role="status">{content.error}</p>}
       {content.extraction_metadata?.duplicate_source_id && <p className={styles.duplicateNotice} role="status">发现这段旅行中已有相同原文的导入记录（{content.extraction_metadata.duplicate_source_id.slice(0, 8)}…）。请检查是否重复保存地点或攻略要点。</p>}
-      {content.extraction_metadata && content.extraction_metadata.total_chunks! > 1 && <p role="status">已处理 {content.extraction_metadata.completed_chunks ?? 0}/{content.extraction_metadata.total_chunks} 段</p>}
+      {content.extraction_metadata && content.extraction_metadata.total_chunks! > 1 && <p role="status">模型完成 {content.extraction_metadata.completed_chunks ?? 0}/{content.extraction_metadata.total_chunks} 段</p>}
+      {!!content.extraction_metadata?.fallback_chunks?.length && <p className={styles.fallbackNotice} role="status">{content.extraction_metadata.fallback_chunks.length} 段已用本地规则保留地点或攻略细节，置信度偏低，请对照原文核对；失败片段仍可重试。</p>}
       {!!content.extraction_metadata?.failed_chunks?.length && (content.extraction_metadata.retry_attempts ?? 0) < 2
         ? <button type="button" disabled={busy} onClick={() => void retryFailedParts()}>{busy ? "正在重试…" : `只重试 ${content.extraction_metadata.failed_chunks.length} 个失败片段`}</button>
         : !!content.extraction_metadata?.failed_chunks?.length && <p role="status">失败片段已达到重试次数上限；可以删除这条记录后重新导入原文。</p>}

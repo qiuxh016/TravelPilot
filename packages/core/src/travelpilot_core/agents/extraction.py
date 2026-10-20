@@ -50,6 +50,7 @@ class Extraction(BaseModel):
     output_tokens: int = Field(default=0, exclude=True, ge=0)
     chunk_count: int = Field(default=0, exclude=True, ge=0)
     failed_chunks: list[dict[str, object]] = Field(default_factory=list, exclude=True)
+    fallback_chunks: list[dict[str, object]] = Field(default_factory=list, exclude=True)
     finish_reason: str | None = Field(default=None, exclude=True, max_length=40)
     provider_http_status: int | None = Field(default=None, exclude=True, ge=100, le=599)
 
@@ -64,7 +65,7 @@ _PLACE = re.compile(
 _JSON_FENCE = re.compile(r"^```(?:json)?\s*\n(?P<body>.*?)\n```$", re.IGNORECASE | re.DOTALL)
 _GUIDE_CHUNK_TARGET_CHARS = 500
 _GUIDE_CHUNK_MIN_CHARS = 350
-_GUIDE_CHUNK_TOKEN_CAP = 768
+_GUIDE_CHUNK_TOKEN_CAP = 1200
 _GUIDE_MAX_INPUT_CHARS = 20000
 _GUIDE_MAX_CHUNKS = 50
 
@@ -251,17 +252,44 @@ async def extract_places(
                     {"failure_code": "CHUNK_LIMIT_EXCEEDED"},
                 )
             merged = _merge_extractions([fallback_extract(chunk) for chunk in chunks])
-            return merged.model_copy(update={"chunk_count": len(chunks)})
+            return merged.model_copy(update={
+                "chunk_count": len(chunks),
+                "fallback_chunks": [
+                    {"index": index, "start": start, "end": start + len(chunk)}
+                    for index, (start, chunk) in enumerate(_chunk_ranges(chunks))
+                ],
+            })
         fallback = fallback_extract(text)
-        return fallback.model_copy(update={"chunk_count": 1 if guide_import else 0})
+        return fallback.model_copy(update={
+            "chunk_count": 1 if guide_import else 0,
+            "fallback_chunks": ([{"index": 0, "start": 0, "end": len(text)}] if guide_import else []),
+        })
     if not guide_import or len(text) <= _GUIDE_CHUNK_TARGET_CHARS:
-        extraction = await _extract_places_once(
-            text, api_key=api_key, model=model, base_url=base_url,
-            token_budget=min(token_budget, _GUIDE_CHUNK_TOKEN_CAP) if guide_import else token_budget,
-            additional_instructions=additional_instructions,
-            thinking_mode=thinking_mode, conversation_context=conversation_context,
-            travel_preferences=travel_preferences, guide_import=guide_import,
-        )
+        try:
+            extraction = await _extract_places_once(
+                text, api_key=api_key, model=model, base_url=base_url,
+                token_budget=min(token_budget, _GUIDE_CHUNK_TOKEN_CAP) if guide_import else token_budget,
+                additional_instructions=additional_instructions,
+                thinking_mode=thinking_mode, conversation_context=conversation_context,
+                travel_preferences=travel_preferences, guide_import=guide_import,
+            )
+        except TextExtractionFailure as exc:
+            if not guide_import:
+                raise
+            fallback = fallback_extract(text)
+            details = exc.provider_metadata or {}
+            usage = details.get("usage")
+            return fallback.model_copy(update={
+                "token_usage": int(usage.get("total_tokens", 0)) if isinstance(usage, dict) else 0,
+                "output_tokens": int(usage.get("completion_tokens", 0)) if isinstance(usage, dict) else 0,
+                "chunk_count": 1,
+                "failed_chunks": [{
+                    "index": 0, "start": 0, "end": len(text),
+                    "failure_code": details.get("failure_code", "MODEL_RESPONSE_INVALID"),
+                    "finish_reason": details.get("finish_reason"),
+                }],
+                "fallback_chunks": [{"index": 0, "start": 0, "end": len(text)}],
+            })
         return extraction.model_copy(update={"chunk_count": 1 if guide_import else 0})
     if len(text) > _GUIDE_MAX_INPUT_CHARS:
         raise TextExtractionFailure(
@@ -277,6 +305,7 @@ async def extract_places(
         )
     extractions = []
     failed_chunks = []
+    fallback_chunks = []
     failed_token_usage = 0
     failed_output_tokens = 0
     offset = 0
@@ -302,10 +331,16 @@ async def extract_places(
                 "failure_code": metadata.get("failure_code", "MODEL_RESPONSE_INVALID"),
                 "finish_reason": metadata.get("finish_reason"),
             })
+            # Preserve a conservative, low-confidence local parse so a JSON
+            # truncation never discards the user's guide. Keep the failed range
+            # retryable and expose this fallback to the UI for verification.
+            extractions.append(fallback_extract(chunk))
+            fallback_chunks.append({"index": chunk_index, "start": start, "end": end})
     if not extractions:
         return Extraction(
             places=[], guide_facts=[], token_usage=failed_token_usage,
             output_tokens=failed_output_tokens, chunk_count=len(chunks), failed_chunks=failed_chunks,
+            fallback_chunks=fallback_chunks,
         )
     merged = _merge_extractions(extractions)
     return merged.model_copy(update={
@@ -313,6 +348,7 @@ async def extract_places(
         "output_tokens": merged.output_tokens + failed_output_tokens,
         "chunk_count": len(chunks),
         "failed_chunks": failed_chunks,
+        "fallback_chunks": fallback_chunks,
     })
 
 
@@ -340,6 +376,15 @@ def _split_guide_text(text: str) -> list[str]:
         chunks.append(text[start:boundary])
         start = boundary
     return chunks
+
+
+def _chunk_ranges(chunks: list[str]) -> list[tuple[int, str]]:
+    ranges = []
+    offset = 0
+    for chunk in chunks:
+        ranges.append((offset, chunk))
+        offset += len(chunk)
+    return ranges
 
 
 def _merge_extractions(extractions: list[Extraction]) -> Extraction:
@@ -390,6 +435,7 @@ def _merge_extractions(extractions: list[Extraction]) -> Extraction:
         output_tokens=sum(item.output_tokens for item in extractions),
         chunk_count=sum(item.chunk_count for item in extractions),
         failed_chunks=[failed for item in extractions for failed in item.failed_chunks],
+        fallback_chunks=[fallback for item in extractions for fallback in item.fallback_chunks],
         finish_reason=next((item.finish_reason for item in reversed(extractions) if item.finish_reason), None),
         provider_http_status=next((item.provider_http_status for item in reversed(extractions) if item.provider_http_status), None),
     )

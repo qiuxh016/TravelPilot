@@ -92,6 +92,17 @@
   line-height: 1.5;
 }
 
+.fallbackNotice {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--warning, #a66b12) 35%, var(--border));
+  border-radius: 9px;
+  padding: 9px 11px;
+  background: color-mix(in srgb, var(--warning, #a66b12) 8%, var(--surface));
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .groupTitle {
   margin: 4px 0 0;
   color: var(--muted);

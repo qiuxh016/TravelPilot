@@ -142,9 +142,9 @@ def test_guide_chunker_preserves_all_input_characters_and_respects_chunk_limit()
 
     assert len(chunks) > 1
     assert "".join(chunks) == text
-    assert all(0 < len(chunk) <= 1000 for chunk in chunks)
+    assert all(0 < len(chunk) <= 500 for chunk in chunks)
 
-    natural_text = "A" * 850 + "。\n" + "B" * 1000
+    natural_text = "A" * 400 + "。\n" + "B" * 1000
     natural_chunks = _split_guide_text(natural_text)
     assert natural_chunks[0].endswith("\n")
     assert "".join(natural_chunks) == natural_text
@@ -164,7 +164,7 @@ async def test_local_fallback_also_processes_late_guide_segments():
 async def test_long_guide_is_chunked_compactly_and_results_are_merged(monkeypatch):
     import httpx
 
-    text = "上午游览宽窄巷子。" * 60 + "\n" + "午餐推荐蜀香餐厅，下午参观武侯祠。" * 60
+    text = "上午游览宽窄巷子。" * 45 + "\n" + "午餐推荐蜀香餐厅，下午参观武侯祠。" * 15
     chunks = _split_guide_text(text)
     assert len(chunks) == 2
     responses = [
@@ -228,7 +228,7 @@ async def test_long_guide_is_chunked_compactly_and_results_are_merged(monkeypatc
     )
 
     assert len(requests) == 2
-    assert all(item["max_tokens"] == 768 for item in requests)
+    assert all(item["max_tokens"] == 1200 for item in requests)
     assert [json.loads(item["messages"][1]["content"])["current_message"] for item in requests] == chunks
     assert all("recent_conversation" not in item["messages"][0]["content"] for item in requests)
     assert [place.name for place in result.places] == ["宽窄巷子", "蜀香餐厅", "武侯祠"]
@@ -293,7 +293,7 @@ async def test_guide_import_processes_text_after_the_old_eight_thousand_characte
 async def test_guide_import_keeps_successful_chunks_and_exact_failed_ranges(monkeypatch):
     from travelpilot_core.agents.extraction import TextExtractionFailure
 
-    text = "第一段攻略。" * 100 + "第二段攻略。" * 100
+    text = "梅州学宫。" * 100 + "中国客家博物馆。" * 100
     chunks = _split_guide_text(text)
     calls = []
 
@@ -312,12 +312,18 @@ async def test_guide_import_keeps_successful_chunks_and_exact_failed_ranges(monk
     result = await extract_places(text, api_key="test", model="test", guide_import=True)
 
     assert calls == chunks
-    assert len(chunks) == 2
-    assert result.chunk_count == 2
-    assert result.token_usage == 20
+    assert len(chunks) == 3
+    assert result.chunk_count == 3
+    assert result.token_usage == 31
     assert [fact.content for fact in result.guide_facts] == ["第一段保留"]
+    assert any("客家博物馆" in place.name for place in result.places)
+    assert result.fallback_chunks == [{
+        "index": 1,
+        "start": len(chunks[0]),
+        "end": len(chunks[0]) + len(chunks[1]),
+    }]
     assert result.failed_chunks == [{
-        "index": 1, "start": len(chunks[0]), "end": len(text),
+        "index": 1, "start": len(chunks[0]), "end": len(chunks[0]) + len(chunks[1]),
         "failure_code": "MODEL_RESPONSE_INVALID", "finish_reason": "length",
     }]
 
@@ -332,7 +338,7 @@ async def test_short_guide_import_also_obeys_per_chunk_output_budget(monkeypatch
 
     monkeypatch.setattr("travelpilot_core.agents.extraction._extract_places_once", extract_once)
     await extract_places("短攻略内容", api_key="test", model="test", token_budget=1200, guide_import=True)
-    assert captured["token_budget"] == 768
+    assert captured["token_budget"] == 1200
 
 
 @pytest.mark.asyncio

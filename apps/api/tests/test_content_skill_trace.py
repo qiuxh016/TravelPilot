@@ -170,7 +170,7 @@ async def test_retry_content_extraction_retries_only_failed_range(monkeypatch):
     assert result.status == "NEEDS_CONFIRMATION"
     assert result.extraction_metadata == {
         "total_chunks": 2, "completed_chunks": 2, "retry_attempts": 1,
-        "complete": True, "failed_chunks": [],
+        "complete": True, "failed_chunks": [], "fallback_chunks": [],
     }
 
 

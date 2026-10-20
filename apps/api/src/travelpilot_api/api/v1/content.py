@@ -208,6 +208,7 @@ async def create_content(trip_id: UUID, payload: ContentCreate,
             "total_chunks": extraction.chunk_count,
             "completed_chunks": completed,
             "failed_chunks": failed,
+            "fallback_chunks": extraction.fallback_chunks,
             "retry_attempts": 0,
             "complete": not failed,
             **({"duplicate_source_id": str(duplicate_of)} if duplicate_of else {}),
@@ -220,7 +221,14 @@ async def create_content(trip_id: UUID, payload: ContentCreate,
         )
         if failed:
             indexes = ", ".join(str(int(item["index"]) + 1) for item in failed)
-            source.error = f"已识别 {completed}/{extraction.chunk_count} 段；第 {indexes} 段未完成，可重试失败片段。"
+            fallback_note = (
+                f"其中 {len(extraction.fallback_chunks)} 段已由本地规则保留候选结果，请核对后重试。"
+                if extraction.fallback_chunks else ""
+            )
+            source.error = (
+                f"模型已识别 {completed}/{extraction.chunk_count} 段；第 {indexes} 段未完成。"
+                f"{fallback_note}"
+            )
         if map_unavailable:
             source.error = (source.error + " " if source.error else "") + "部分地点的地图匹配暂不可用，已保留攻略信息。"
         elif source.status == "FAILED" and not failed:
@@ -309,6 +317,7 @@ async def retry_content_extraction(content_id: UUID, session: AsyncSession = Dep
     map_unavailable = False
     replaced_chunk_count = 0
     next_chunk_index = int(metadata.get("total_chunks", 0))
+    fallback_chunks = list(metadata.get("fallback_chunks", []))
     skill = select_skill_decision("content_import", context={"task": "content_import", "user_content": True})
     for item in valid_ranges:
         segment = source.text[item["start"]:item["end"]]
@@ -332,6 +341,14 @@ async def retry_content_extraction(content_id: UUID, session: AsyncSession = Dep
         local_chunk_count = max(1, extraction.chunk_count)
         replaced_chunk_count += local_chunk_count
         map_unavailable = await _save_extraction_results(session, source, extraction, maps) or map_unavailable
+        for chunk in extraction.fallback_chunks:
+            local_start, local_end = chunk.get("start"), chunk.get("end")
+            if type(local_start) is int and type(local_end) is int:
+                fallback_chunks.append({
+                    "index": next_chunk_index + int(chunk.get("index", 0)),
+                    "start": item["start"] + local_start,
+                    "end": item["start"] + local_end,
+                })
         for chunk in extraction.failed_chunks:
             local_start, local_end = chunk.get("start"), chunk.get("end")
             if type(local_start) is not int or type(local_end) is not int:
@@ -346,6 +363,9 @@ async def retry_content_extraction(content_id: UUID, session: AsyncSession = Dep
             next_chunk_index += 1
 
     metadata["failed_chunks"] = remaining
+    metadata["fallback_chunks"] = list({
+        (chunk.get("start"), chunk.get("end")): chunk for chunk in fallback_chunks
+    }.values())
     metadata["retry_attempts"] = retry_attempts + 1
     metadata["total_chunks"] = max(
         0, int(metadata.get("total_chunks", 0)) - len(valid_ranges) + replaced_chunk_count,
@@ -363,9 +383,13 @@ async def retry_content_extraction(content_id: UUID, session: AsyncSession = Dep
     if remaining:
         indexes = ", ".join(str(int(item["index"]) + 1) for item in remaining)
         next_step = "可以再试一次。" if metadata["retry_attempts"] < 2 else "重试次数已用完，可以删除记录后重新导入。"
+        fallback_note = (
+            f"已有 {len(metadata['fallback_chunks'])} 段由本地规则保留候选结果，请核对。"
+            if metadata["fallback_chunks"] else ""
+        )
         source.error = (
             f"已识别 {metadata['completed_chunks']}/{metadata.get('total_chunks', 0)} 段；"
-            f"第 {indexes} 段仍未完成，{next_step}"
+            f"第 {indexes} 段仍未完成。{fallback_note}{next_step}"
         )
     elif not has_results:
         source.error = "失败片段已重试，但没有识别到可用的地点或攻略细节。"
@@ -383,7 +407,6 @@ async def delete_content(content_id: UUID, session: AsyncSession = Depends(get_s
     """Delete an imported source and extraction artifacts, preserving confirmed trip items."""
     await session.delete(source)
     await session.commit()
-    return None
 
 
 @router.get("/content/{content_id}", response_model=ContentRead)
