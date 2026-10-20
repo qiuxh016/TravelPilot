@@ -87,7 +87,18 @@ test("好友可接受小团体旅行邀请并查看共享旅行，所有者可�
     expect(sharedDetail.ok(), `Shared trip detail failed: ${sharedDetail.status()} ${await sharedDetail.text()}`).toBeTruthy();
     await page.getByRole("button", { name: "打开共享旅行" }).click();
     await expect(page.getByRole("heading", { name: "协作验收城市", level: 3 })).toBeVisible();
-    await expect(page.getByText("共同测试景点")).toBeVisible();
+    await expect(page.getByText("共同测试景点", { exact: true })).toBeVisible();
+    const groupMessage = "午餐想选离景点近一些的地方，大家觉得呢？";
+    await page.getByLabel("发送旅行消息").fill(groupMessage);
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await expect(page.getByText(groupMessage)).toBeVisible();
+    await expect.poll(async () => {
+      const sharedMessages = await owner.context.get(`${api}/group-trips/${trip.id}/discussion`);
+      if (!sharedMessages.ok()) return false;
+      return (await sharedMessages.json()).some((message: { body: string }) => message.body === groupMessage);
+    }).toBeTruthy();
+    await page.getByText(/旅行活动记录/).click();
+    await expect(page.getByText(/生成了行程计划 v1/)).toBeVisible();
     await page.getByRole("button", { name: "调整", exact: true }).click();
     await page.getByLabel("开始").fill("10:00");
     await page.getByLabel("结束").fill("11:00");

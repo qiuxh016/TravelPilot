@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from travelpilot_core.application.trip_activity import record_trip_activity
 from travelpilot_core.application.trips import TripService, find_duplicate_trip
 from travelpilot_infra.db.models.plan import TripPlanModel
 from travelpilot_infra.db.models.user import UserModel
@@ -119,6 +120,12 @@ async def update_trip(
         raise HTTPException(status_code=409, detail="已有一段目的地和日期相同的旅行，不能保存为重复记录。")
     for field, value in changes.items():
         setattr(trip, field, value)
+    record_trip_activity(
+        session, trip_id=trip_id, actor_user_id=user.id,
+        actor_display_name=user.display_name or user.username,
+        event_type="TRIP_UPDATED", summary="更新了旅行基本信息",
+        payload={"changed_fields": sorted(changes)},
+    )
     await session.commit()
     await session.refresh(trip)
     return TripRead.model_validate(trip).model_copy(update={"access_role": access.role})

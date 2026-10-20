@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { TripDiscussion } from "../../components/trip-discussion";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   acceptFriendRequest,
@@ -381,6 +382,7 @@ export default function FriendsPage() {
         </li>)}</ol> : <p className="social-empty">这段旅行还没有保存的行程计划。</p>}
           <div className="shared-plan-footer"><Link className="secondary" href={`/trips/${selectedCollaborativeTrip.id}/plan`}>打开完整行程</Link>{selectedCollaborativeTrip.role === "EDITOR" && <Link className="secondary" href={`/places?tripId=${selectedCollaborativeTrip.id}`}>添加共同地点</Link>}{selectedCollaborativeTrip.role === "EDITOR" && <p className="shared-plan-hint">编辑者可以添加、调整或移除共同计划地点；保存时会检查版本，避免覆盖其他成员刚提交的修改。</p>}</div>
         </div>
+        <TripDiscussion tripId={selectedCollaborativeTrip.id} />
       </div>}
     </section>
     <section className="social-card">

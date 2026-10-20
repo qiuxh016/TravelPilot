@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from travelpilot_core.application.trip_activity import record_trip_activity
 from travelpilot_infra.db.models.plan import TripPlanModel, TripPlanNodeModel
 from travelpilot_infra.db.models.poi import PoiModel
 from travelpilot_infra.db.models.social import FriendshipModel, TripShareGrantModel
@@ -27,6 +28,10 @@ from travelpilot_api.schemas.trip_members import (
 from travelpilot_api.trip_access import TripAccess, get_trip_access
 
 router = APIRouter(tags=["trip collaboration"])
+
+
+def _display_name(user: UserModel) -> str:
+    return getattr(user, "display_name", None) or getattr(user, "username", None) or "旅行成员"
 
 
 async def _accepted_friendship(session: AsyncSession, left: UUID, right: UUID) -> bool:
@@ -132,6 +137,13 @@ async def invite_trip_member(
         member.created_at = now
         member.updated_at = now
 
+    record_trip_activity(
+        session, trip_id=trip_id, actor_user_id=user.id,
+        actor_display_name=_display_name(user),
+        event_type="INVITATION_SENT", summary=f"邀请 {getattr(friend, 'display_name', None) or friend.username} 加入旅行",
+        payload={"member_role": payload.role},
+    )
+
     try:
         await session.commit()
     except IntegrityError as exc:
@@ -163,6 +175,13 @@ async def update_trip_member_role(
         raise HTTPException(status_code=409, detail="Inactive invitation cannot be changed")
     member.role = payload.role
     member.updated_at = datetime.now(UTC)
+    record_trip_activity(
+        session, trip_id=trip_id, actor_user_id=user.id,
+        actor_display_name=_display_name(user),
+        event_type="MEMBER_ROLE_CHANGED",
+        summary=f"将 {person.display_name or person.username} 的权限调整为{'编辑者' if payload.role == 'EDITOR' else '查看者'}",
+        payload={"member_user_id": str(person.id), "role": payload.role},
+    )
     await session.commit()
     await session.refresh(member)
     return _member_read(member, person)
@@ -187,8 +206,20 @@ async def revoke_or_leave_trip(
         raise HTTPException(status_code=404, detail="Trip member not found")
     if trip.owner_id != user.id and member.user_id != user.id:
         raise HTTPException(status_code=404, detail="Trip member not found")
+    member_person = await session.get(UserModel, member.user_id)
     member.status = "REVOKED"
     member.updated_at = datetime.now(UTC)
+    record_trip_activity(
+        session, trip_id=trip_id, actor_user_id=user.id,
+        actor_display_name=_display_name(user),
+        event_type="MEMBER_REMOVED" if trip.owner_id == user.id else "MEMBER_LEFT",
+        summary=(
+            f"移除了 {member_person.display_name or member_person.username}"
+            if trip.owner_id == user.id and member_person
+            else f"{_display_name(user)} 离开了旅行"
+        ),
+        payload={"membership_id": str(member.id)},
+    )
     await session.commit()
 
 
@@ -317,6 +348,13 @@ async def _respond_to_invitation(
     member.status = "ACCEPTED" if accepted else "DECLINED"
     member.accepted_at = now if accepted else None
     member.updated_at = now
+    record_trip_activity(
+        session, trip_id=member.trip_id, actor_user_id=user.id,
+        actor_display_name=_display_name(user),
+        event_type="INVITATION_ACCEPTED" if accepted else "INVITATION_DECLINED",
+        summary=f"{_display_name(user)}{'加入了' if accepted else '拒绝加入'}旅行",
+        payload={"membership_id": str(member.id)},
+    )
     await session.commit()
     return TripMembershipNotice(message="已接受旅行邀请。" if accepted else "已拒绝旅行邀请。")
 

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from travelpilot_core.application.trip_activity import record_trip_activity
 from travelpilot_infra.db.models.plan import TripPlanModel, TripPlanNodeModel
 from travelpilot_infra.db.models.poi import PoiModel
 from travelpilot_infra.db.models.social import (
@@ -557,6 +558,25 @@ async def _end_friendship(friendship_id: UUID, user: UserModel, session: AsyncSe
         TripShareGrantModel.revoked_at.is_(None),
     ).values(revoked_at=datetime.now(UTC)))
     changed_at = datetime.now(UTC)
+    active_memberships = (await session.execute(
+        select(TripMemberModel, TripModel.id)
+        .join(TripModel, TripModel.id == TripMemberModel.trip_id)
+        .where(
+            TripMemberModel.status.in_(("PENDING", "ACCEPTED")),
+            or_(
+                and_(TripModel.owner_id == user.id, TripMemberModel.user_id == other_id),
+                and_(TripModel.owner_id == other_id, TripMemberModel.user_id == user.id),
+            ),
+        )
+    )).all()
+    for member, trip_id in active_memberships:
+        record_trip_activity(
+            session, trip_id=trip_id, actor_user_id=user.id,
+            actor_display_name=user.display_name or user.username,
+            event_type="MEMBERSHIP_REVOKED_FRIENDSHIP",
+            summary="好友关系结束，相关旅行访问权限已撤销",
+            payload={"membership_id": str(member.id)},
+        )
     await session.execute(update(TripMemberModel).where(
         TripMemberModel.status.in_(("PENDING", "ACCEPTED")),
         or_(

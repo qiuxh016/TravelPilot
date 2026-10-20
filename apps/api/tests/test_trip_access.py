@@ -219,7 +219,7 @@ async def test_invitation_acceptance_is_scoped_to_invited_user():
 async def test_acceptance_changes_only_pending_invitation_after_friendship_check():
     invitee_id, inviter_id, member_id = uuid4(), uuid4(), uuid4()
     member = SimpleNamespace(
-        id=member_id, invited_by_id=inviter_id, user_id=invitee_id,
+        id=member_id, trip_id=uuid4(), invited_by_id=inviter_id, user_id=invitee_id,
         status="PENDING", accepted_at=None,
     )
 
@@ -230,6 +230,9 @@ async def test_acceptance_changes_only_pending_invitation_after_friendship_check
 
         async def scalar(self, _statement):
             return next(self.results)
+
+        def add(self, _row):
+            pass
 
     session = Session()
     result = await accept_trip_invitation(

@@ -31,6 +31,7 @@ from travelpilot_api.api.v1.memory import router as memory_router
 from travelpilot_api.api.v1.moments import router as moments_router
 from travelpilot_api.api.v1.plans import router as plans_router
 from travelpilot_api.api.v1.social import router as social_router
+from travelpilot_api.api.v1.trip_discussion import router as trip_discussion_router
 from travelpilot_api.api.v1.trip_members import router as trip_members_router
 from travelpilot_api.api.v1.trips import router as trips_router
 from travelpilot_api.api.v1.weather import router as weather_router
@@ -234,6 +235,7 @@ async def worker_readiness(
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(social_router, prefix="/api/v1")
 app.include_router(trip_members_router, prefix="/api/v1")
+app.include_router(trip_discussion_router, prefix="/api/v1")
 app.include_router(moments_router, prefix="/api/v1")
 app.include_router(advisor_router, prefix="/api/v1")
 app.include_router(weather_router, prefix="/api/v1")

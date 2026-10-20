@@ -9,6 +9,7 @@ from travelpilot_infra.db.models.trip import TripModel
 from travelpilot_infra.db.models.wishlist import WishlistItemModel
 from travelpilot_infra.db.repositories.plans import PlanRepository
 
+from travelpilot_core.application.trip_activity import record_trip_activity
 from travelpilot_core.engines.constraints.validator import validate_visits
 from travelpilot_core.engines.optimizer.itinerary import Candidate, build_itinerary
 
@@ -67,6 +68,12 @@ class PlanService:
             start_time=visit.start_time, end_time=visit.end_time,
             priority=visit.candidate.priority, status="PLANNED", note=visit.candidate.note,
         ) for visit in visits]
+        record_trip_activity(
+            self.session, trip_id=trip_id, actor_user_id=actor_user_id,
+            actor_display_name=actor_display_name or "旅行成员",
+            event_type="PLAN_GENERATED", summary=f"生成了行程计划 v{version}",
+            payload={"version": version, "base_version": base_version, "reason": reason or "生成旅行计划"},
+        )
         return await self.repository.create(plan, nodes, commit=commit)
 
     async def list(self, trip_id: UUID):
@@ -108,9 +115,11 @@ class PlanService:
         await self.session.flush()
         original = None
         updated = None
-        for node, _ in rows:
+        original_name = "一个地点"
+        for node, poi in rows:
             if node.id == node_id:
                 original = node
+                original_name = poi.name
                 if changes is None:
                     continue
             clone = TripPlanNodeModel(
@@ -142,6 +151,14 @@ class PlanService:
             before_data=before, after_data=after, reason=reason or "USER_EDIT",
             actor_user_id=actor_user_id, actor_display_name=actor_display_name,
         ))
+        new_version = latest + 1
+        record_trip_activity(
+            self.session, trip_id=source.trip_id, actor_user_id=actor_user_id,
+            actor_display_name=actor_display_name or "旅行成员",
+            event_type="PLAN_NODE_REMOVED" if changes is None else "PLAN_NODE_UPDATED",
+            summary=(f"从行程中移除了 {original_name}" if changes is None else f"调整了 {original_name} 的行程安排"),
+            payload={"version": new_version, "base_version": latest, "poi_id": str(original.poi_id)},
+        )
         await self.session.commit()
         await self.session.refresh(revised)
         return revised
@@ -191,6 +208,7 @@ class PlanService:
         )
         self.session.add(revised)
         await self.session.flush()
+        place = await self.session.get(PoiModel, poi_id)
         for node, _ in rows:
             if node.poi_id == poi_id:
                 before = {
@@ -211,6 +229,13 @@ class PlanService:
                 priority=node.priority, status=node.status, note=node.note,
             ))
         await self.session.flush()
+        record_trip_activity(
+            self.session, trip_id=trip_id, actor_user_id=actor_user_id,
+            actor_display_name=actor_display_name or "旅行成员",
+            event_type="WISHLIST_PLACE_REMOVED",
+            summary=f"从共同收藏中移除了 {place.name if place else '一个地点'}",
+            payload={"version": next_version, "base_version": source.version, "poi_id": str(poi_id)},
+        )
         return True
 
     async def changes(self, plan_id: UUID):

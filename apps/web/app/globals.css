@@ -548,6 +548,30 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 .shared-plan-footer { display: grid; justify-items: start; gap: 7px; margin-top: 10px; }
 .shared-plan-footer > .secondary { padding: 7px 10px; font-size: 12px; }
 .shared-plan-hint { margin-top: 8px !important; }
+.trip-collaboration-panel { display: grid; gap: 12px; border-top: 1px solid var(--border); padding-top: 15px; }
+.trip-collaboration-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.trip-collaboration-section-head h4 { margin: 3px 0; font-size: 16px; }
+.trip-collaboration-section-head p { margin: 0; color: var(--muted); font-size: 12px; }
+.trip-collaboration-section-head > button { padding: 6px 10px; font-size: 12px; }
+.trip-discussion-messages { display: grid; gap: 8px; max-height: 330px; overflow: auto; padding: 4px; }
+.trip-discussion-message { display: grid; gap: 5px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
+.trip-discussion-message > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.trip-discussion-message strong { color: var(--text); font-size: 12px; }
+.trip-discussion-message time, .trip-activity-details time { color: var(--muted); font-size: 11px; }
+.trip-discussion-message p { margin: 0; color: var(--text); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.trip-discussion-form { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 8px; }
+.trip-discussion-form textarea { resize: vertical; min-height: 66px; border: 1px solid var(--border); border-radius: 11px; padding: 10px 12px; color: var(--text); background: var(--surface); font: inherit; }
+.trip-discussion-form button { padding: 10px 15px; }
+.trip-collaboration-error { margin: 0; color: var(--danger); font-size: 12px; }
+.trip-activity-details { border-top: 1px solid var(--border); padding-top: 10px; }
+.trip-activity-details summary { cursor: pointer; color: var(--text); font-size: 13px; font-weight: 700; }
+.trip-activity-details summary span { margin-left: 5px; color: var(--muted); font-weight: 500; }
+.trip-activity-details ol { display: grid; gap: 10px; margin: 12px 0 0; padding: 0; list-style: none; }
+.trip-activity-details li { display: grid; grid-template-columns: 10px 1fr; align-items: start; gap: 8px; }
+.trip-activity-dot { width: 7px; height: 7px; margin-top: 5px; border-radius: 50%; background: var(--accent); }
+.trip-activity-details li p { margin: 0 0 3px; color: var(--text); font-size: 12px; }
+.trip-activity-details li p strong { color: var(--text); }
+@media (max-width: 560px) { .trip-discussion-form { grid-template-columns: 1fr; } .trip-discussion-form button { justify-self: start; } }
 .social-footnote { margin-top: 20px; color: var(--muted); font-size: 12px; }
 .social-footnote a { color: var(--accent); }
 .moments-page .hero { padding: 24px 0 18px; }

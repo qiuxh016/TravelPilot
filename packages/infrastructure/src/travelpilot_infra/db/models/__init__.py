@@ -18,6 +18,10 @@ from travelpilot_infra.db.models.social import (
     TripShareGrantModel,
 )
 from travelpilot_infra.db.models.trip import TripModel
+from travelpilot_infra.db.models.trip_collaboration import (
+    TripActivityModel,
+    TripDiscussionMessageModel,
+)
 from travelpilot_infra.db.models.trip_member import TripMemberModel
 from travelpilot_infra.db.models.user import (
     EmailTokenModel,
@@ -64,6 +68,8 @@ __all__ = [
     "PoiModel",
     "ToolCallModel",
     "TravelMomentModel",
+    "TripActivityModel",
+    "TripDiscussionMessageModel",
     "TripEventModel",
     "TripMemberModel",
     "TripModel",

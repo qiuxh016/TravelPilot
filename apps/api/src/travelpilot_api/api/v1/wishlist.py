@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from travelpilot_core.application.plans import PlanService
+from travelpilot_core.application.trip_activity import record_trip_activity
 from travelpilot_core.application.wishlist import WishlistService
 from travelpilot_infra.db.models.user import UserModel
 from travelpilot_infra.db.models.wishlist import WishlistItemModel
@@ -96,6 +97,14 @@ async def create_wishlist_item(
             detail=str(error),
         ) from error
 
+    record_trip_activity(
+        session, trip_id=trip_id, actor_user_id=user.id,
+        actor_display_name=user.display_name or user.username,
+        event_type="WISHLIST_PLACE_ADDED", summary=f"将 {poi.name} 加入共同收藏",
+        payload={"poi_id": str(poi.id)},
+    )
+    await session.commit()
+
     return to_wishlist_read(item, poi)
 
 
@@ -156,6 +165,13 @@ async def update_wishlist_item(
         )
 
     item, poi = result
+    record_trip_activity(
+        session, trip_id=item.trip_id, actor_user_id=user.id,
+        actor_display_name=user.display_name or user.username,
+        event_type="WISHLIST_PLACE_UPDATED", summary=f"更新了 {poi.name} 的共同收藏信息",
+        payload={"poi_id": str(poi.id)},
+    )
+    await session.commit()
 
     return to_wishlist_read(item, poi)
 
@@ -181,6 +197,12 @@ async def delete_wishlist_item(
         deleted = await service.delete_item(item_id, commit=False)
         if not deleted:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wishlist item not found")
+        record_trip_activity(
+            session, trip_id=_item.trip_id, actor_user_id=user.id,
+            actor_display_name=user.display_name or user.username,
+            event_type="WISHLIST_PLACE_REMOVED", summary="从共同收藏中移除了一个地点",
+            payload={"poi_id": str(_item.poi_id)},
+        )
         await session.commit()
     except Exception:
         await session.rollback()

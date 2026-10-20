@@ -497,6 +497,14 @@ export type TripMember = {
   accepted_at: string | null; created_at: string;
 };
 export type TripInvitation = { id: string; inviter_display_name: string; role: TripMemberRole; created_at: string };
+export type TripDiscussionMessage = {
+  id: string; trip_id: string; author_user_id: string | null;
+  author_display_name: string; body: string; created_at: string;
+};
+export type TripActivity = {
+  id: string; trip_id: string; actor_user_id: string | null; actor_display_name: string;
+  event_type: string; summary: string; payload: Record<string, unknown>; created_at: string;
+};
 export type CollaborativeTrip = {
   id: string; destination: string; start_date: string; end_date: string;
   owner_display_name: string; role: TripMemberRole;
@@ -564,6 +572,9 @@ export const acceptTripInvitation = (memberId: string) => request<{ message: str
 export const declineTripInvitation = (memberId: string) => request<{ message: string }>(`/api/v1/trip-invitations/${memberId}/decline`, { method: "POST" });
 export const listCollaborativeTrips = () => request<CollaborativeTrip[]>("/api/v1/group-trips");
 export const getCollaborativeTrip = (tripId: string) => request<CollaborativeTripDetail>(`/api/v1/group-trips/${tripId}`);
+export const listTripDiscussion = (tripId: string) => request<TripDiscussionMessage[]>(`/api/v1/group-trips/${tripId}/discussion`);
+export const sendTripDiscussionMessage = (tripId: string, body: string) => request<TripDiscussionMessage>(`/api/v1/group-trips/${tripId}/discussion`, { method: "POST", body: JSON.stringify({ body }) });
+export const listTripActivity = (tripId: string) => request<TripActivity[]>(`/api/v1/group-trips/${tripId}/activity`);
 
 export type MomentMedia = { id: string; mime_type: string; size_bytes: number; created_at: string };
 export type TravelMoment = {
