@@ -17,6 +17,7 @@ from travelpilot_infra.db.models.user import UserModel
 from travelpilot_infra.db.session import AsyncSessionFactory, get_session
 
 from travelpilot_api.advisor.checkpoints import checkpoint_writer
+from travelpilot_api.advisor.candidate_selection import explicit_candidate_selection_ids
 from travelpilot_api.advisor.sessions import owned_session, read_session
 from travelpilot_api.auth import get_current_user
 from travelpilot_api.dependencies import get_maps_provider, get_weather_provider
@@ -260,10 +261,21 @@ async def send_message(
         resume_existing_user_message = False
     if row.status != "ACTIVE":
         raise HTTPException(409, detail="已确认的会话不能继续修改")
-    selection_snapshot = (
-        sorted(str(value) for value in submitted_selection)
-        if submitted_selection is not None else None
-    )
+    current_selection_ids = {
+        str(value) for value in (row.context or {}).get("selected_candidate_ids", [])
+    }
+    explicit_selection_ids = set(explicit_candidate_selection_ids(content, row.candidates or []))
+    if submitted_selection is not None:
+        submitted_ids = {str(value) for value in submitted_selection}
+        explicit_selection_ids.update(submitted_ids - current_selection_ids)
+        selection_snapshot = sorted(submitted_ids | explicit_selection_ids)
+    elif explicit_selection_ids:
+        selection_snapshot = sorted({
+            *current_selection_ids,
+            *explicit_selection_ids,
+        })
+    else:
+        selection_snapshot = None
     if previous is not None and selection_snapshot is None and isinstance(getattr(previous, "payload", None), dict):
         saved_snapshot = previous.payload.get("selection_snapshot")
         if isinstance(saved_snapshot, list) and all(isinstance(value, str) for value in saved_snapshot):
@@ -276,9 +288,12 @@ async def send_message(
         if not set(selection_snapshot).issubset(known_candidate_ids):
             raise HTTPException(422, detail="选择中包含不属于当前对话的地点")
         context = dict(row.context or {})
+        if explicit_selection_ids:
+            context["selection_confirmation_candidate_ids"] = sorted(explicit_selection_ids)
         if sorted(str(value) for value in context.get("selected_candidate_ids", [])) != selection_snapshot:
             context["selected_candidate_ids"] = selection_snapshot
             context["revision"] = int(context.get("revision", 0)) + 1
+        if explicit_selection_ids:
             row.context = context
     if not resume_existing_user_message:
         # Keep the original request recoverable if the API process exits while

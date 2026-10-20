@@ -23,6 +23,7 @@ from travelpilot_infra.providers.maps.errors import MapsProviderError
 
 from travelpilot_api.advisor.budgets import remaining_turn_output_tokens
 from travelpilot_api.advisor.candidate_identity import provider_candidate_id
+from travelpilot_api.advisor.candidate_selection import selected_ids_after_food_search
 from travelpilot_api.advisor.checkpoints import checkpoint_writer
 from travelpilot_api.advisor.context import (
     draft_meal_follow_up_options,
@@ -237,6 +238,10 @@ async def execute_advisor_turn(
     context, _ = sync_personal_memory_snapshot(
         dict(row.context or {}), await _active_personal_memories(db, user.id),
     )
+    explicitly_selected_candidate_ids = {
+        str(value) for value in context.pop("selection_confirmation_candidate_ids", [])
+        if isinstance(value, str)
+    }
     memory_suggestions_enabled = await _memory_suggestions_enabled(db, user.id)
     row.context = context
     invalidated_by_context_update = bool(context.pop("pending_task_invalidated", False))
@@ -517,13 +522,11 @@ async def execute_advisor_turn(
             ),
         )
         if requested_category == "FOOD" and row.trip_id and not schedule_intent_requested:
-            # Keep confirmed itinerary stops selected, while dropping unrelated
-            # search picks so a lunch-only request cannot silently carry them along.
-            kept_ids = {
-                candidate["id"] for candidate in row.candidates
-                if candidate.get("in_current_plan")
-            }
-            context["selected_candidate_ids"] = sorted(kept_ids)
+            # Keep confirmed itinerary stops and an explicit food choice made in
+            # this turn; discard unrelated temporary picks from earlier searches.
+            context["selected_candidate_ids"] = selected_ids_after_food_search(
+                row.candidates, explicitly_selected_candidate_ids,
+            )
             context["revision"] = int(context.get("revision", 0)) + 1
         found = []
         preselected_candidate_ids = []

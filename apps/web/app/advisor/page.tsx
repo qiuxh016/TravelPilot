@@ -237,6 +237,19 @@ function candidateIdsForTaskConfirmation(
   return matches.length === 1 ? matches.map((candidate) => candidate.id) : null;
 }
 
+function candidateIdsForExplicitSelection(content: string, candidates: AdvisorCandidate[]): string[] {
+  const match = content.match(/(?:我\s*)?(?:选择|选中|选|就用|就选|加入|添加|纳入)\s*([^，,。；;！？!?]{2,80})/);
+  if (!match) return [];
+  const choice = match[1].replace(/[\s（）()\[\]【】]/g, "").toLocaleLowerCase();
+  if (choice.length < 2 || ["这个", "这家", "它", "方案a", "方案b"].includes(choice)) return [];
+  const matches = candidates.filter((candidate) => {
+    const name = candidate.name.replace(/[\s（）()\[\]【】]/g, "").toLocaleLowerCase();
+    const shortName = candidate.name.split(/[（(]/, 1)[0].replace(/\s/g, "").toLocaleLowerCase();
+    return name.includes(choice) || shortName.includes(choice) || choice.includes(name);
+  });
+  return matches.length === 1 ? [matches[0].id] : [];
+}
+
 function readTripActionItems(payload: Record<string, unknown> | null | undefined): TripActionItem[] {
   const value = payload?.trip_action_items;
   if (!Array.isArray(value)) return [];
@@ -859,7 +872,13 @@ export default function AdvisorPage() {
     if (!active) return false;
     const content = (preset ?? message).trim();
     if (!content) return false;
-    const requestSelection = selectionOverride ?? selected;
+    const explicitCandidateIds = selectionOverride
+      ? selectionOverride.filter((id) => !selected.includes(id))
+      : candidateIdsForExplicitSelection(content, active.candidates);
+    const requestSelection = explicitCandidateIds.length
+      ? [...new Set([...selected, ...explicitCandidateIds])]
+      : selectionOverride ?? selected;
+    const newlySelectedCandidates = active.candidates.filter((candidate) => explicitCandidateIds.includes(candidate.id));
     if (active.draft && isExplicitDraftSaveConfirmation(content)) {
       setMessage("");
       if (draftIsStale) {
@@ -896,6 +915,10 @@ export default function AdvisorPage() {
     progressAbortRef.current = progressAbort;
     setAgentProgress([]);
     setBusy(true); setAgentActivity("正在理解你的目标并读取当前旅行上下文…"); setError(""); setNotice("");
+    if (explicitCandidateIds.length) {
+      setSelected(requestSelection);
+      setNotice(`正在把${newlySelectedCandidates.map((candidate) => candidate.name).join("、")}加入本次选择…`);
+    }
     const pollProgress = async () => {
       while (!progressAbort.signal.aborted) {
         try {
@@ -976,8 +999,12 @@ export default function AdvisorPage() {
         }
         setSessions((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
       }
+      if (explicitCandidateIds.length) {
+        setNotice(`${newlySelectedCandidates.map((candidate) => candidate.name).join("、")}已加入本次选择。补齐日期和时间后可更新预览；正式行程仍需你确认。`);
+      }
       return true;
     } catch (reason) {
+      if (explicitCandidateIds.length) setSelected(selected);
       const retryable = !(reason instanceof ApiError) || reason.status >= 500 || reason.status === 408 || reason.status === 429;
       setRetryableMessage(retryable ? { sessionId: active.id, content } : null);
       setError((reason as Error).message);
@@ -1663,7 +1690,7 @@ export default function AdvisorPage() {
               const evidenceTime = candidate.verified_at
                 ? ` · ${candidate.verification_status === "SIMULATED" ? "模拟数据时间" : "最近核验"} ${candidate.verified_at.slice(0, 16).replace("T", " ")}`
                 : "";
-              return <article className="advisor-live-candidate" key={candidate.id}>
+              return <article className="advisor-live-candidate" id={`advisor-candidate-${candidate.id}`} key={candidate.id}>
                 <div className="advisor-live-candidate-main">
                 <div className="advisor-live-candidate-choice">
                   <span><strong>{candidate.name}{domainLabel && <em>{domainLabel}</em>}{candidate.in_current_plan ? <em>当前计划</em> : null}{candidate.popularity_score != null && <em>地图评分 {candidate.popularity_score.toFixed(1)}</em>}</strong><small>来源：{candidateSource}{evidenceTime}</small><small>地图类别：{candidate.category} · {candidate.address || "地址未提供"} · 预计停留 {candidate.duration_min} 分钟</small>{candidate.guide_references?.map((reference) => <small className="advisor-guide-reference" key={`${candidate.id}:${reference.source_id}`}>攻略线索：《{reference.title}》提到：{reference.guide_claim} · 尚未核验</small>)}{candidate.suggestion && <small>{candidate.suggestion}</small>}{candidate.profile_memory_conflicts?.map((conflict) => <small className="advisor-memory-conflict" key={conflict}>与已确认的旅行限制冲突：{conflict}。如果这次仍想去，可以在生成草案时明确确认本次继续。</small>)}</span>
@@ -1692,6 +1719,15 @@ export default function AdvisorPage() {
 
           <section className="advisor-itinerary panel">
             <div className="advisor-panel-title"><div><h2>行程调整预览</h2><p>{active?.destination || selectedTrip?.destination || "尚未设置目的地"} · {active?.start_date || selectedTrip?.start_date || "日期待定"} 至 {active?.end_date || selectedTrip?.end_date || "日期待定"}</p></div><span className="advisor-draft-state">{active?.draft ? draftIsStale ? "选项有变化，需更新预览" : "等待你确认" : "尚未生成"}</span></div>
+            {active?.candidates.filter((candidate) => selected.includes(candidate.id)
+              && !active.draft?.selected_candidate_ids.includes(candidate.id)
+              && !candidate.in_current_plan).map((candidate) => <section className="advisor-selected-candidate-live" role="status" key={`pending:${candidate.id}`}>
+                <div><strong>已选{planningCategoryLabel(candidate.planning_category, candidate.meal_type)}：{candidate.name}</strong>
+                  <small>{candidate.planning_category === "LODGING"
+                    ? "已同步为住宿备选；生成或更新预览后会显示在右侧行程摘要中。"
+                    : "已同步到本次选择；确认日期和时间后更新预览，才会排入对应日期。"}</small></div>
+                <button type="button" className="secondary" onClick={() => document.getElementById(`advisor-candidate-${candidate.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}>查看并调整</button>
+              </section>)}
             {active?.draft && draftIsStale && <p className="advisor-live-warning" role="status">你刚才选择或调整的地点、用餐时间尚未写入这份预览。点击“更新预览”重新核验后，午餐/晚餐才会显示在下方；正式行程仍需最后确认。</p>}
             {draftDays.length > 1 && <label className="advisor-live-day-picker">地图日期<select value={visibleMapDay} onChange={(event) => setMapDay(event.target.value)}>{draftDays.map((day, index) => <option key={day} value={day}>第 {index + 1} 天 · {day}</option>)}</select><small>仅切换下方地图；行程安排按日期分组全部显示。</small></label>}
             {active?.draft?.stops.length ? <div className="advisor-stop-list">{draftDays.map((day) => {

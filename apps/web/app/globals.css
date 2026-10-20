@@ -1467,6 +1467,12 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 .advisor-lodging-summary strong { color: var(--text); }
 .advisor-draft-summary strong { color: var(--text); }
 .advisor-live-warning { border-left: 3px solid #d99b35; margin: 7px 0; padding: 7px 10px; color: var(--muted); font-size: 12px; }
+.advisor-selected-candidate-live { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 0; border: 1px solid var(--accent); border-radius: 10px; padding: 10px 12px; background: var(--surface-raised); }
+.advisor-selected-candidate-live > div { display: grid; gap: 4px; min-width: 0; }
+.advisor-selected-candidate-live strong { color: var(--text); font-size: 13px; }
+.advisor-selected-candidate-live small { color: var(--muted); line-height: 1.45; }
+.advisor-selected-candidate-live button { flex: 0 0 auto; }
+@media (max-width: 640px) { .advisor-selected-candidate-live { align-items: flex-start; flex-direction: column; } }
 .advisor-live-error { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid #dfaaaa; border-radius: 8px; padding: 10px 12px; background: #fff3f3; color: #9d3030; font-size: 13px; }
 .advisor-retry-action { flex: 0 0 auto; border: 1px solid currentColor; border-radius: 7px; padding: 6px 10px; background: transparent; color: inherit; font: inherit; font-weight: 700; cursor: pointer; }
 .advisor-retry-action:disabled { cursor: wait; opacity: 0.6; }
