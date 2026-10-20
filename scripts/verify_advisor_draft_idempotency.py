@@ -19,8 +19,10 @@ from travelpilot_infra.db.models.advisor import (
     AdvisorSessionModel,
 )
 from travelpilot_infra.db.models.plan import TripPlanModel, TripPlanNodeModel
+from travelpilot_infra.db.models.poi import PoiModel
 from travelpilot_infra.db.models.trip import TripModel
 from travelpilot_infra.db.models.user import UserModel
+from travelpilot_infra.db.models.wishlist import WishlistItemModel
 from travelpilot_infra.db.session import AsyncSessionFactory
 from travelpilot_infra.providers.maps.fake import FakeMapsProvider
 
@@ -142,6 +144,122 @@ def _child_process(*, phase: str, owner_id: UUID, session_id: UUID,
             f"draft {phase} process exited {result.returncode}; "
             f"stdout={result.stdout[-2000:]}; stderr={result.stderr[-4000:]}"
         )
+
+
+async def _verify_food_and_lodging_persist(owner_id: UUID) -> None:
+    """Confirm a mixed draft, then read it back from the persisted plan and wishlist."""
+    from travelpilot_api.advisor.confirm_service import confirm_advisor_draft
+    from travelpilot_api.api.v1.advisor import create_session
+    from travelpilot_api.api.v1.advisor_drafts import create_draft
+    from travelpilot_api.schemas.advisor import (
+        AdvisorConfirm,
+        AdvisorDraftCreate,
+        AdvisorSessionCreate,
+    )
+
+    session_id = uuid4()
+    attraction_id, food_id, lodging_id = uuid4(), uuid4(), uuid4()
+    start = date.today() + timedelta(days=20)
+    end = start + timedelta(days=1)
+    now = datetime.now(UTC)
+    candidates = [
+        {
+            "id": str(attraction_id), "provider": "fake", "provider_id": f"sync-attr-{attraction_id}",
+            "name": "同步验证景点", "address": "成都", "category": "景点",
+            "planning_category": "ATTRACTION", "latitude": 30.660, "longitude": 104.060,
+            "duration_min": 90, "confidence": 1, "verification_status": "SIMULATED",
+            "verified_at": now.isoformat(),
+        },
+        {
+            "id": str(food_id), "provider": "fake", "provider_id": f"sync-food-{food_id}",
+            "name": "同步验证午餐", "address": "成都", "category": "餐饮",
+            "planning_category": "FOOD", "meal_type": "LUNCH",
+            "latitude": 30.661, "longitude": 104.061, "duration_min": 60,
+            "confidence": 1, "verification_status": "SIMULATED", "verified_at": now.isoformat(),
+        },
+        {
+            "id": str(lodging_id), "provider": "fake", "provider_id": f"sync-hotel-{lodging_id}",
+            "name": "同步验证酒店", "address": "成都", "category": "酒店",
+            "planning_category": "LODGING", "latitude": 30.662, "longitude": 104.062,
+            "duration_min": 60, "confidence": 1, "verification_status": "SIMULATED",
+            "verified_at": now.isoformat(),
+        },
+    ]
+    async with AsyncSessionFactory() as db:
+        user = await db.scalar(select(UserModel).where(UserModel.id == owner_id))
+        assert user is not None
+        row = AdvisorSessionModel(
+            id=session_id, owner_id=owner_id, mode="destination", destination="成都",
+            start_date=start, end_date=end, pace_level=3, preference_text="",
+            candidates=candidates, context={"revision": 0, "selected_candidate_ids": []},
+            status="ACTIVE", draft_version=0, created_at=now, updated_at=now,
+        )
+        db.add(row)
+        await db.commit()
+
+    async with AsyncSessionFactory() as db:
+        user = await db.scalar(select(UserModel).where(UserModel.id == owner_id))
+        row = await db.scalar(select(AdvisorSessionModel).where(AdvisorSessionModel.id == session_id))
+        assert user is not None and row is not None
+        draft = await create_draft(
+            session_id=session_id,
+            payload=AdvisorDraftCreate(
+                candidate_ids=[attraction_id, food_id, lodging_id],
+                schedules=[
+                    {"candidate_id": attraction_id, "day": start, "start_time": time(9, 0)},
+                    {"candidate_id": food_id, "day": start, "start_time": time(12, 0)},
+                ],
+            ),
+            db=db, user=user, maps=FakeMapsProvider(), weather=FakeWeatherProvider(),
+            idempotency_key=None,
+        )
+        assert [item["candidate_id"] for item in draft.draft["lodging"]] == [str(lodging_id)]
+        assert {item["planning_category"] for item in draft.draft["stops"]} == {"ATTRACTION", "FOOD"}
+        confirmed = await confirm_advisor_draft(
+            db, row, AdvisorConfirm(draft_version=draft.draft_version), user,
+        )
+        assert confirmed.plan_version == 1
+
+    async with AsyncSessionFactory() as db:
+        nodes = (await db.execute(
+            select(TripPlanNodeModel, PoiModel)
+            .join(PoiModel, PoiModel.id == TripPlanNodeModel.poi_id)
+            .where(TripPlanNodeModel.plan_id == confirmed.plan_id)
+        )).all()
+        assert len(nodes) == 2
+        lunch = next((node for node, poi in nodes if poi.name == "同步验证午餐"), None)
+        assert lunch is not None and lunch.day == start and lunch.start_time == time(12, 0)
+        assert lunch.note == "用餐安排：午餐"
+        wishlist = (await db.execute(
+            select(PoiModel.name, PoiModel.category)
+            .join(WishlistItemModel, WishlistItemModel.poi_id == PoiModel.id)
+            .where(WishlistItemModel.trip_id == confirmed.trip_id)
+        )).all()
+        assert {name for name, _category in wishlist} >= {
+            "同步验证景点", "同步验证午餐", "同步验证酒店",
+        }
+        assert next(category for name, category in wishlist if name == "同步验证酒店") == "酒店"
+
+    async with AsyncSessionFactory() as db:
+        user = await db.scalar(select(UserModel).where(UserModel.id == owner_id))
+        assert user is not None
+        restored = await create_session(
+            AdvisorSessionCreate(mode="existing", trip_id=confirmed.trip_id),
+            db=db, user=user,
+        )
+        restored_candidates = restored.candidates
+        restored_selected = set(restored.context["selected_candidate_ids"])
+        restored_lunch = next(item for item in restored_candidates if item["name"] == "同步验证午餐")
+        restored_lodging = next(item for item in restored_candidates if item["name"] == "同步验证酒店")
+        assert restored_lunch["planning_category"] == "FOOD"
+        assert restored_lunch["meal_type"] == "LUNCH"
+        assert restored_lunch["id"] in restored_selected
+        assert restored_lodging["planning_category"] == "LODGING"
+        assert restored_lodging["id"] in restored_selected
+    print(
+        "PASS: confirmed attraction, lunch and lodging were persisted and read back; "
+        "a new Advisor session restored lunch category/date/time and the selected lodging."
+    )
 
 
 async def verify() -> None:
@@ -298,6 +416,7 @@ async def verify() -> None:
             "PASS: a committed trip confirmation retried from another process returned "
             "the same plan without creating a duplicate trip, plan, node, event, or message."
         )
+        await _verify_food_and_lodging_persist(owner_id)
     finally:
         async with AsyncSessionFactory() as db:
             await db.execute(delete(UserModel).where(UserModel.id == owner_id))

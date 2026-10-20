@@ -218,7 +218,15 @@ async def create_session(
                 "budget": str(trip.budget) if trip.budget is not None else None,
                 "pace_level": trip.pace_level,
             },
-            "selected_candidate_ids": [item["candidate_id"] for item in plan_stops],
+            "selected_candidate_ids": list(dict.fromkeys([
+                *(item["candidate_id"] for item in plan_stops),
+                *(
+                    candidate_by_poi[poi.id]["id"]
+                    for item, poi in existing_places
+                    if item.source_type == "ADVISOR"
+                    and candidate_by_poi[poi.id].get("planning_category") == "LODGING"
+                ),
+            ])),
             "current_plan": {
                 "id": str(current_plan.id), "version": current_plan.version,
                 "status": current_plan.status, "warnings": current_plan.warnings,
