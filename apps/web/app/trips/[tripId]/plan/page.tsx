@@ -4,13 +4,14 @@ import Link from "next/link";
 import type { FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, createPlanRun, deletePlanNode, getTrip, listPlans, listWishlist, updatePlanNode, type Plan, type PlanNode, type WishlistItem } from "../../../../lib/api";
+import { ApiError, createPlanRun, deletePlanNode, getTrip, listPlans, listWishlist, updatePlanNode, type Plan, type PlanNode, type Trip, type WishlistItem } from "../../../../lib/api";
 import { RouteMap, type RouteMapPoint } from "../../../../components/route-map";
 import { WeatherForecast } from "../../../../components/weather-forecast";
 
 export default function PlanPage() {
   const tripId = useParams<{ tripId: string }>().tripId;
   const router = useRouter();
+  const [trip, setTrip] = useState<Trip | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
   const [activeDay, setActiveDay] = useState("");
@@ -28,6 +29,7 @@ export default function PlanPage() {
   useEffect(() => {
     let cancelled = false;
     setPlans([]);
+    setTrip(null);
     setWishlist([]);
     setActiveDay("");
     setSelectedStop("");
@@ -35,8 +37,9 @@ export default function PlanPage() {
     setLoading(true);
 
     void Promise.all([getTrip(tripId), listPlans(tripId), listWishlist(tripId)])
-      .then(([, nextPlans, nextWishlist]) => {
+      .then(([nextTrip, nextPlans, nextWishlist]) => {
         if (cancelled) return;
+        setTrip(nextTrip);
         setPlans(nextPlans);
         setWishlist(nextWishlist);
       })
@@ -60,7 +63,7 @@ export default function PlanPage() {
   async function generate() {
     setBusy(true); setError("");
     try {
-      await createPlanRun(tripId);
+      await createPlanRun(tripId, plans[0]?.version ?? 0);
       const [nextPlans, nextWishlist] = await Promise.all([listPlans(tripId), listWishlist(tripId)]);
       setPlans(nextPlans); setWishlist(nextWishlist);
     } catch (err) { setError(err instanceof Error ? err.message : "规划失败"); }
@@ -75,7 +78,9 @@ export default function PlanPage() {
     if (!latest || !editingNode) return;
     setBusy(true); setError("");
     try {
-      await updatePlanNode(tripId, latest.id, editingNode.id, { ...nodeForm, note: nodeForm.note || null });
+      await updatePlanNode(tripId, latest.id, editingNode.id, {
+        ...nodeForm, note: nodeForm.note || null, expected_base_version: latest.version,
+      });
       setPlans(await listPlans(tripId));
       setSelectedStop(""); setEditingNode(null);
     } catch (err) { setError(err instanceof Error ? err.message : "调整安排失败"); }
@@ -85,7 +90,7 @@ export default function PlanPage() {
     if (!latest || !window.confirm(`从当前计划中移除“${node.name}”？历史版本仍会保留。`)) return;
     setBusy(true); setError("");
     try {
-      await deletePlanNode(tripId, latest.id, node.id);
+      await deletePlanNode(tripId, latest.id, node.id, latest.version);
       setPlans(await listPlans(tripId)); setSelectedStop("");
     } catch (err) { setError(err instanceof Error ? err.message : "移除安排失败"); }
     finally { setBusy(false); }
@@ -102,7 +107,7 @@ export default function PlanPage() {
   return <main className="shell plan-page">
     <nav className="nav"><Link className="brand" href={`/trips/${tripId}`}>TravelPilot</Link><span className="status">计划</span></nav>
     <section className="hero"><p className="eyebrow">YOUR ITINERARY</p><h1>把想去的地方，排成一天</h1><p className="lede">按天查看真实地点、顺序和天气。计划生成后，你可以继续和旅行顾问一起调整。</p>
-      <div className="actions"><button className="primary" disabled={busy} onClick={() => void generate()}>{busy ? "正在规划…" : latest ? "重新生成计划" : "生成我的第一版计划"}</button><Link className="secondary" href={`/advisor?tripId=${tripId}`}>和旅行顾问一起调整</Link></div>
+      <div className="actions">{trip?.access_role !== "VIEWER" && <button className="primary" disabled={busy} onClick={() => void generate()}>{busy ? "正在规划…" : latest ? "重新生成计划" : "生成我的第一版计划"}</button>}<Link className="secondary" href={`/advisor?tripId=${tripId}`}>和旅行顾问一起调整</Link></div>
     </section>
     {error ? <p role="alert">{error}</p> : null}
     {loading ? <p className="status" role="status">正在加载这段旅行的安排…</p> : null}
@@ -115,7 +120,7 @@ export default function PlanPage() {
         <section className="plan-timeline"><div className="plan-section-title"><div><p className="eyebrow">DAY PLAN</p><h2>今日安排</h2></div><span>{dayNodes.length} 个地点</span></div>
           {dayNodes.length ? <div className="plan-stops">{dayNodes.map((node, index) => <article key={node.id} className={`plan-stop ${selectedStop === node.id ? "is-selected" : ""}`}>
             <button type="button" className="plan-stop-main" onClick={() => setSelectedStop(node.id)}><span className="plan-stop-time">{node.start_time.slice(0, 5)}<small>{node.end_time.slice(0, 5)}</small></span><span className="plan-stop-rail"><i>{index + 1}</i></span><span className="plan-stop-content"><strong>{node.name}</strong><small>{node.status} · 优先级 {node.priority}</small>{node.note && <p>{node.note}</p>}</span><span className="plan-stop-open">地图 ↗</span></button>
-            <span className="plan-stop-actions"><button type="button" disabled={busy} onClick={() => openEdit(node)}>调整</button><button type="button" disabled={busy} onClick={() => void removeNode(node)}>移除</button></span>
+            {trip?.access_role !== "VIEWER" && <span className="plan-stop-actions"><button type="button" disabled={busy} onClick={() => openEdit(node)}>调整</button><button type="button" disabled={busy} onClick={() => void removeNode(node)}>移除</button></span>}
           </article>)}</div> : <p className="status">这一天还没有安排地点。</p>}
         </section>
         <div className="plan-map-column"><RouteMap title="今天的地点地图" points={routePoints} selectedPointId={selectedStop} disclaimer="点击左侧行程可选中地点；地图上的编号对应游览顺序。" onSelect={setSelectedStop} showDrivingRoute={routePoints.length > 1} />
@@ -124,7 +129,7 @@ export default function PlanPage() {
       </div>
       {latest.warnings.length > 0 && <section className="plan-warnings"><h2>出发前留意</h2>{latest.warnings.map((warning, index) => <p role="status" key={index}>✳ {warning}</p>)}</section>}
       <details className="plan-history"><summary>查看历史计划版本</summary>{plans.map((plan) => <p key={plan.id}>v{plan.version} · {plan.created_at}</p>)}</details>
-    </> : !loading && !error ? <section className="plan-empty layer"><span aria-hidden="true">✦</span><h2>{latest ? "当前计划还没有安排地点" : "你的第一版行程还没开始"}</h2><p>{latest ? "地点移除后，当前计划会生成一个保留历史的新版本。添加新的想去地点后，可以重新生成安排。" : "先添加想去的地点，系统会按旅行日期和地点信息安排计划。"}</p><div className="actions"><Link className="primary" href={`/places?tripId=${tripId}`}>去添加想去的地方</Link>{wishlist.length > 0 && <button className="secondary" disabled={busy} onClick={() => void generate()}>{busy ? "正在规划…" : "重新生成计划"}</button>}<Link className="secondary" href={`/advisor?tripId=${tripId}`}>先咨询旅行顾问</Link></div></section> : null}
+    </> : !loading && !error ? <section className="plan-empty layer"><span aria-hidden="true">✦</span><h2>{latest ? "当前计划还没有安排地点" : "你的第一版行程还没开始"}</h2><p>{latest ? "地点移除后，当前计划会生成一个保留历史的新版本。添加新的想去地点后，可以重新生成安排。" : "先添加想去的地点，系统会按旅行日期和地点信息安排计划。"}</p><div className="actions">{trip?.access_role !== "VIEWER" && <><Link className="primary" href={`/places?tripId=${tripId}`}>去添加想去的地方</Link>{wishlist.length > 0 && <button className="secondary" disabled={busy} onClick={() => void generate()}>{busy ? "正在规划…" : "重新生成计划"}</button>}</>}<Link className="secondary" href={`/advisor?tripId=${tripId}`}>先咨询旅行顾问</Link></div></section> : null}
     <dialog className="plan-edit-dialog" ref={editDialog} onClose={() => setEditingNode(null)} onClick={(event) => { if (event.target === event.currentTarget) setEditingNode(null); }} aria-labelledby="plan-edit-title">
       {editingNode && <form className="plan-edit-panel" onSubmit={(event) => void saveNode(event)}><header><div><p className="eyebrow">EDIT STOP</p><h2 id="plan-edit-title">调整行程安排</h2><p>{editingNode.name}</p></div><button className="moment-dialog-close" type="button" aria-label="关闭" onClick={() => setEditingNode(null)}>×</button></header>
         <label>日期<input type="date" required value={nodeForm.day} onChange={(event) => setNodeForm({ ...nodeForm, day: event.target.value })} /></label>

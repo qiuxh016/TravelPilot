@@ -238,18 +238,13 @@ app.include_router(moments_router, prefix="/api/v1")
 app.include_router(advisor_router, prefix="/api/v1")
 app.include_router(weather_router, prefix="/api/v1")
 
-app.include_router(
-    trips_router,
-    prefix="/api/v1",
-    dependencies=[Depends(require_request_scope)],
-)
+app.include_router(trips_router, prefix="/api/v1")
 
 
 # 创建和查询某个 Trip 下的 Wishlist
 app.include_router(
     trip_wishlist_router,
     prefix="/api/v1",
-    dependencies=[Depends(require_request_scope)],
 )
 
 
@@ -257,7 +252,6 @@ app.include_router(
 app.include_router(
     wishlist_item_router,
     prefix="/api/v1",
-    dependencies=[Depends(require_request_scope)],
 )
 
 app.include_router(
@@ -266,7 +260,7 @@ app.include_router(
     dependencies=[Depends(require_request_scope)],
 )
 
-app.include_router(plans_router, prefix="/api/v1", dependencies=[Depends(require_request_scope)])
+app.include_router(plans_router, prefix="/api/v1")
 
 app.include_router(content_router, prefix="/api/v1", dependencies=[Depends(require_request_scope)])
 app.include_router(agent_router, prefix="/api/v1", dependencies=[Depends(require_request_scope)])

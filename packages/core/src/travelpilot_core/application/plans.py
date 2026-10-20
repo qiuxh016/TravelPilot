@@ -19,7 +19,10 @@ class PlanService:
         self.repository = PlanRepository(session)
 
     async def generate(self, trip_id: UUID, maps=None, constraints: dict | None = None,
-                       *, commit: bool = True) -> TripPlanModel:
+                       *, commit: bool = True, expected_base_version: int | None = None,
+                       actor_user_id: UUID | None = None,
+                       actor_display_name: str | None = None,
+                       reason: str | None = None) -> TripPlanModel:
         trip = await self.session.get(TripModel, trip_id)
         if trip is None:
             raise LookupError("Trip not found")
@@ -50,7 +53,15 @@ class PlanService:
         visits, warnings = build_itinerary(trip.start_date, trip.end_date, candidates, matrix, **options)
         warnings.extend(validate_visits(visits))
         version = await self.repository.next_version(trip_id)
-        plan = TripPlanModel(trip_id=trip_id, version=version, status="READY", warnings=warnings)
+        base_version = version - 1
+        if expected_base_version is not None and expected_base_version != base_version:
+            raise ValueError(f"PLAN_VERSION_CONFLICT:{base_version}")
+        plan = TripPlanModel(
+            trip_id=trip_id, version=version, status="READY", warnings=warnings,
+            base_version=base_version, created_by_user_id=actor_user_id,
+            created_by_display_name=actor_display_name,
+            change_reason=reason or "生成旅行计划",
+        )
         nodes = [TripPlanNodeModel(
             poi_id=visit.candidate.poi_id, day=visit.day,
             start_time=visit.start_time, end_time=visit.end_time,
@@ -65,13 +76,18 @@ class PlanService:
         return await self.repository.get_with_nodes(trip_id, plan_id)
 
     async def _revise_node(self, plan_id: UUID, node_id: UUID,
-                           changes: dict | None, reason: str | None):
+                           changes: dict | None, reason: str | None,
+                           expected_base_version: int | None = None,
+                           actor_user_id: UUID | None = None,
+                           actor_display_name: str | None = None):
         source = await self.session.get(TripPlanModel, plan_id)
         if source is None:
             return None
         latest = await self.repository.next_version(source.trip_id) - 1
+        if expected_base_version is not None and expected_base_version != latest:
+            raise ValueError(f"PLAN_VERSION_CONFLICT:{latest}")
         if source.version != latest:
-            raise ValueError("PLAN_NOT_LATEST")
+            raise ValueError(f"PLAN_VERSION_CONFLICT:{latest}")
         rows = (await self.repository.get_with_nodes(source.trip_id, plan_id))[1]
         if not any(node.id == node_id for node, _ in rows):
             return None
@@ -84,7 +100,10 @@ class PlanService:
             if any(changes.get(key) is None for key in changes):
                 raise ValueError("NULL_PLAN_FIELD")
         revised = TripPlanModel(trip_id=source.trip_id, version=latest + 1,
-                                status=source.status, warnings=list(source.warnings))
+                                status=source.status, warnings=list(source.warnings),
+                                base_version=latest, created_by_user_id=actor_user_id,
+                                created_by_display_name=actor_display_name,
+                                change_reason=reason or ("移除行程地点" if changes is None else "调整行程"))
         self.session.add(revised)
         await self.session.flush()
         original = None
@@ -121,19 +140,34 @@ class PlanService:
             stable_key=str(original.poi_id), reason_code="USER_EDIT",
             change_cost=3 if changes is None else 1,
             before_data=before, after_data=after, reason=reason or "USER_EDIT",
+            actor_user_id=actor_user_id, actor_display_name=actor_display_name,
         ))
         await self.session.commit()
         await self.session.refresh(revised)
         return revised
 
     async def update_node(self, plan_id: UUID, node_id: UUID,
-                          changes: dict, reason: str | None):
-        return await self._revise_node(plan_id, node_id, changes, reason)
+                          changes: dict, reason: str | None,
+                          expected_base_version: int | None = None,
+                          actor_user_id: UUID | None = None,
+                          actor_display_name: str | None = None):
+        return await self._revise_node(
+            plan_id, node_id, changes, reason, expected_base_version,
+            actor_user_id, actor_display_name,
+        )
 
-    async def delete_node(self, plan_id: UUID, node_id: UUID, reason: str | None):
-        return await self._revise_node(plan_id, node_id, None, reason)
+    async def delete_node(self, plan_id: UUID, node_id: UUID, reason: str | None,
+                          expected_base_version: int | None = None,
+                          actor_user_id: UUID | None = None,
+                          actor_display_name: str | None = None):
+        return await self._revise_node(
+            plan_id, node_id, None, reason, expected_base_version,
+            actor_user_id, actor_display_name,
+        )
 
-    async def remove_poi_from_latest(self, trip_id: UUID, poi_id: UUID) -> bool:
+    async def remove_poi_from_latest(self, trip_id: UUID, poi_id: UUID,
+                                    actor_user_id: UUID | None = None,
+                                    actor_display_name: str | None = None) -> bool:
         """Create a latest-plan revision without nodes for a removed wishlist POI."""
         next_version = await self.repository.next_version(trip_id)
         plans = await self.repository.list_by_trip(trip_id)
@@ -150,6 +184,10 @@ class PlanService:
             version=next_version,
             status=source.status,
             warnings=list(source.warnings),
+            base_version=source.version,
+            created_by_user_id=actor_user_id,
+            created_by_display_name=actor_display_name,
+            change_reason="从共同收藏中移除地点",
         )
         self.session.add(revised)
         await self.session.flush()
@@ -164,6 +202,7 @@ class PlanService:
                     plan_id=revised.id, change_type="REMOVE", stable_key=str(node.poi_id),
                     reason_code="USER_EDIT", change_cost=3, before_data=before,
                     after_data=None, reason="REMOVED_FROM_WISHLIST",
+                    actor_user_id=actor_user_id, actor_display_name=actor_display_name,
                 ))
                 continue
             self.session.add(TripPlanNodeModel(

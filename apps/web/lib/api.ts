@@ -37,6 +37,7 @@ export type Trip = {
   created_at: string;
   updated_at: string;
   has_plan: boolean;
+  access_role: "OWNER" | "EDITOR" | "VIEWER";
 };
 
 export type TripWeather = {
@@ -368,18 +369,24 @@ export type PlanNode = {
 };
 export type Plan = {
   id: string; trip_id: string; version: number; status: string;
-  warnings: string[]; created_at: string; nodes: PlanNode[];
+  warnings: string[]; created_at: string; base_version: number | null;
+  created_by_user_id: string | null; created_by_display_name: string | null;
+  change_reason: string | null; nodes: PlanNode[];
 };
-export const createPlanRun = (tripId: string) => request<Plan>(`/api/v1/trips/${tripId}/plan-runs`, { method: "POST" });
+export const createPlanRun = (tripId: string, expectedBaseVersion?: number) => request<Plan>(`/api/v1/trips/${tripId}/plan-runs`, {
+  method: "POST", body: JSON.stringify({ expected_base_version: expectedBaseVersion }),
+});
 export const listPlans = (tripId: string) => request<Plan[]>(`/api/v1/trips/${tripId}/plans`);
 export const getPlan = (tripId: string, planId: string) => request<Plan>(`/api/v1/trips/${tripId}/plans/${planId}`);
-export type PlanNodeUpdateInput = Partial<Pick<PlanNode, "day" | "start_time" | "end_time" | "priority" | "status" | "note">>;
+export type PlanNodeUpdateInput = Partial<Pick<PlanNode, "day" | "start_time" | "end_time" | "priority" | "status" | "note">> & {
+  expected_base_version?: number; reason?: string;
+};
 export const updatePlanNode = (tripId: string, planId: string, nodeId: string, input: PlanNodeUpdateInput) =>
   request<Plan>(`/api/v1/trips/${tripId}/plans/${planId}/nodes/${nodeId}`, {
     method: "PATCH", body: JSON.stringify(input),
   });
-export const deletePlanNode = (tripId: string, planId: string, nodeId: string) =>
-  request<void>(`/api/v1/trips/${tripId}/plans/${planId}/nodes/${nodeId}?reason=USER_EDIT`, { method: "DELETE" });
+export const deletePlanNode = (tripId: string, planId: string, nodeId: string, expectedBaseVersion?: number) =>
+  request<void>(`/api/v1/trips/${tripId}/plans/${planId}/nodes/${nodeId}?reason=USER_EDIT${expectedBaseVersion === undefined ? "" : `&expected_base_version=${expectedBaseVersion}`}`, { method: "DELETE" });
 
 export type Candidate = {
   id: string; entity_id: string; provider: string; provider_id: string;
@@ -495,8 +502,9 @@ export type CollaborativeTrip = {
   owner_display_name: string; role: TripMemberRole;
 };
 export type CollaborativeTripDetail = CollaborativeTrip & {
+  plan_id: string | null;
   plan_version: number | null;
-  plan_nodes: { name: string; day: string; start_time: string; end_time: string; status: string }[];
+  plan_nodes: PlanNode[];
 };
 export const listFriends = () => request<Friendship[]>("/api/v1/friends");
 export const listFriendRequests = () => request<Friendship[]>("/api/v1/friends/requests");

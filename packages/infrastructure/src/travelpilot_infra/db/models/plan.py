@@ -18,6 +18,12 @@ class TripPlanModel(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="READY")
     warnings: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    base_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by_display_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    change_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
 
 

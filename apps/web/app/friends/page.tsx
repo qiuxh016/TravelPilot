@@ -7,6 +7,7 @@ import {
   acceptTripInvitation,
   analyzeFriendConversation,
   blockFriend,
+  deletePlanNode,
   createFriendRequestForUser,
   declineFriendRequest,
   getFriendAvatarBlob,
@@ -14,6 +15,7 @@ import {
   getOrCreateFriendConversation,
   getSharedTrip,
   getCollaborativeTrip,
+  updatePlanNode,
   listFriendRequests,
   listBlockedFriends,
   listFriends,
@@ -159,6 +161,8 @@ export default function FriendsPage() {
   const [collaborativeTrips, setCollaborativeTrips] = useState<CollaborativeTrip[]>([]);
   const [selectedTrip, setSelectedTrip] = useState<SharedTripDetail | null>(null);
   const [selectedCollaborativeTrip, setSelectedCollaborativeTrip] = useState<CollaborativeTripDetail | null>(null);
+  const [editingSharedNodeId, setEditingSharedNodeId] = useState("");
+  const [sharedNodeForm, setSharedNodeForm] = useState({ day: "", start_time: "", end_time: "" });
   const [chatFriend, setChatFriend] = useState<Friendship | null>(null);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<FriendSearchResult[]>([]);
@@ -265,6 +269,37 @@ export default function FriendsPage() {
     catch (cause) { setError(cause instanceof Error ? cause.message : "这段小团体旅行当前不可查看"); await load(); }
   }
 
+  function editSharedNode(node: CollaborativeTripDetail["plan_nodes"][number]) {
+    setEditingSharedNodeId(node.id);
+    setSharedNodeForm({ day: node.day, start_time: node.start_time.slice(0, 5), end_time: node.end_time.slice(0, 5) });
+  }
+
+  async function saveSharedNode() {
+    if (!selectedCollaborativeTrip?.plan_id || selectedCollaborativeTrip.plan_version === null || !editingSharedNodeId) return;
+    setBusy(true); setError("");
+    try {
+      await updatePlanNode(selectedCollaborativeTrip.id, selectedCollaborativeTrip.plan_id, editingSharedNodeId, {
+        ...sharedNodeForm,
+        expected_base_version: selectedCollaborativeTrip.plan_version,
+        reason: "小团体成员调整行程",
+      });
+      setSelectedCollaborativeTrip(await getCollaborativeTrip(selectedCollaborativeTrip.id));
+      setEditingSharedNodeId("");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "共享行程更新失败，请刷新后重试"); }
+    finally { setBusy(false); }
+  }
+
+  async function removeSharedNode(node: CollaborativeTripDetail["plan_nodes"][number]) {
+    if (!selectedCollaborativeTrip?.plan_id || selectedCollaborativeTrip.plan_version === null) return;
+    if (!window.confirm(`从共同计划中移除“${node.name}”？历史版本会保留。`)) return;
+    setBusy(true); setError("");
+    try {
+      await deletePlanNode(selectedCollaborativeTrip.id, selectedCollaborativeTrip.plan_id, node.id, selectedCollaborativeTrip.plan_version);
+      setSelectedCollaborativeTrip(await getCollaborativeTrip(selectedCollaborativeTrip.id));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "移除失败，请刷新后重试"); }
+    finally { setBusy(false); }
+  }
+
   async function respondToTripInvitation(invitation: TripInvitation, accept: boolean) {
     setBusy(true); setError(""); setNotice("");
     try {
@@ -338,7 +373,14 @@ export default function FriendsPage() {
       </li>)}</ul>}
       {selectedCollaborativeTrip && <div className="shared-trip-detail">
         <div className="collaborative-trip-heading"><div><h3>{selectedCollaborativeTrip.destination}</h3><p>{selectedCollaborativeTrip.start_date} 至 {selectedCollaborativeTrip.end_date} · 发起人 {selectedCollaborativeTrip.owner_display_name} · {selectedCollaborativeTrip.role === "EDITOR" ? "编辑者" : "查看者"}</p></div><button className="secondary" disabled={busy} onClick={() => void openCollaborativeTrip(selectedCollaborativeTrip)}>刷新行程</button></div>
-        <div><h4>共享行程 {selectedCollaborativeTrip.plan_version ? `· v${selectedCollaborativeTrip.plan_version}` : ""}</h4>{selectedCollaborativeTrip.plan_nodes.length ? <ol>{selectedCollaborativeTrip.plan_nodes.map((node, index) => <li key={`${node.day}-${node.start_time}-${index}`}><strong>{node.day} · {node.start_time}–{node.end_time}</strong><span>{node.name}</span></li>)}</ol> : <p className="social-empty">这段旅行还没有保存的行程计划。</p>}</div>
+        <div><h4>共享行程 {selectedCollaborativeTrip.plan_version ? `· v${selectedCollaborativeTrip.plan_version}` : ""}</h4>{selectedCollaborativeTrip.plan_nodes.length ? <ol className="shared-plan-list">{selectedCollaborativeTrip.plan_nodes.map((node) => <li key={node.id}>
+          <div className="shared-plan-node"><strong>{node.day} · {node.start_time.slice(0, 5)}–{node.end_time.slice(0, 5)}</strong><span>{node.name}</span>{node.note && <small>{node.note}</small>}</div>
+          {selectedCollaborativeTrip.role === "EDITOR" && selectedCollaborativeTrip.plan_id && selectedCollaborativeTrip.plan_version !== null && <div className="shared-plan-actions">
+            {editingSharedNodeId === node.id ? <><label>日期<input type="date" value={sharedNodeForm.day} onChange={(event) => setSharedNodeForm({ ...sharedNodeForm, day: event.target.value })} /></label><label>开始<input type="time" value={sharedNodeForm.start_time} onChange={(event) => setSharedNodeForm({ ...sharedNodeForm, start_time: event.target.value })} /></label><label>结束<input type="time" value={sharedNodeForm.end_time} onChange={(event) => setSharedNodeForm({ ...sharedNodeForm, end_time: event.target.value })} /></label><button className="primary" disabled={busy} onClick={() => void saveSharedNode()}>保存</button><button className="secondary" disabled={busy} onClick={() => setEditingSharedNodeId("")}>取消</button></> : <><button className="secondary" disabled={busy} onClick={() => editSharedNode(node)}>调整</button><button className="social-danger" disabled={busy} onClick={() => void removeSharedNode(node)}>移除</button></>}
+          </div>}
+        </li>)}</ol> : <p className="social-empty">这段旅行还没有保存的行程计划。</p>}
+          <div className="shared-plan-footer"><Link className="secondary" href={`/trips/${selectedCollaborativeTrip.id}/plan`}>打开完整行程</Link>{selectedCollaborativeTrip.role === "EDITOR" && <Link className="secondary" href={`/places?tripId=${selectedCollaborativeTrip.id}`}>添加共同地点</Link>}{selectedCollaborativeTrip.role === "EDITOR" && <p className="shared-plan-hint">编辑者可以添加、调整或移除共同计划地点；保存时会检查版本，避免覆盖其他成员刚提交的修改。</p>}</div>
+        </div>
       </div>}
     </section>
     <section className="social-card">

@@ -14,8 +14,8 @@ from travelpilot_infra.db.models.user import UserModel
 from travelpilot_infra.db.session import get_session
 
 from travelpilot_api.auth import get_current_user
-from travelpilot_api.schemas.social import SharedTripPlanNodeRead
 from travelpilot_api.schemas.trip_members import (
+    CollaborativePlanNodeRead,
     CollaborativeTripDetailRead,
     CollaborativeTripRead,
     TripInvitationRead,
@@ -256,7 +256,8 @@ async def get_collaborative_trip(
     latest_version = await session.scalar(select(func.max(TripPlanModel.version)).where(
         TripPlanModel.trip_id == trip_id
     ))
-    nodes: list[SharedTripPlanNodeRead] = []
+    plan_id = None
+    nodes: list[CollaborativePlanNodeRead] = []
     if latest_version is not None:
         plan_id = await session.scalar(select(TripPlanModel.id).where(
             TripPlanModel.trip_id == trip_id,
@@ -268,12 +269,16 @@ async def get_collaborative_trip(
             .where(TripPlanNodeModel.plan_id == plan_id)
             .order_by(TripPlanNodeModel.day, TripPlanNodeModel.start_time)
         )).all()
-        nodes = [SharedTripPlanNodeRead(
+        nodes = [CollaborativePlanNodeRead(
+            id=node.id,
+            poi_id=node.poi_id,
             name=name,
             day=node.day,
             start_time=node.start_time.isoformat(),
             end_time=node.end_time.isoformat(),
+            priority=node.priority,
             status=node.status,
+            note=node.note,
         ) for node, name in rows]
 
     return CollaborativeTripDetailRead(
@@ -283,6 +288,7 @@ async def get_collaborative_trip(
         end_date=access.trip.end_date,
         owner_display_name=owner.display_name or owner.username,
         role=access.membership.role,
+        plan_id=plan_id,
         plan_version=latest_version,
         plan_nodes=nodes,
     )

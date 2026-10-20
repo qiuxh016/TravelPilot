@@ -3,8 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from travelpilot_core.application.trips import TripService
-from travelpilot_infra.db.models.trip import TripModel
+from travelpilot_core.application.trips import TripService, find_duplicate_trip
 from travelpilot_infra.db.models.plan import TripPlanModel
 from travelpilot_infra.db.models.user import UserModel
 from travelpilot_infra.db.session import get_session
@@ -14,6 +13,7 @@ from travelpilot_api.auth import get_current_user
 from travelpilot_api.dependencies import get_weather_provider
 from travelpilot_api.schemas.trips import TripCreate, TripRead, TripUpdate
 from travelpilot_api.schemas.weather import TripWeatherRead
+from travelpilot_api.trip_access import get_trip_access
 
 router = APIRouter(
     prefix="/trips",
@@ -28,11 +28,8 @@ async def get_trip_weather(
     user: UserModel = Depends(get_current_user),
     weather=Depends(get_weather_provider),
 ):
-    trip = await session.scalar(select(TripModel).where(
-        TripModel.id == trip_id, TripModel.owner_id == user.id,
-    ))
-    if trip is None:
-        raise HTTPException(status_code=404, detail="Trip not found")
+    access = await get_trip_access(session, trip_id=trip_id, user_id=user.id)
+    trip = access.trip
     try:
         return await weather.forecast(trip.destination, trip.start_date, trip.end_date)
     except WeatherProviderError as exc:
@@ -94,16 +91,8 @@ async def get_trip(
     session: AsyncSession = Depends(get_session),
     user: UserModel = Depends(get_current_user),
 ) -> TripRead:
-    service = TripService(session)
-    trip = await service.get_trip(trip_id, user.id)
-
-    if trip is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Trip not found",
-        )
-
-    return TripRead.model_validate(trip)
+    access = await get_trip_access(session, trip_id=trip_id, user_id=user.id)
+    return TripRead.model_validate(access.trip).model_copy(update={"access_role": access.role})
 
 
 @router.patch(
@@ -116,20 +105,23 @@ async def update_trip(
     session: AsyncSession = Depends(get_session),
     user: UserModel = Depends(get_current_user),
 ) -> TripRead:
-    service = TripService(session)
-
+    access = await get_trip_access(
+        session, trip_id=trip_id, user_id=user.id, required_role="EDITOR", lock=True,
+    )
     changes = payload.model_dump(exclude_unset=True)
-    try:
-        trip = await service.update_trip(trip_id, user.id, changes)
-    except ValueError as exc:
-        if str(exc) == "DUPLICATE_TRIP":
-            raise HTTPException(status_code=409, detail="已有一段目的地和日期相同的旅行，不能保存为重复记录。") from exc
-        raise
-
-    if trip is None:
-        raise HTTPException(status_code=404, detail="Trip not found")
-
-    return TripRead.model_validate(trip)
+    trip = access.trip
+    destination = changes.get("destination", trip.destination)
+    start_date = changes.get("start_date", trip.start_date)
+    end_date = changes.get("end_date", trip.end_date)
+    if await find_duplicate_trip(
+        session, trip.owner_id, destination, start_date, end_date, exclude_trip_id=trip.id,
+    ):
+        raise HTTPException(status_code=409, detail="已有一段目的地和日期相同的旅行，不能保存为重复记录。")
+    for field, value in changes.items():
+        setattr(trip, field, value)
+    await session.commit()
+    await session.refresh(trip)
+    return TripRead.model_validate(trip).model_copy(update={"access_role": access.role})
 
 
 @router.delete(
@@ -141,8 +133,11 @@ async def delete_trip(
     session: AsyncSession = Depends(get_session),
     user: UserModel = Depends(get_current_user),
 ) -> None:
+    access = await get_trip_access(
+        session, trip_id=trip_id, user_id=user.id, required_role="OWNER",
+    )
     service = TripService(session)
-    deleted = await service.delete_trip(trip_id, user.id)
+    deleted = await service.delete_trip(trip_id, access.trip.owner_id)
 
     if not deleted:
         raise HTTPException(

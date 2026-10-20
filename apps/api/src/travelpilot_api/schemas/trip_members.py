@@ -4,8 +4,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from travelpilot_api.schemas.social import SharedTripPlanNodeRead
-
 TripMemberRole = Literal["EDITOR", "VIEWER"]
 TripMemberStatus = Literal["PENDING", "ACCEPTED", "DECLINED", "REVOKED"]
 
@@ -55,6 +53,19 @@ class CollaborativeTripRead(BaseModel):
     role: Literal["EDITOR", "VIEWER"]
 
 
+class CollaborativePlanNodeRead(BaseModel):
+    id: UUID
+    poi_id: UUID
+    name: str
+    day: date
+    start_time: str
+    end_time: str
+    priority: int
+    status: str
+    note: str | None = None
+
+
 class CollaborativeTripDetailRead(CollaborativeTripRead):
+    plan_id: UUID | None = None
     plan_version: int | None = None
-    plan_nodes: list[SharedTripPlanNodeRead] = Field(default_factory=list)
+    plan_nodes: list[CollaborativePlanNodeRead] = Field(default_factory=list)

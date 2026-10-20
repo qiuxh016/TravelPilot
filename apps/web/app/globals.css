@@ -537,6 +537,17 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 .shared-trip-detail ol { display: grid; gap: 5px; margin: 10px 0 0; padding-left: 24px; }
 .shared-trip-detail li { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 12px; }
 .shared-trip-detail li strong { font-variant-numeric: tabular-nums; }
+.shared-trip-detail .shared-plan-list { padding: 0; list-style: none; }
+.shared-trip-detail .shared-plan-list > li { align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--border); padding: 10px 0; }
+.shared-plan-node { display: grid; gap: 3px; min-width: 160px; }
+.shared-plan-node small, .shared-plan-hint { color: var(--muted); }
+.shared-plan-actions { display: flex; align-items: end; flex-wrap: wrap; gap: 7px; }
+.shared-plan-actions label { display: grid; gap: 3px; color: var(--muted); font-size: 11px; }
+.shared-plan-actions input { min-width: 112px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; color: var(--text); background: var(--surface); }
+.shared-plan-actions button { padding: 6px 10px; font-size: 12px; }
+.shared-plan-footer { display: grid; justify-items: start; gap: 7px; margin-top: 10px; }
+.shared-plan-footer > .secondary { padding: 7px 10px; font-size: 12px; }
+.shared-plan-hint { margin-top: 8px !important; }
 .social-footnote { margin-top: 20px; color: var(--muted); font-size: 12px; }
 .social-footnote a { color: var(--accent); }
 .moments-page .hero { padding: 24px 0 18px; }

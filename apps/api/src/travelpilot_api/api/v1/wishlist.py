@@ -1,20 +1,22 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from travelpilot_core.application.plans import PlanService
 from travelpilot_core.application.wishlist import WishlistService
-from travelpilot_infra.db.models.trip import TripModel
+from travelpilot_infra.db.models.user import UserModel
 from travelpilot_infra.db.models.wishlist import WishlistItemModel
 from travelpilot_infra.db.session import get_session
 
-from travelpilot_api.dependencies import get_owned_trip, get_owned_wishlist_item
+from travelpilot_api.auth import get_current_user
 from travelpilot_api.schemas.environment import user_profile
 from travelpilot_api.schemas.wishlist import (
     WishlistCreate,
     WishlistRead,
     WishlistUpdate,
 )
+from travelpilot_api.trip_access import get_trip_access
 
 # 创建和查询某个旅行下的 Wishlist
 trip_wishlist_router = APIRouter(
@@ -52,6 +54,20 @@ def to_wishlist_read(item, poi) -> WishlistRead:
     )
 
 
+async def _wishlist_item_access(session: AsyncSession, item_id: UUID, user_id: UUID,
+                                role: str, lock: bool = False):
+    item = await session.scalar(select(WishlistItemModel).where(
+        WishlistItemModel.id == item_id,
+    ).with_for_update() if lock else select(WishlistItemModel).where(WishlistItemModel.id == item_id))
+    if item is None:
+        raise HTTPException(status_code=404, detail="Wishlist item not found")
+    access = await get_trip_access(
+        session, trip_id=item.trip_id, user_id=user_id,
+        required_role=role, lock=lock,
+    )
+    return item, access
+
+
 @trip_wishlist_router.post(
     "",
     response_model=WishlistRead,
@@ -61,10 +77,11 @@ async def create_wishlist_item(
     trip_id: UUID,
     payload: WishlistCreate,
     session: AsyncSession = Depends(get_session),
-    _trip: TripModel = Depends(get_owned_trip),
+    user: UserModel = Depends(get_current_user),
 ) -> WishlistRead:
     """为指定 Trip 添加一个 Wishlist 地点。"""
 
+    await get_trip_access(session, trip_id=trip_id, user_id=user.id, required_role="EDITOR", lock=True)
     service = WishlistService(session)
 
     try:
@@ -89,10 +106,11 @@ async def create_wishlist_item(
 async def list_wishlist_items(
     trip_id: UUID,
     session: AsyncSession = Depends(get_session),
-    _trip: TripModel = Depends(get_owned_trip),
+    user: UserModel = Depends(get_current_user),
 ) -> list[WishlistRead]:
     """查询指定 Trip 的全部 Wishlist。"""
 
+    await get_trip_access(session, trip_id=trip_id, user_id=user.id)
     service = WishlistService(session)
 
     try:
@@ -117,10 +135,11 @@ async def update_wishlist_item(
     item_id: UUID,
     payload: WishlistUpdate,
     session: AsyncSession = Depends(get_session),
-    _item: WishlistItemModel = Depends(get_owned_wishlist_item),
+    user: UserModel = Depends(get_current_user),
 ) -> WishlistRead:
     """修改 Wishlist 的优先级、兴趣分数和备注。"""
 
+    _item, _access = await _wishlist_item_access(session, item_id, user.id, "EDITOR", lock=True)
     service = WishlistService(session)
 
     result = await service.update_item(
@@ -148,14 +167,17 @@ async def update_wishlist_item(
 async def delete_wishlist_item(
     item_id: UUID,
     session: AsyncSession = Depends(get_session),
-    _item: WishlistItemModel = Depends(get_owned_wishlist_item),
+    user: UserModel = Depends(get_current_user),
 ) -> None:
     """删除 WishlistItem，但保留 POI。"""
 
+    _item, _access = await _wishlist_item_access(session, item_id, user.id, "EDITOR", lock=True)
     service = WishlistService(session)
 
     try:
-        await PlanService(session).remove_poi_from_latest(_item.trip_id, _item.poi_id)
+        await PlanService(session).remove_poi_from_latest(
+            _item.trip_id, _item.poi_id, user.id, user.display_name or user.username,
+        )
         deleted = await service.delete_item(item_id, commit=False)
         if not deleted:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wishlist item not found")

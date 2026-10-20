@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { addWishlistItem, listTrips, searchPlaces, type Place, type Trip } from "../../lib/api";
+import { addWishlistItem, getTrip, listTrips, searchPlaces, type Place, type Trip } from "../../lib/api";
 import { RouteMap } from "../../components/route-map";
 import { tripOptionLabel, useTripSelection } from "../../components/trip-selection-context";
 
@@ -28,12 +28,16 @@ function PlacesContent() {
 
   useEffect(() => {
     let active = true;
-    void listTrips().then((rows) => {
+    void Promise.all([
+      listTrips(),
+      queryTripId ? getTrip(queryTripId).catch(() => null) : Promise.resolve(null),
+    ]).then(([rows, linkedTrip]) => {
       if (!active) return;
-      setTrips(rows);
+      const nextTrips = linkedTrip && !rows.some((trip) => trip.id === linkedTrip.id) ? [...rows, linkedTrip] : rows;
+      setTrips(nextTrips);
       if (queryTripId) {
-        const linkedTrip = rows.find((trip) => trip.id === queryTripId);
-        if (linkedTrip) { setTripId(linkedTrip.id); setCity(linkedTrip.destination); setExploreMode("trip"); }
+        const selected = nextTrips.find((trip) => trip.id === queryTripId);
+        if (selected) { setTripId(selected.id); setCity(selected.destination); setExploreMode("trip"); }
       }
     }).catch((error) => { if (active) setMessage(error instanceof Error ? error.message : "旅行列表暂时无法加载"); });
     return () => { active = false; };
@@ -137,7 +141,7 @@ function PlacesContent() {
         {message && <p className="places-feedback" role="status">{message}</p>}
         {places.length === 0 ? <div className="places-empty"><span className="places-empty-doodle" aria-hidden="true">⌖</span><div><h3>输入一个模糊的想法也可以</h3><p>比如“老茶馆”“夜景”“适合带孩子”。地图会帮你找到附近的真实地点。</p></div><span className="places-empty-route" aria-hidden="true">············→</span></div> : visiblePlaces.length ? <ol className="places-result-list">{displayedPlaces.map((place, index) => {
           const id = `${place.provider}:${place.provider_id}`;
-          return <li className="places-result-row" key={id}><span className="places-result-index">{String(index + 1).padStart(2, "0")}</span><div className="places-result-copy"><div className="places-result-name"><h3>{place.name}</h3><span>{categoryNames[place.category] ?? place.category}</span></div><p>{place.address || "地址信息暂未提供"}</p><small>约 {place.suggested_duration_min} 分钟 · {place.latitude.toFixed(4)}, {place.longitude.toFixed(4)}</small></div><button type="button" className="places-add-button" onClick={() => void add(place)} disabled={busy || !tripId} aria-label={`收藏${place.name}`}>{!tripId ? "先建旅行" : "＋ 收藏"}</button></li>;
+          return <li className="places-result-row" key={id}><span className="places-result-index">{String(index + 1).padStart(2, "0")}</span><div className="places-result-copy"><div className="places-result-name"><h3>{place.name}</h3><span>{categoryNames[place.category] ?? place.category}</span></div><p>{place.address || "地址信息暂未提供"}</p><small>约 {place.suggested_duration_min} 分钟 · {place.latitude.toFixed(4)}, {place.longitude.toFixed(4)}</small></div><button type="button" className="places-add-button" onClick={() => void add(place)} disabled={busy || !tripId || selectedTrip?.access_role === "VIEWER"} aria-label={`收藏${place.name}`}>{!tripId ? "先建旅行" : selectedTrip?.access_role === "VIEWER" ? "仅可查看" : "＋ 收藏"}</button></li>;
         })}</ol> : <div className="places-empty places-empty-filter"><p>这个分类暂时没有地点，切回“全部”看看。</p></div>}
         {visiblePlaces.length > 8 && <button type="button" className="places-show-more" onClick={() => setShowAll((current) => !current)}>{showAll ? "收起地点" : `再看 ${visiblePlaces.length - 8} 个地点`} <span aria-hidden="true">{showAll ? "↑" : "↓"}</span></button>}
       </div>

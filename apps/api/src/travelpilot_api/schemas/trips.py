@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -33,6 +34,7 @@ class TripRead(TripCreate):
     created_at: datetime
     updated_at: datetime
     has_plan: bool = False
+    access_role: Literal["OWNER", "EDITOR", "VIEWER"] = "OWNER"
 
     model_config = {
         "from_attributes": True,
