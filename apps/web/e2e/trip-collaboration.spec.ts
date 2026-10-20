@@ -86,7 +86,15 @@ test("好友可接受小团体旅行邀请并查看共享旅行，所有者可�
     const membership = await invited.json() as { id: string };
 
     await page.context().addCookies(friend.state.cookies);
+    await page.route("**/api/v1/group-trips", (route) => route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Not Found" }),
+    }));
     await page.goto("/friends");
+    await expect(page.getByRole("heading", { name: /我的好友 1/ })).toBeVisible();
+    await expect(page.locator(".social-message.is-error")).toContainText("小团体旅行列表");
+    await page.unroute("**/api/v1/group-trips");
     await expect(page.getByRole("heading", { name: /小团体旅行邀请/ })).toBeVisible();
     await page.getByRole("button", { name: "接受", exact: true }).click();
     await expect(page.getByRole("status")).toContainText("已加入旅行小团体");

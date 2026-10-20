@@ -4,6 +4,7 @@ import Link from "next/link";
 import { TripDiscussion } from "../../components/trip-discussion";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
+  ApiError,
   acceptFriendRequest,
   acceptTripInvitation,
   analyzeFriendConversation,
@@ -178,18 +179,29 @@ export default function FriendsPage() {
     try {
       setLoading(true);
       setError("");
-      const [friendRows, requestRows, blockedRows, tripRows, invitationRows, groupTripRows] = await Promise.all([
+      const [friendResult, requestResult, blockedResult, tripResult, invitationResult, groupTripResult] = await Promise.allSettled([
         listFriends(), listFriendRequests(), listBlockedFriends(), listSharedTrips(),
         listTripInvitations(), listCollaborativeTrips(),
       ]);
-      setFriends(friendRows);
-      setRequests(requestRows);
-      setBlocked(blockedRows);
-      setSharedTrips(tripRows);
-      setTripInvitations(invitationRows);
-      setCollaborativeTrips(groupTripRows);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "好友信息暂时无法加载");
+      const failures: string[] = [];
+      const applyResult = <T,>(result: PromiseSettledResult<T>, label: string, apply: (value: T) => void) => {
+        if (result.status === "fulfilled") {
+          apply(result.value);
+          return;
+        }
+        const cause = result.reason;
+        const reason = cause instanceof ApiError && cause.status === 404
+          ? "接口不存在（404），请更新并重启 API 服务"
+          : cause instanceof Error ? cause.message : "暂时不可用";
+        failures.push(`${label}：${reason}`);
+      };
+      applyResult(friendResult, "好友列表", setFriends);
+      applyResult(requestResult, "好友申请", setRequests);
+      applyResult(blockedResult, "屏蔽名单", setBlocked);
+      applyResult(tripResult, "只读旅行分享", setSharedTrips);
+      applyResult(invitationResult, "小团体旅行邀请", setTripInvitations);
+      applyResult(groupTripResult, "小团体旅行列表", setCollaborativeTrips);
+      if (failures.length) setError(`部分信息未能加载：${failures.join("；")}`);
     } finally {
       setLoading(false);
     }
@@ -352,7 +364,7 @@ export default function FriendsPage() {
       </section>
       <section className="social-card">
         <h2>我的好友 <span className="social-count">{friends.length}</span></h2>
-        {loading ? <p className="status">正在加载……</p> : friends.length === 0 ? <p className="social-empty">接受好友申请后，可在旅行设置中授予只读分享。</p> : <ul className="social-list">{friends.map((row) => <li key={row.id}>
+        {loading ? <p className="status">正在加载……</p> : friends.length === 0 ? <p className="social-empty">好友需要对方接受申请后才会显示。你发出的申请可在左侧“好友申请”中查看状态。</p> : <ul className="social-list">{friends.map((row) => <li key={row.id}>
           <div><strong>{row.display_name || row.email.split("@")[0]}</strong><small>{row.email} · 不会自动获得旅行访问权</small></div>
           <div className="social-actions"><button className="secondary" onClick={() => setChatFriend(row)}>私聊</button><button className="secondary" disabled={busy} onClick={() => void handleFriend(row, "remove")}>移除</button><button className="social-danger" disabled={busy} onClick={() => void handleFriend(row, "block")}>屏蔽</button></div>
         </li>)}</ul>}
