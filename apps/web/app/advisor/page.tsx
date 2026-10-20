@@ -7,7 +7,7 @@ import { RouteMap } from "../../components/route-map";
 import { TripImportTool } from "../../components/trip-import-tool";
 import { tripOptionLabel, useTripSelection } from "../../components/trip-selection-context";
 import {
-  AdvisorDestinationRecommendation, AdvisorMemorySuggestion, AdvisorMessageFeedbackReason, AdvisorMessageFeedbackRating, AdvisorProgressEvent, AdvisorRuntimeStatus, AdvisorSession, AdvisorTaskSnapshot, AdvisorTransportRoute, ApiError, Trip, confirmAdvisorDraft, confirmUserMemorySuggestion, createAdvisorDraft, createAdvisorSession, createUserMemory,
+  AdvisorCandidate, AdvisorDestinationRecommendation, AdvisorMemorySuggestion, AdvisorMessageFeedbackReason, AdvisorMessageFeedbackRating, AdvisorProgressEvent, AdvisorRuntimeStatus, AdvisorSession, AdvisorTaskSnapshot, AdvisorTransportRoute, ApiError, Trip, confirmAdvisorDraft, confirmUserMemorySuggestion, createAdvisorDraft, createAdvisorSession, createUserMemory,
   getAdvisorRunProgress, getAdvisorRuntimeStatus, getAdvisorSession, getStaticMapImage, listAdvisorSessions, listTrips, recommendAdvisorDestinations, sendAdvisorMessage, submitAdvisorMessageFeedback, updateAdvisorSessionContext,
   updateAdvisorChecklistDecision,
   deleteAdvisorSession as removeAdvisorSession,
@@ -215,6 +215,26 @@ function isExplicitDraftSaveConfirmation(content: string): boolean {
   const confirms = /(确认|同意|可以|好的|好|就按|直接)/.test(normalized);
   const persists = /(保存|提交|写入|应用到行程|更新正式行程)/.test(normalized);
   return confirms && persists;
+}
+
+function candidateIdsForTaskConfirmation(
+  task: AdvisorTaskSnapshot | null,
+  answer: string,
+  candidates: AdvisorCandidate[],
+): string[] | null {
+  if (!task || answer !== "确认，按当前选择加入安排" || !task.question) return null;
+  const question = `${task.goal} ${task.question}`;
+  if (!/(?:加入|添加|纳入|作为).{0,16}(?:安排|行程|候选)/.test(question)) return null;
+  const normalizedQuestion = question.replace(/[\s（）()]/g, "").toLocaleLowerCase();
+  const exactMatches = candidates.filter((candidate) => {
+    const name = candidate.name.trim().replace(/[\s（）()]/g, "").toLocaleLowerCase();
+    return name.length >= 2 && normalizedQuestion.includes(name);
+  });
+  const matches = exactMatches.length ? exactMatches : candidates.filter((candidate) => {
+    const shortName = candidate.name.split(/[（(]/, 1)[0].trim().replace(/\s/g, "").toLocaleLowerCase();
+    return shortName.length >= 2 && normalizedQuestion.includes(shortName);
+  });
+  return matches.length === 1 ? matches.map((candidate) => candidate.id) : null;
 }
 
 function readTripActionItems(payload: Record<string, unknown> | null | undefined): TripActionItem[] {
@@ -830,11 +850,16 @@ export default function AdvisorPage() {
     finally { setBusy(false); }
   }
 
-  async function submitMessage(event?: FormEvent<HTMLFormElement>, preset?: string): Promise<boolean> {
+  async function submitMessage(
+    event?: FormEvent<HTMLFormElement>,
+    preset?: string,
+    selectionOverride?: string[],
+  ): Promise<boolean> {
     event?.preventDefault();
     if (!active) return false;
     const content = (preset ?? message).trim();
     if (!content) return false;
+    const requestSelection = selectionOverride ?? selected;
     if (active.draft && isExplicitDraftSaveConfirmation(content)) {
       setMessage("");
       if (draftIsStale) {
@@ -886,7 +911,7 @@ export default function AdvisorPage() {
     try {
       const updated = await sendAdvisorMessage(
         active.id, content, idempotencyKey,
-        isSamePendingRequest || isStoredRetry ? undefined : selected,
+        isSamePendingRequest || isStoredRetry ? undefined : requestSelection,
       );
       if (pendingMessageRequestRef.current?.idempotencyKey === idempotencyKey) {
         pendingMessageRequestRef.current = null;
@@ -946,6 +971,8 @@ export default function AdvisorPage() {
           setSelected(updated.context.selected_candidate_ids ?? []);
         } else if (candidateIds.length) {
           setSelected((current) => [...new Set([...current, ...candidateIds])]);
+        } else if (selectionOverride) {
+          setSelected(updated.context.selected_candidate_ids ?? selectionOverride);
         }
         setSessions((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
       }
@@ -1435,7 +1462,14 @@ export default function AdvisorPage() {
                   {isLatestAssistantMessage && task?.status === "WAITING_USER" && task.question && <section className="advisor-pending-question" aria-label="等待你补充">
                     <div><strong>{confirmationOptions.length ? "选一个继续" : "这一步需要你来决定"}</strong><p>{task.question}</p><small>当前任务：{task.goal}</small><small>{confirmationOptions.length ? "点击即可接着处理当前任务；正式行程仍会在保存前单独确认。" : "点选即可继续原任务；也可以在下方直接补充自己的想法。"}</small></div>
                     {confirmationOptions.length > 0 && <div className="advisor-pending-quick-replies" aria-label="可选操作">
-                      {confirmationOptions.map((option) => <button key={option.label} type="button" disabled={busy || active.status !== "ACTIVE"} onClick={() => void submitMessage(undefined, option.answer)}>{option.label}</button>)}
+                      {confirmationOptions.map((option) => <button key={option.label} type="button" disabled={busy || active.status !== "ACTIVE"} onClick={() => {
+                        const candidateIds = candidateIdsForTaskConfirmation(task, option.answer, active.candidates);
+                        const nextSelection = candidateIds
+                          ? [...new Set([...selected, ...candidateIds])]
+                          : undefined;
+                        if (nextSelection) setSelected(nextSelection);
+                        void submitMessage(undefined, option.answer, nextSelection);
+                      }}>{option.label}</button>)}
                     </div>}
                     {!confirmationOptions.length && (/时间|几点|时段/.test(task.question) || /用餐.{0,6}(?:何时|什么时候)/.test(task.question)) && <div className="advisor-pending-quick-replies" aria-label="常用时间选项">
                       {["A · 11:00–12:00", "B · 12:00–13:00"].map((choice) => <button key={choice} type="button" disabled={busy || active.status !== "ACTIVE"} onClick={() => void submitMessage(undefined, choice.replace(/^[A-B] · /, "方案 "))}>{choice}</button>)}
