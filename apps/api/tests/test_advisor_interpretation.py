@@ -218,6 +218,10 @@ async def test_only_confirmed_soft_memories_are_forwarded_as_search_preferences(
 
     await _extract_advisor_intent(
         "推荐一些地点",
+        conversation_context=[
+            {"role": "assistant", "content": "要我按日期帮你排一下游览顺序吗？"},
+            {"role": "user", "content": "我希望每天轻松一点。"},
+        ],
         personal_memories=[
             {"constraint_type": "PREFERENCE", "text": "喜欢历史文化"},
             {"constraint_type": "HARD_LIMIT", "text": "不去酒吧"},
@@ -225,6 +229,7 @@ async def test_only_confirmed_soft_memories_are_forwarded_as_search_preferences(
     )
 
     assert captured["travel_preferences"] == ["喜欢历史文化"]
+    assert captured["conversation_context"][0]["role"] == "assistant"
     assert "current_message names a different category" in captured["additional_instructions"]
 
 

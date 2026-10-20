@@ -137,6 +137,53 @@ async def test_model_facts_are_typed_and_unverifiable_evidence_is_removed(monkey
     assert result.guide_facts[1].evidence is None
 
 
+@pytest.mark.asyncio
+async def test_short_followup_intent_prompt_uses_recent_question_as_context(monkeypatch):
+    requests = []
+
+    class Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"usage": {"total_tokens": 10, "completion_tokens": 5}, "choices": [{
+                "message": {"content": json.dumps({
+                    "places": [], "guide_facts": [], "search_queries": [],
+                    "requested_tasks": [{"kind": "SCHEDULE", "evidence": "可以"}],
+                    "intent": "schedule", "pace_adjustment": "none",
+                }, ensure_ascii=False)},
+            }]}
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, _url, **kwargs):
+            requests.append(kwargs["json"])
+            return Response()
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    result = await extract_places(
+        "可以", api_key="local-test", model="local-test",
+        base_url="https://example.invalid/v1",
+        conversation_context=[{"role": "assistant", "content": "要我按日期排出游览顺序吗？"}],
+    )
+
+    assert result.intent == "schedule"
+    serialized = json.loads(requests[0]["messages"][1]["content"])
+    assert serialized["current_message"] == "可以"
+    assert serialized["recent_conversation"][0]["content"] == "要我按日期排出游览顺序吗？"
+    assert "natural continuations, short answers, ellipsis, and references" in requests[0]["messages"][0]["content"]
+
+
 def test_guide_chunker_preserves_all_input_characters_and_respects_chunk_limit():
     text = ("A" * 1300) + "\n" + ("B" * 1000) + "\nTAIL"
 
