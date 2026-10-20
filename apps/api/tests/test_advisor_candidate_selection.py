@@ -1,3 +1,5 @@
+import pytest
+
 from travelpilot_api.advisor.candidate_selection import (
     explicit_candidate_selection_ids,
     selected_ids_after_food_search,
@@ -45,3 +47,35 @@ def test_food_search_preserves_prior_lodging_but_drops_old_temporary_food_pick()
     assert selected_ids_after_food_search(
         candidates, previously_selected_ids={"hotel-1", "food-1"},
     ) == ["hotel-1", "tour-1"]
+
+
+@pytest.mark.parametrize(
+    ("previously_selected", "explicitly_selected", "expected"),
+    [
+        # Searching/choosing a lunch must not clear a selected hotel or saved stop.
+        ({"hotel-1"}, {"lunch-1"}, ["hotel-1", "lunch-1", "tour-1"]),
+        # Dinner replaces the old temporary lunch, while the hotel remains selected.
+        ({"hotel-1", "lunch-1"}, {"dinner-1"}, ["dinner-1", "hotel-1", "tour-1"]),
+        # An explicit deselection is reflected by the caller's current selection set.
+        (set(), {"dinner-1"}, ["dinner-1", "tour-1"]),
+        # IDs no longer present in the refreshed candidate snapshot are discarded.
+        ({"hotel-removed", "old-food"}, {"lunch-1"}, ["lunch-1", "tour-1"]),
+        # Repeated IDs and repeated candidate rows cannot duplicate the selected state.
+        ({"hotel-1", "hotel-1"}, {"lunch-1", "lunch-1"}, ["hotel-1", "lunch-1", "tour-1"]),
+    ],
+)
+def test_meal_candidate_refresh_keeps_only_current_plan_active_lodging_and_current_choice(
+    previously_selected, explicitly_selected, expected,
+):
+    candidates = [
+        {"id": "tour-1", "in_current_plan": True, "planning_category": "ATTRACTION"},
+        {"id": "lunch-1", "planning_category": "FOOD", "meal_type": "LUNCH"},
+        {"id": "dinner-1", "planning_category": "FOOD", "meal_type": "DINNER"},
+        {"id": "hotel-1", "planning_category": "LODGING"},
+    ]
+
+    assert selected_ids_after_food_search(
+        candidates,
+        explicit_selection_ids=explicitly_selected,
+        previously_selected_ids=previously_selected,
+    ) == expected
