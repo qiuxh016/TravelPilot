@@ -6,27 +6,38 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import httpx
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from travelpilot_infra.db.models.plan import TripPlanModel, TripPlanNodeModel
 from travelpilot_infra.db.models.poi import PoiModel
-from travelpilot_infra.db.models.social import FriendConversationModel, FriendMessageModel, FriendshipModel, TripShareGrantModel
+from travelpilot_infra.db.models.social import (
+    FriendConversationModel,
+    FriendMessageModel,
+    FriendshipModel,
+    TripShareGrantModel,
+)
 from travelpilot_infra.db.models.trip import TripModel
+from travelpilot_infra.db.models.trip_member import TripMemberModel
 from travelpilot_infra.db.models.user import UserModel
 from travelpilot_infra.db.session import get_session
 
 from travelpilot_api.auth import get_current_user, normalize_email
+from travelpilot_api.media_storage import (
+    normalize_image,
+    read_media,
+    remove_media_keys,
+    write_image,
+)
 from travelpilot_api.schemas.social import (
-    FriendRequestCreate,
-    FriendRequestNotice,
-    FriendConversationRead,
     FriendAnalysisConsentUpdate,
     FriendAnalysisRead,
+    FriendConversationRead,
     FriendMessageCreate,
     FriendMessageRead,
+    FriendRequestCreate,
+    FriendRequestNotice,
     FriendSearchResult,
     FriendshipRead,
     SharedTripDetailRead,
@@ -35,7 +46,6 @@ from travelpilot_api.schemas.social import (
     TripShareCreate,
     TripShareRead,
 )
-from travelpilot_api.media_storage import normalize_image, read_media, remove_media_keys, write_image
 from travelpilot_api.settings import settings
 
 router = APIRouter(tags=["friends and trip sharing"])
@@ -546,6 +556,20 @@ async def _end_friendship(friendship_id: UUID, user: UserModel, session: AsyncSe
         ),
         TripShareGrantModel.revoked_at.is_(None),
     ).values(revoked_at=datetime.now(UTC)))
+    changed_at = datetime.now(UTC)
+    await session.execute(update(TripMemberModel).where(
+        TripMemberModel.status.in_(("PENDING", "ACCEPTED")),
+        or_(
+            and_(
+                TripMemberModel.trip_id.in_(select(TripModel.id).where(TripModel.owner_id == user.id)),
+                TripMemberModel.user_id == other_id,
+            ),
+            and_(
+                TripMemberModel.trip_id.in_(select(TripModel.id).where(TripModel.owner_id == other_id)),
+                TripMemberModel.user_id == user.id,
+            ),
+        ),
+    ).values(status="REVOKED", updated_at=changed_at))
     await session.commit()
 
 
@@ -606,6 +630,13 @@ async def create_trip_share(
     friend = await session.get(UserModel, payload.friend_user_id)
     if friend is None or not friend.is_active:
         raise HTTPException(404, detail="Resource not found")
+    member = await session.scalar(select(TripMemberModel.id).where(
+        TripMemberModel.trip_id == trip_id,
+        TripMemberModel.user_id == friend.id,
+        TripMemberModel.status.in_(("PENDING", "ACCEPTED")),
+    ))
+    if member is not None:
+        raise HTTPException(status_code=409, detail="Trip members use collaborative access, not read-only sharing")
     grant = await session.scalar(select(TripShareGrantModel).where(
         TripShareGrantModel.trip_id == trip_id,
         TripShareGrantModel.grantee_user_id == friend.id,

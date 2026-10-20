@@ -523,6 +523,9 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 .moment-dialog-close { display: grid; flex: 0 0 auto; width: 34px; height: 34px; place-items: center; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); color: var(--text); font-size: 22px; cursor: pointer; }
 .social-actions { display: flex; flex: 0 0 auto; gap: 7px; }
 .social-actions button, .social-list > li > button { min-height: 34px; padding: 6px 10px; font-size: 11px; white-space: nowrap; }
+.trip-member-list .social-actions select { min-height: 34px; border: 1px solid var(--border); border-radius: 999px; padding: 5px 10px; background: var(--bg); color: var(--text); font: inherit; font-size: 11px; }
+.collaborative-trip-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.collaborative-trip-heading > button { flex: 0 0 auto; }
 .social-danger { border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border)); border-radius: 999px; background: var(--surface); color: var(--danger); font: inherit; font-weight: 620; cursor: pointer; }
 .social-empty { margin: 12px 0 0; border: 1px dashed var(--border); border-radius: 9px; padding: 14px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .social-empty a { display: inline-block; margin-left: 4px; color: var(--accent); font-weight: 650; }
@@ -1219,7 +1222,7 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 .trip-sharing-dialog-body .social-share-form button { justify-self: start; }
 .trip-sharing-dialog-body .social-list li { min-height: 48px; }
 .trip-sharing-page { padding-top: 20px; }
-@media (max-width: 560px) { .trip-sharing-dialog-body { padding: 14px; } .trip-sharing-dialog-header { padding: 12px 15px; } .trip-sharing-dialog-body .trip-sharing-intro h2 { font-size: 21px; } .trip-sharing-dialog-body .social-share-form { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .trip-sharing-dialog-body { padding: 14px; } .trip-sharing-dialog-header { padding: 12px 15px; } .trip-sharing-dialog-body .trip-sharing-intro h2 { font-size: 21px; } .trip-sharing-dialog-body .social-share-form { grid-template-columns: 1fr; } .trip-member-list li, .social-page .social-list li { align-items: flex-start; flex-wrap: wrap; } .trip-member-list .social-actions, .social-page .social-list li > .social-actions { width: 100%; justify-content: flex-start; } .collaborative-trip-heading { flex-direction: column; } }
 .trip-overview-edit, .trip-overview-delete { border: 0; padding: 8px 6px; background: transparent; color: var(--muted); font-size: 10px; cursor: pointer; }
 .trip-overview-delete { margin-left: auto; color: var(--danger); }
 .trip-overview-message { border-left: 2px solid var(--danger); padding: 9px 12px; color: var(--danger); font-size: 12px; }

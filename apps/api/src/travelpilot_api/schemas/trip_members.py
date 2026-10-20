@@ -1,8 +1,10 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from travelpilot_api.schemas.social import SharedTripPlanNodeRead
 
 TripMemberRole = Literal["EDITOR", "VIEWER"]
 TripMemberStatus = Literal["PENDING", "ACCEPTED", "DECLINED", "REVOKED"]
@@ -36,8 +38,23 @@ class TripMemberRead(BaseModel):
 class TripInvitationRead(BaseModel):
     id: UUID
     inviter_display_name: str
+    role: TripMemberRole
     created_at: datetime
 
 
 class TripMembershipNotice(BaseModel):
     message: str
+
+
+class CollaborativeTripRead(BaseModel):
+    id: UUID
+    destination: str
+    start_date: date
+    end_date: date
+    owner_display_name: str
+    role: Literal["EDITOR", "VIEWER"]
+
+
+class CollaborativeTripDetailRead(CollaborativeTripRead):
+    plan_version: int | None = None
+    plan_nodes: list[SharedTripPlanNodeRead] = Field(default_factory=list)

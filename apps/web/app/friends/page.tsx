@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   acceptFriendRequest,
+  acceptTripInvitation,
   analyzeFriendConversation,
   blockFriend,
   createFriendRequestForUser,
@@ -12,10 +13,13 @@ import {
   getFriendMessageImageBlob,
   getOrCreateFriendConversation,
   getSharedTrip,
+  getCollaborativeTrip,
   listFriendRequests,
   listBlockedFriends,
   listFriends,
   listSharedTrips,
+  listTripInvitations,
+  listCollaborativeTrips,
   listFriendMessages,
   removeFriend,
   searchFriends,
@@ -23,6 +27,7 @@ import {
   sendFriendMessageImage,
   updateFriendAnalysisConsent,
   unblockFriend,
+  declineTripInvitation,
   type FriendSearchResult,
   type FriendMessage,
   type FriendConversation,
@@ -30,6 +35,9 @@ import {
   type Friendship,
   type SharedTrip,
   type SharedTripDetail,
+  type TripInvitation,
+  type CollaborativeTrip,
+  type CollaborativeTripDetail,
 } from "../../lib/api";
 
 function SearchAvatar({ profile }: { profile: FriendSearchResult }) {
@@ -147,7 +155,10 @@ export default function FriendsPage() {
   const [requests, setRequests] = useState<Friendship[]>([]);
   const [blocked, setBlocked] = useState<Friendship[]>([]);
   const [sharedTrips, setSharedTrips] = useState<SharedTrip[]>([]);
+  const [tripInvitations, setTripInvitations] = useState<TripInvitation[]>([]);
+  const [collaborativeTrips, setCollaborativeTrips] = useState<CollaborativeTrip[]>([]);
   const [selectedTrip, setSelectedTrip] = useState<SharedTripDetail | null>(null);
+  const [selectedCollaborativeTrip, setSelectedCollaborativeTrip] = useState<CollaborativeTripDetail | null>(null);
   const [chatFriend, setChatFriend] = useState<Friendship | null>(null);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<FriendSearchResult[]>([]);
@@ -162,11 +173,16 @@ export default function FriendsPage() {
     try {
       setLoading(true);
       setError("");
-      const [friendRows, requestRows, blockedRows, tripRows] = await Promise.all([listFriends(), listFriendRequests(), listBlockedFriends(), listSharedTrips()]);
+      const [friendRows, requestRows, blockedRows, tripRows, invitationRows, groupTripRows] = await Promise.all([
+        listFriends(), listFriendRequests(), listBlockedFriends(), listSharedTrips(),
+        listTripInvitations(), listCollaborativeTrips(),
+      ]);
       setFriends(friendRows);
       setRequests(requestRows);
       setBlocked(blockedRows);
       setSharedTrips(tripRows);
+      setTripInvitations(invitationRows);
+      setCollaborativeTrips(groupTripRows);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "好友信息暂时无法加载");
     } finally {
@@ -243,11 +259,32 @@ export default function FriendsPage() {
     catch (cause) { setError(cause instanceof Error ? cause.message : "此旅行当前不可查看"); await load(); }
   }
 
+  async function openCollaborativeTrip(trip: CollaborativeTrip) {
+    setError(""); setSelectedCollaborativeTrip(null);
+    try { setSelectedCollaborativeTrip(await getCollaborativeTrip(trip.id)); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "这段小团体旅行当前不可查看"); await load(); }
+  }
+
+  async function respondToTripInvitation(invitation: TripInvitation, accept: boolean) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      if (accept) {
+        await acceptTripInvitation(invitation.id);
+        setNotice("已加入旅行小团体。现在可以查看这段旅行。");
+      } else {
+        await declineTripInvitation(invitation.id);
+        setNotice("已拒绝这条旅行邀请。");
+      }
+      await load();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "处理旅行邀请失败"); }
+    finally { setBusy(false); }
+  }
+
   return <main className="shell social-page">
     <header className="hero">
       <p className="eyebrow">好友与分享</p>
       <h1>好友圈</h1>
-      <p className="lede">先建立好友关系，再由旅行所有者逐个授予只读权限。成为好友不会自动开放任何旅行。</p>
+      <p className="lede">好友关系不会自动开放旅行。所有者可以单独分享只读摘要，也可以邀请你加入一个共同规划的小团体。</p>
     </header>
     {error && <p className="social-message is-error" role="alert">{error}</p>}
     {notice && <p className="social-message" role="status">{notice}</p>}
@@ -286,6 +323,24 @@ export default function FriendsPage() {
       </section>
     </div>
     {blocked.length ? <section className="social-card"><h2>已屏蔽</h2><ul className="social-list">{blocked.map((row) => <li key={row.id}><div><strong>{row.email}</strong><small>屏蔽期间无法互相分享旅行</small></div><button className="secondary" disabled={busy} onClick={() => void handleUnblock(row)}>取消屏蔽</button></li>)}</ul></section> : null}
+    <section className="social-card">
+      <h2>小团体旅行邀请 <span className="social-count">{tripInvitations.length}</span></h2>
+      {loading ? <p className="status">正在加载……</p> : tripInvitations.length === 0 ? <p className="social-empty">收到共同规划邀请后会显示在这里。接受后才会展示旅行内容。</p> : <ul className="social-list">{tripInvitations.map((invitation) => <li key={invitation.id}>
+        <div><strong>{invitation.inviter_display_name || "好友"} 邀请你加入一段旅行</strong><small>{new Date(invitation.created_at).toLocaleDateString("zh-CN")} · 你的角色：{invitation.role === "EDITOR" ? "编辑者" : "查看者"} · 接受前不会展示目的地和行程</small></div>
+        <div className="social-actions"><button className="primary" disabled={busy} onClick={() => void respondToTripInvitation(invitation, true)}>接受</button><button className="secondary" disabled={busy} onClick={() => void respondToTripInvitation(invitation, false)}>拒绝</button></div>
+      </li>)}</ul>}
+    </section>
+    <section className="social-card">
+      <h2>与我共享的小团体旅行 <span className="social-count">{collaborativeTrips.length}</span></h2>
+      {loading ? <p className="status">正在加载……</p> : collaborativeTrips.length === 0 ? <p className="social-empty">接受邀请后，旅行会出现在这里。角色为编辑者时可共同修改；查看者只能查看。</p> : <ul className="social-list">{collaborativeTrips.map((trip) => <li key={trip.id}>
+        <div><strong>{trip.destination}</strong><small>{trip.owner_display_name} 发起 · {trip.start_date} 至 {trip.end_date} · 你的角色：{trip.role === "EDITOR" ? "编辑者" : "查看者"}</small></div>
+        <button className="secondary" onClick={() => void openCollaborativeTrip(trip)}>打开共享旅行</button>
+      </li>)}</ul>}
+      {selectedCollaborativeTrip && <div className="shared-trip-detail">
+        <div className="collaborative-trip-heading"><div><h3>{selectedCollaborativeTrip.destination}</h3><p>{selectedCollaborativeTrip.start_date} 至 {selectedCollaborativeTrip.end_date} · 发起人 {selectedCollaborativeTrip.owner_display_name} · {selectedCollaborativeTrip.role === "EDITOR" ? "编辑者" : "查看者"}</p></div><button className="secondary" disabled={busy} onClick={() => void openCollaborativeTrip(selectedCollaborativeTrip)}>刷新行程</button></div>
+        <div><h4>共享行程 {selectedCollaborativeTrip.plan_version ? `· v${selectedCollaborativeTrip.plan_version}` : ""}</h4>{selectedCollaborativeTrip.plan_nodes.length ? <ol>{selectedCollaborativeTrip.plan_nodes.map((node, index) => <li key={`${node.day}-${node.start_time}-${index}`}><strong>{node.day} · {node.start_time}–{node.end_time}</strong><span>{node.name}</span></li>)}</ol> : <p className="social-empty">这段旅行还没有保存的行程计划。</p>}</div>
+      </div>}
+    </section>
     <section className="social-card">
       <h2>好友分享给我的旅行 <span className="social-count">{sharedTrips.length}</span></h2>
       {loading ? <p className="status">正在加载……</p> : sharedTrips.length === 0 ? <p className="social-empty">收到旅行分享后会显示在这里。</p> : <ul className="social-list">{sharedTrips.map((trip) => <li key={trip.id}>

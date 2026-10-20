@@ -482,6 +482,22 @@ export type FriendChatAnalysis = { summary: string; observed_tone: string; trave
 export type TripShare = { id: string; trip_id: string; grantee_user_id: string; email: string; scope: "TRIP_SUMMARY" | "TRIP_AND_PLAN"; created_at: string };
 export type SharedTrip = { id: string; destination: string; start_date: string; end_date: string; scope: "TRIP_SUMMARY" | "TRIP_AND_PLAN"; owner_email: string };
 export type SharedTripDetail = SharedTrip & { plan_version: number | null; plan_nodes: { name: string; day: string; start_time: string; end_time: string; status: string }[] };
+export type TripMemberRole = "EDITOR" | "VIEWER";
+export type TripMemberStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "REVOKED";
+export type TripMember = {
+  id: string; trip_id: string; user_id: string; username: string; display_name: string;
+  has_avatar: boolean; role: TripMemberRole; status: TripMemberStatus; invited_by_id: string | null;
+  accepted_at: string | null; created_at: string;
+};
+export type TripInvitation = { id: string; inviter_display_name: string; role: TripMemberRole; created_at: string };
+export type CollaborativeTrip = {
+  id: string; destination: string; start_date: string; end_date: string;
+  owner_display_name: string; role: TripMemberRole;
+};
+export type CollaborativeTripDetail = CollaborativeTrip & {
+  plan_version: number | null;
+  plan_nodes: { name: string; day: string; start_time: string; end_time: string; status: string }[];
+};
 export const listFriends = () => request<Friendship[]>("/api/v1/friends");
 export const listFriendRequests = () => request<Friendship[]>("/api/v1/friends/requests");
 export const listBlockedFriends = () => request<Friendship[]>("/api/v1/friends/blocked");
@@ -528,6 +544,18 @@ export const createTripShare = (tripId: string, friend_user_id: string, scope: T
 export const revokeTripShare = (tripId: string, grantId: string) => request<void>(`/api/v1/trips/${tripId}/shares/${grantId}`, { method: "DELETE" });
 export const listSharedTrips = () => request<SharedTrip[]>("/api/v1/shared/trips");
 export const getSharedTrip = (tripId: string) => request<SharedTripDetail>(`/api/v1/shared/trips/${tripId}`);
+export const listTripMembers = (tripId: string) => request<TripMember[]>(`/api/v1/trips/${tripId}/members`);
+export const inviteTripMember = (tripId: string, user_id: string, role: TripMemberRole) =>
+  request<TripMember>(`/api/v1/trips/${tripId}/members`, { method: "POST", body: JSON.stringify({ user_id, role }) });
+export const updateTripMemberRole = (tripId: string, memberId: string, role: TripMemberRole) =>
+  request<TripMember>(`/api/v1/trips/${tripId}/members/${memberId}`, { method: "PATCH", body: JSON.stringify({ role }) });
+export const revokeTripMember = (tripId: string, memberId: string) =>
+  request<void>(`/api/v1/trips/${tripId}/members/${memberId}`, { method: "DELETE" });
+export const listTripInvitations = () => request<TripInvitation[]>("/api/v1/trip-invitations");
+export const acceptTripInvitation = (memberId: string) => request<{ message: string }>(`/api/v1/trip-invitations/${memberId}/accept`, { method: "POST" });
+export const declineTripInvitation = (memberId: string) => request<{ message: string }>(`/api/v1/trip-invitations/${memberId}/decline`, { method: "POST" });
+export const listCollaborativeTrips = () => request<CollaborativeTrip[]>("/api/v1/group-trips");
+export const getCollaborativeTrip = (tripId: string) => request<CollaborativeTripDetail>(`/api/v1/group-trips/${tripId}`);
 
 export type MomentMedia = { id: string; mime_type: string; size_bytes: number; created_at: string };
 export type TravelMoment = {

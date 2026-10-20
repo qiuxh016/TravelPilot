@@ -5,14 +5,19 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from travelpilot_infra.db.models.social import FriendshipModel
+from travelpilot_infra.db.models.plan import TripPlanModel, TripPlanNodeModel
+from travelpilot_infra.db.models.poi import PoiModel
+from travelpilot_infra.db.models.social import FriendshipModel, TripShareGrantModel
 from travelpilot_infra.db.models.trip import TripModel
 from travelpilot_infra.db.models.trip_member import TripMemberModel
 from travelpilot_infra.db.models.user import UserModel
 from travelpilot_infra.db.session import get_session
 
 from travelpilot_api.auth import get_current_user
+from travelpilot_api.schemas.social import SharedTripPlanNodeRead
 from travelpilot_api.schemas.trip_members import (
+    CollaborativeTripDetailRead,
+    CollaborativeTripRead,
     TripInvitationRead,
     TripMemberInvite,
     TripMemberRead,
@@ -25,9 +30,10 @@ router = APIRouter(tags=["trip collaboration"])
 
 
 async def _accepted_friendship(session: AsyncSession, left: UUID, right: UUID) -> bool:
+    low, high = (left, right) if left.int < right.int else (right, left)
     return bool(await session.scalar(select(FriendshipModel.id).where(
-        FriendshipModel.user_low_id == func.least(left, right),
-        FriendshipModel.user_high_id == func.greatest(left, right),
+        FriendshipModel.user_low_id == low,
+        FriendshipModel.user_high_id == high,
         FriendshipModel.status == "ACCEPTED",
     )))
 
@@ -91,6 +97,16 @@ async def invite_trip_member(
         raise HTTPException(status_code=404, detail="Friend not found")
     if not await _accepted_friendship(session, user.id, friend.id):
         raise HTTPException(status_code=404, detail="Friend not found")
+    readonly_grant = await session.scalar(select(TripShareGrantModel.id).where(
+        TripShareGrantModel.trip_id == trip_id,
+        TripShareGrantModel.grantee_user_id == friend.id,
+        TripShareGrantModel.revoked_at.is_(None),
+    ))
+    if readonly_grant is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Revoke this friend's read-only share before inviting them as a group member",
+        )
 
     member = await session.scalar(select(TripMemberModel).where(
         TripMemberModel.trip_id == trip_id,
@@ -194,8 +210,82 @@ async def list_pending_trip_invitations(
     return [TripInvitationRead(
         id=member.id,
         inviter_display_name=inviter_name,
+        role=member.role,
         created_at=member.created_at,
     ) for member, inviter_name in rows]
+
+
+@router.get("/group-trips", response_model=list[CollaborativeTripRead])
+async def list_collaborative_trips(
+    session: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
+):
+    rows = (await session.execute(
+        select(TripModel, TripMemberModel, UserModel)
+        .join(TripMemberModel, TripMemberModel.trip_id == TripModel.id)
+        .join(UserModel, UserModel.id == TripModel.owner_id)
+        .where(
+            TripMemberModel.user_id == user.id,
+            TripMemberModel.status == "ACCEPTED",
+        )
+        .order_by(TripModel.start_date)
+    )).all()
+    return [CollaborativeTripRead(
+        id=trip.id,
+        destination=trip.destination,
+        start_date=trip.start_date,
+        end_date=trip.end_date,
+        owner_display_name=owner.display_name or owner.username,
+        role=member.role,
+    ) for trip, member, owner in rows]
+
+
+@router.get("/group-trips/{trip_id}", response_model=CollaborativeTripDetailRead)
+async def get_collaborative_trip(
+    trip_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
+):
+    access = await get_trip_access(session, trip_id=trip_id, user_id=user.id)
+    if access.membership is None:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    owner = await session.get(UserModel, access.trip.owner_id)
+    if owner is None:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    latest_version = await session.scalar(select(func.max(TripPlanModel.version)).where(
+        TripPlanModel.trip_id == trip_id
+    ))
+    nodes: list[SharedTripPlanNodeRead] = []
+    if latest_version is not None:
+        plan_id = await session.scalar(select(TripPlanModel.id).where(
+            TripPlanModel.trip_id == trip_id,
+            TripPlanModel.version == latest_version,
+        ))
+        rows = (await session.execute(
+            select(TripPlanNodeModel, PoiModel.name)
+            .join(PoiModel, PoiModel.id == TripPlanNodeModel.poi_id)
+            .where(TripPlanNodeModel.plan_id == plan_id)
+            .order_by(TripPlanNodeModel.day, TripPlanNodeModel.start_time)
+        )).all()
+        nodes = [SharedTripPlanNodeRead(
+            name=name,
+            day=node.day,
+            start_time=node.start_time.isoformat(),
+            end_time=node.end_time.isoformat(),
+            status=node.status,
+        ) for node, name in rows]
+
+    return CollaborativeTripDetailRead(
+        id=access.trip.id,
+        destination=access.trip.destination,
+        start_date=access.trip.start_date,
+        end_date=access.trip.end_date,
+        owner_display_name=owner.display_name or owner.username,
+        role=access.membership.role,
+        plan_version=latest_version,
+        plan_nodes=nodes,
+    )
 
 
 async def _respond_to_invitation(

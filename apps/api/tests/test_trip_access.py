@@ -138,7 +138,7 @@ async def test_owner_invite_creates_pending_member_with_selected_role():
 
     class Session:
         def __init__(self):
-            self.scalar_results = iter([trip, uuid4(), None])
+            self.scalar_results = iter([trip, uuid4(), None, None])
             self.added = []
             self.commit = AsyncMock()
             self.refresh = AsyncMock(side_effect=self._refresh)
