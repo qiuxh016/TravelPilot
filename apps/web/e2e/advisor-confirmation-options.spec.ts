@@ -24,7 +24,14 @@ test("信息确认和继续排程分成不同结构化选项", async ({ page }) 
   const session = {
     id: sessionId, mode: "existing", trip_id: "trip-1", destination: "梅州",
     start_date: "2026-10-20", end_date: "2026-10-21", budget: null, pace_level: 3,
-    preference_text: "", candidates: [],
+    preference_text: "", candidates: [{
+      id: "guide-place-1", provider: "amap", provider_id: "place-1", name: "梅州学宫",
+      address: "梅州市梅江区", category: "博物馆", planning_category: "ATTRACTION",
+      latitude: 24.29, longitude: 116.12, duration_min: 60, opening_hours: null,
+      confidence: 0.9, suggestion: null, verification_status: "VERIFIED", verified_at: now,
+      guide_references: [{ source_id: "guide-1", title: "梅州一日游攻略", place_name: "梅州学宫",
+        category: "ATTRACTION", guide_claim: "周一闭馆，其余时间开放", evidence_status: "IMPORTED_GUIDE" }],
+    }],
     context: { revision: 0, selected_candidate_ids: [], current_plan: null,
       confirmed_memories: [], planning_inputs: { origin: "", companions: [], hard_constraints: [] } },
     draft: null, draft_version: 0, draft_stale: false, status: "ACTIVE",
@@ -96,6 +103,7 @@ test("信息确认和继续排程分成不同结构化选项", async ({ page }) 
   await expect(choiceCard).toBeVisible();
   await expect(choiceCard).toContainText("鑫丰特色餐饮");
   await expect(choiceCard).toContainText("当前任务：安排第1天午餐");
+  await expect(page.getByText("攻略线索：《梅州一日游攻略》提到：周一闭馆，其余时间开放 · 尚未核验")).toBeVisible();
   await expect(choiceCard.getByRole("button", { name: "确认，加入安排" })).toBeVisible();
   await choiceCard.getByRole("button", { name: "确认，加入安排" }).click();
   await expect.poll(() => submittedAnswers.at(-1)).toBe("确认，按当前选择加入安排");

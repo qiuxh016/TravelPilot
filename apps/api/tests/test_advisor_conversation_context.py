@@ -54,6 +54,10 @@ def test_recent_candidates_reuse_only_latest_verified_result_and_bound_fields():
                     "name": " 博物馆 ", "address": "路" * 400, "category": "文化" * 100,
                     "planning_category": "ATTRACTION",
                     "popularity_score": 4.7, "provider": "amap", "verification_status": "VERIFIED",
+                    "guide_references": [{
+                        "source_id": "source-id", "title": "梅州攻略", "guide_claim": "适合看历史建筑",
+                        "evidence_status": "IMPORTED_GUIDE", "discarded": "never copied",
+                    }],
                 },
                 {
                     "name": "午餐店", "provider": "fake", "verification_status": "SIMULATED",
@@ -74,6 +78,10 @@ def test_recent_candidates_reuse_only_latest_verified_result_and_bound_fields():
             "planning_category": "ATTRACTION",
             "popularity_score": 4.7, "provider": "amap", "verification_status": "VERIFIED",
             "evidence_scope": "PRIOR_TURN",
+            "guide_references": [{
+                "source_id": "source-id", "title": "梅州攻略", "guide_claim": "适合看历史建筑",
+                "evidence_status": "IMPORTED_GUIDE",
+            }],
         },
         {
             "name": "午餐店", "provider": "fake", "verification_status": "SIMULATED",

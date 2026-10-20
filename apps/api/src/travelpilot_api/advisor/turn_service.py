@@ -47,6 +47,10 @@ from travelpilot_api.advisor.evidence_reuse import (
     reusable_route_from_pending_turn,
     reusable_weather_from_pending_turn,
 )
+from travelpilot_api.advisor.guide_evidence import (
+    guide_references_for_place,
+    load_trip_guide_references,
+)
 from travelpilot_api.advisor.intent_checkpoint import (
     delete_intent_checkpoint,
     intent_checkpoint_scope_ref,
@@ -459,6 +463,11 @@ async def execute_advisor_turn(
         requested_meal_type = request_decision.requested_meal_type
         stated_interest_queries = list(request_decision.stated_interest_queries)
         recommendation_requested = request_decision.recommendation_requested
+        guide_references_by_name = (
+            await load_trip_guide_references(db, row.trip_id)
+            if row.trip_id and (recommendation_requested or requested_category in {"FOOD", "LODGING"})
+            else {}
+        )
         event_replan_type = request_decision.event_replan_type
         event_replan_handoff = request_decision.event_replan_handoff
         transport_route_requested = request_decision.transport_route_requested
@@ -972,6 +981,9 @@ async def execute_advisor_turn(
                         "popularity_score": place.get("popularity_score"),
                         "verification_status": search_result["status"],
                         "verified_at": search_result["retrieved_at"],
+                        "guide_references": guide_references_for_place(
+                            place["name"], guide_references_by_name,
+                        ),
                     }
                     existing_candidate = next((
                         item for item in row.candidates
@@ -983,6 +995,13 @@ async def execute_advisor_turn(
                             existing_candidate["planning_category"] = planning_category
                         if requested_meal_type and planning_category == "FOOD":
                             existing_candidate["meal_type"] = requested_meal_type
+                        existing_candidate["guide_references"] = list({
+                            item["source_id"]: item
+                            for item in [
+                                *existing_candidate.get("guide_references", []),
+                                *candidate.get("guide_references", []),
+                            ]
+                        }.values())[:3]
                         found.append(existing_candidate)
                     else:
                         row.candidates = [*row.candidates, candidate]
@@ -1482,6 +1501,7 @@ async def execute_advisor_turn(
                             "provider": item["provider"],
                             "verification_status": item["verification_status"],
                             "evidence_scope": item.get("evidence_scope", "CURRENT_TURN"),
+                            "guide_references": item.get("guide_references", []),
                         }
                         for item in reply_candidates
                     ],
@@ -1879,6 +1899,7 @@ async def execute_advisor_turn(
                         "provider": item["provider"],
                         "verification_status": item["verification_status"],
                         "evidence_scope": "CURRENT_TURN",
+                        "guide_references": item.get("guide_references", []),
                     }
                     for item in found[:8]
                 ],

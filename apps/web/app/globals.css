@@ -1408,6 +1408,7 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 .advisor-live-candidate strong { color: var(--text); font-size: 13px; }
 .advisor-live-candidate small, .advisor-live-session-list small { color: var(--muted); font-size: 11px; line-height: 1.45; }
 .advisor-live-candidate .advisor-memory-conflict { color: var(--warning-strong, #9a4b21); }
+.advisor-live-candidate .advisor-guide-reference { color: var(--accent); }
 .advisor-candidate-schedule { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, .65fr); gap: 9px; border-top: 1px solid var(--border); padding: 9px 0 0 27px; }
 .advisor-candidate-schedule label { display: grid; gap: 5px; color: var(--muted); font-size: 10px; }
 .advisor-candidate-schedule select, .advisor-candidate-schedule input { width: 100%; min-height: 35px; border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px; background: var(--surface); color: var(--text); font: inherit; }

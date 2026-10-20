@@ -204,6 +204,7 @@ export type AdvisorCandidate = {
   popularity_score?: number | null; explicit_day?: string; explicit_start_time?: string;
   in_current_plan?: boolean; existing_poi_id?: string; verification_status?: string; verified_at?: string;
   profile_memory_conflicts?: string[];
+  guide_references?: { source_id: string; title: string; place_name: string; category: string; guide_claim: string; evidence_status: "IMPORTED_GUIDE" | "PARTIAL_GUIDE" }[];
 };
 export type AdvisorTaskSnapshot = {
   task_id: string; task_type: "DISCOVERY" | "SCHEDULE" | "SEARCH" | "MEAL" | "LODGING" | "TRANSPORT" | "WEATHER" | "PREPARATION" | "MEMORY" | "GENERAL";

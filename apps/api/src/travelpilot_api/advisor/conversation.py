@@ -71,6 +71,25 @@ def recent_verified_candidate_context(messages: list[Any], *, limit: int = 8) ->
                 and 0 <= score <= 10
             ):
                 candidate["popularity_score"] = float(score)
+            guide_references = item.get("guide_references")
+            if isinstance(guide_references, list):
+                bounded_references = []
+                for reference in guide_references[:3]:
+                    if not isinstance(reference, dict):
+                        continue
+                    source_id = reference.get("source_id")
+                    title = reference.get("title")
+                    guide_claim = reference.get("guide_claim")
+                    if all(isinstance(value, str) and value.strip() for value in (source_id, title, guide_claim)):
+                        bounded_references.append({
+                            "source_id": source_id[:64], "title": title[:80],
+                            "guide_claim": guide_claim[:180],
+                            "evidence_status": reference.get("evidence_status")
+                            if reference.get("evidence_status") in {"IMPORTED_GUIDE", "PARTIAL_GUIDE"}
+                            else "IMPORTED_GUIDE",
+                        })
+                if bounded_references:
+                    candidate["guide_references"] = bounded_references
             candidates.append(candidate)
             if len(candidates) >= bounded_limit:
                 break
