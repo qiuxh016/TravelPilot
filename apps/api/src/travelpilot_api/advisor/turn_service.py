@@ -1536,6 +1536,17 @@ async def execute_advisor_turn(
         reply_fallback_reason = composed_result.error_code if composed_result else (
             "EXTRACTION_FAILED" if model_fallback else None
         )
+        if reply_fallback_reason == "UNVERIFIED_PERSISTENCE_CLAIM":
+            draft_is_current = bool(
+                row.draft
+                and row.draft.get("context_revision", (row.context or {}).get("revision", 0))
+                == (row.context or {}).get("revision", 0)
+            )
+            reply = (
+                "这份草案还没有写入正式行程。请检查右侧预览并点击“确认并应用到行程”完成保存。"
+                if draft_is_current
+                else "我还没有保存行程：当前没有可确认的草案。先选定地点和时间并生成预览，再确认保存。"
+            )
         broad_trip_advice_request = (
             any(term in turn_goal for term in ("建议", "怎么安排", "如何规划", "怎么规划"))
             and any(term in turn_goal for term in ("旅行", "行程", "旅游", "游玩"))
@@ -1620,7 +1631,11 @@ async def execute_advisor_turn(
                     f"{'、'.join(item['name'] for item in compound_candidates[:8])}。"
                     "选择候选后可另行加入旅行草案。"
                 )
-        elif composed_result is not None and not composed and extraction.intent == "general":
+        elif (
+            composed_result is not None and not composed
+            and extraction.intent == "general"
+            and reply_fallback_reason != "UNVERIFIED_PERSISTENCE_CLAIM"
+        ):
             if reply_fallback_reason == "NOT_CONFIGURED":
                 reply += " 当前未配置智能回答模型；本轮没有发起地点搜索或更改行程。"
             else:

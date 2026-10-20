@@ -54,6 +54,18 @@ def _has_unsupported_removal_claim(reply: str, facts: dict) -> bool:
     return False
 
 
+def _has_unverified_persistence_claim(reply: str) -> bool:
+    """A conversational reply cannot assert a plan write that only confirm can do."""
+    patterns = (
+        r"(?:已|已经|现已).{0,3}(?:保存|提交|写入|更新|修改|应用)",
+        r"(?:我)?(?:帮你|为你|替你).{0,3}(?:保存|提交|写入|更新|修改|应用)(?:了|好|成功|完成)",
+        r"(?:保存|提交|写入|更新|修改|应用)(?:了|好|成功|完成).{0,8}(?:正式)?(?:行程|计划|草案)?",
+        r"作为.{0,16}(?:确认版本|最终版本).{0,12}(?:提交|保存|写入)",
+        r"(?:行程|计划).{0,8}(?:已经|已)(?:保存|提交|更新)",
+    )
+    return any(re.search(pattern, reply) for pattern in patterns)
+
+
 async def compose_advisor_reply(
     facts: dict,
     *,
@@ -176,6 +188,8 @@ async def compose_advisor_reply_with_diagnostics(
             reply = AdvisorReply.model_validate_json(content)
             if _has_unsupported_removal_claim(reply.reply, facts):
                 return AdvisorReplyResult(None, usage, output_tokens, "UNSUPPORTED_STATE_CLAIM")
+            if _has_unverified_persistence_claim(reply.reply):
+                return AdvisorReplyResult(None, usage, output_tokens, "UNVERIFIED_PERSISTENCE_CLAIM")
             return AdvisorReplyResult(reply, usage, output_tokens)
     except httpx.TimeoutException:
         return AdvisorReplyResult(None, 0, 0, "TIMEOUT")

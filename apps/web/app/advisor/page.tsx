@@ -163,6 +163,14 @@ function readAdvisorTask(payload: Record<string, unknown> | null): AdvisorTaskSn
   return { ...task, confirmation_options: confirmationOptions } as AdvisorTaskSnapshot;
 }
 
+function isExplicitDraftSaveConfirmation(content: string): boolean {
+  const normalized = content.replace(/[\s，。！？、,.!?；;：:]/g, "");
+  if (/(不要|先别|暂不|取消|不用|无需|再看看|没确认|尚未确认)/.test(normalized)) return false;
+  const confirms = /(确认|同意|可以|好的|好|就按|直接)/.test(normalized);
+  const persists = /(保存|提交|写入|应用到行程|更新正式行程)/.test(normalized);
+  return confirms && persists;
+}
+
 function readTripActionItems(payload: Record<string, unknown> | null | undefined): TripActionItem[] {
   const value = payload?.trip_action_items;
   if (!Array.isArray(value)) return [];
@@ -718,6 +726,15 @@ export default function AdvisorPage() {
     if (!active) return false;
     const content = (preset ?? message).trim();
     if (!content) return false;
+    if (active.draft && isExplicitDraftSaveConfirmation(content)) {
+      setMessage("");
+      if (draftIsStale) {
+        setError("草案所依据的地点、时间或旅行条件已变化，请先点击“更新预览”，再确认保存。");
+        return false;
+      }
+      await confirmDraft();
+      return true;
+    }
     const fingerprint = await advisorMessageFingerprint(content);
     let storedRequest: { idempotencyKey?: string; fingerprint?: string } | null = null;
     try {
@@ -1319,7 +1336,7 @@ export default function AdvisorPage() {
                     }}>自定义回答</button>}<button type="button" className="advisor-pending-switch" disabled={busy || active.status !== "ACTIVE" || !message.trim()} onClick={() => void switchPendingTask()}>改问其他问题</button><button type="button" className="advisor-pending-cancel" disabled={busy || active.status !== "ACTIVE"} onClick={() => void submitMessage(undefined, "取消")}>取消这项咨询</button></div>
                   </section>}
                   {item.role === "assistant" && responseSource && <small className={`advisor-response-source${responseSource === "TEMPLATE" ? " is-fallback" : ""}`}>
-                    {responseSource === "MODEL" ? `由 ${responseModel ?? "已配置模型"} 回复` : fallbackReason ? `本轮使用本地回复 · ${({ NOT_CONFIGURED: "模型未配置", TIMEOUT: "模型请求超时", EMPTY_RESPONSE: "模型返回空内容", INVALID_JSON_OR_SCHEMA: "模型回复格式异常", UPSTREAM_ERROR: "模型服务暂不可用", INVALID_RESPONSE: "模型返回内容异常", OUTPUT_TOKEN_LIMIT: "模型回复超过本轮预算", TOKEN_BUDGET_TOO_SMALL: "本轮模型预算不足", EXTRACTION_FAILED: "模型识别失败" } as Record<string, string>)[fallbackReason] ?? "模型回复未完成"}` : "顾问整理"}
+                    {responseSource === "MODEL" ? `由 ${responseModel ?? "已配置模型"} 回复` : fallbackReason ? `本轮使用本地回复 · ${({ NOT_CONFIGURED: "模型未配置", TIMEOUT: "模型请求超时", EMPTY_RESPONSE: "模型返回空内容", INVALID_JSON_OR_SCHEMA: "模型回复格式异常", UPSTREAM_ERROR: "模型服务暂不可用", INVALID_RESPONSE: "模型返回内容异常", OUTPUT_TOKEN_LIMIT: "模型回复超过本轮预算", TOKEN_BUDGET_TOO_SMALL: "本轮模型预算不足", EXTRACTION_FAILED: "模型识别失败", UNVERIFIED_PERSISTENCE_CLAIM: "未执行保存操作" } as Record<string, string>)[fallbackReason] ?? "模型回复未完成"}` : "顾问整理"}
                   </small>}
                   {trace && <details className="advisor-agent-trace" open={trace.status === "FAILED" || trace.status === "REJECTED" || trace.status === "PARTIAL" || trace.status === "NEEDS_USER_INPUT"}>
                     <summary><span className="advisor-agent-pulse" />查看顾问处理进度</summary>
