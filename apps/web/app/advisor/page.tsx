@@ -1191,6 +1191,10 @@ export default function AdvisorPage() {
   const visibleMapDay = draftDays.includes(mapDay) ? mapDay : draftDays[0] ?? "";
   const mapStops = active?.draft?.stops.filter((stop) => stop.day === visibleMapDay) ?? [];
   const allAttentionItems = active?.draft?.attention_items ?? [];
+  const selectedUnscheduledMealCandidates = active?.candidates.filter((candidate) =>
+    candidate.planning_category === "FOOD" && selected.includes(candidate.id)
+    && (!schedules[candidate.id]?.day || !schedules[candidate.id]?.start_time),
+  ) ?? [];
   const locallyCoveredAttentionItems = allAttentionItems.filter((item) => {
     if (item.kind === "LODGING_MISSING") {
       return active?.candidates.some((candidate) =>
@@ -1831,6 +1835,12 @@ export default function AdvisorPage() {
             </div>}
             {active?.draft?.attention_items?.length ? <section className="advisor-attention-panel" aria-label="需要你决定的行程空档">
               <div className="advisor-attention-heading"><span aria-hidden="true">✳</span><div><h3>{currentAttentionItems.length ? "有几段安排还没确定" : "当前缺项已补齐"}</h3><p>你来决定怎么处理，正式行程不会在你确认前改变。</p></div></div>
+              {selectedUnscheduledMealCandidates.length > 0 && <p className="advisor-attention-selection-note" role="status">
+                已选餐饮地点：{selectedUnscheduledMealCandidates.map((candidate) => candidate.name).join("、")}。还需选择用餐日期和时间；顾问不会替你填默认值。<button type="button" className="advisor-attention-inline-action" onClick={() => {
+                  setCandidateFilter("FOOD");
+                  window.setTimeout(() => document.getElementById(`advisor-candidate-${selectedUnscheduledMealCandidates[0].id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+                }}>去设置</button>
+              </p>}
               {locallyCoveredAttentionItems.length > 0 && <p className="advisor-attention-selection-note" role="status">
                 已按你刚才的选择补上{locallyCoveredAttentionItems.some((item) => item.kind === "MEAL_MISSING") ? "餐饮" : ""}{locallyCoveredAttentionItems.some((item) => item.kind === "MEAL_MISSING") && locallyCoveredAttentionItems.some((item) => item.kind === "LODGING_MISSING") ? "和" : ""}{locallyCoveredAttentionItems.some((item) => item.kind === "LODGING_MISSING") ? "住宿候选" : ""}。更新预览后会重新核验；点击底部“确认并应用到行程”后才会写入正式行程。
               </p>}

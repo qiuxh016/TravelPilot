@@ -116,9 +116,14 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }) 
   const lunch = page.locator(".advisor-live-candidate").filter({ hasText: "模拟川味餐馆" });
   await expect(lunch).toBeVisible();
   await lunch.getByRole("button", { name: "加入午餐" }).click();
+  const attentionPanel = page.getByRole("region", { name: "需要你决定的行程空档" });
+  await expect(attentionPanel).toContainText("已选餐饮地点：模拟川味餐馆");
+  await expect(attentionPanel).toContainText("还需选择用餐日期和时间");
+  await attentionPanel.getByRole("button", { name: "去设置" }).click();
   await lunch.getByLabel("用餐日期").selectOption(day);
   await lunch.getByLabel("用餐时间").fill("10:30");
 
+  await page.getByRole("button", { name: /^住宿 \d+$/ }).click();
   const hotel = page.locator(".advisor-live-candidate").filter({ hasText: "模拟旅行酒店" });
   await expect(hotel).toBeVisible();
   await hotel.getByRole("button", { name: "加入住宿" }).click();
