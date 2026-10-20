@@ -59,9 +59,21 @@ def confirmation_options_for(question: str) -> list[AdvisorConfirmationOption]:
     ):
         return []
 
+    asks_to_fill_gaps = bool(re.search(
+        r"(?:要|需要|是否要|需不需要).{0,16}(?:现在|一起|补|完善).{0,20}(?:吗)?$",
+        normalized,
+    )) and any(verb in normalized for verb in ("补", "完善", "安排", "搜索", "查询", "推荐"))
+    if asks_to_fill_gaps:
+        return [
+            AdvisorConfirmationOption(label="现在一起补齐", answer="好，请继续补齐刚才提到的安排"),
+            AdvisorConfirmationOption(label="稍后再处理", answer="这部分稍后再处理"),
+            AdvisorConfirmationOption(label="暂时不需要", answer="暂时不需要处理这部分"),
+        ]
+
     asks_for_confirmation = bool(re.search(
         r"(?:需要我|要我|要不要(?:我|把|将)?|要把|是否(?:要|需要|可以)?(?:我|把|将)?|"
-        r"(?:可不可以|可以|能否|可否)(?:把|将)?|是否需要我)",
+        r"(?:可不可以|可以|能否|可否)(?:把|将)?|是否需要我|"
+        r"要(?:我)?(?:现在)?(?:一起)?(?:把|将)?)",
         normalized,
     ))
     proposes_an_action = any(

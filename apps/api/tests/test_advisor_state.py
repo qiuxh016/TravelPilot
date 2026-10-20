@@ -321,6 +321,35 @@ def test_short_affirmative_does_not_match_information_question():
     assert not affirms_pending_action("要我现在按日期排出游览顺序吗？", "不用，谢谢")
 
 
+def test_natural_confirmation_of_bundle_action_continues_without_granting_commit_permission():
+    question = "另外两天的午餐、晚餐和地点间交通还没定，要现在一起补吗？"
+    assert affirms_pending_action(question, "确认，按当前选择加入安排")
+
+    result = resolve_pending_turn(
+        context={
+            "revision": 3,
+            "pending_agent_question": {
+                "task": "为梅州两日游补齐餐饮和住宿",
+                "question": question,
+                "context_revision": 3,
+                "task_type": "SCHEDULE",
+            },
+        },
+        previous_payload=None,
+        content="确认，按当前选择加入安排",
+    )
+
+    assert "立即继续该问题所指的原任务" in result.turn_goal
+    assert "仍须在写入旅行数据前请求用户确认" in result.turn_goal
+
+
+def test_affirmative_with_hesitation_does_not_authorize_pending_action():
+    question = "要不要我现在补齐两天的午餐和晚餐？"
+    assert not affirms_pending_action(question, "好的，我再想想")
+    assert not affirms_pending_action(question, "可以，不过我还不确定")
+    assert not affirms_pending_action(question, "我不知道，先看看")
+
+
 def test_pending_turn_accepts_short_choice_after_transient_selection_change():
     context = {
         "revision": 8,
