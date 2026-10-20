@@ -289,7 +289,7 @@ async def retry_content_extraction(content_id: UUID, session: AsyncSession = Dep
         raise HTTPException(409, detail="Content has no retryable extraction failures")
     metadata = source.extraction_metadata or {}
     retry_attempts = metadata.get("retry_attempts", 0)
-    if type(retry_attempts) is not int or retry_attempts >= 1:
+    if type(retry_attempts) is not int or retry_attempts >= 2:
         raise HTTPException(429, detail="This extraction has reached its retry limit")
     failed = metadata.get("failed_chunks")
     if not isinstance(failed, list) or not failed:
@@ -307,6 +307,8 @@ async def retry_content_extraction(content_id: UUID, session: AsyncSession = Dep
     remaining = []
     failed_usage = 0
     map_unavailable = False
+    replaced_chunk_count = 0
+    next_chunk_index = int(metadata.get("total_chunks", 0))
     skill = select_skill_decision("content_import", context={"task": "content_import", "user_content": True})
     for item in valid_ranges:
         segment = source.text[item["start"]:item["end"]]
@@ -325,17 +327,30 @@ async def retry_content_extraction(content_id: UUID, session: AsyncSession = Dep
             remaining.append({**item,
                               "failure_code": details.get("failure_code", "MODEL_RESPONSE_INVALID"),
                               "finish_reason": details.get("finish_reason")})
+            replaced_chunk_count += 1
             continue
+        local_chunk_count = max(1, extraction.chunk_count)
+        replaced_chunk_count += local_chunk_count
         map_unavailable = await _save_extraction_results(session, source, extraction, maps) or map_unavailable
-        if extraction.failed_chunks:
-            remaining.extend({**item,
-                              "failure_code": chunk.get("failure_code", "MODEL_RESPONSE_INVALID"),
-                              "finish_reason": chunk.get("finish_reason")}
-                             for chunk in extraction.failed_chunks)
+        for chunk in extraction.failed_chunks:
+            local_start, local_end = chunk.get("start"), chunk.get("end")
+            if type(local_start) is not int or type(local_end) is not int:
+                continue
+            remaining.append({
+                "index": next_chunk_index,
+                "start": item["start"] + local_start,
+                "end": item["start"] + local_end,
+                "failure_code": chunk.get("failure_code", "MODEL_RESPONSE_INVALID"),
+                "finish_reason": chunk.get("finish_reason"),
+            })
+            next_chunk_index += 1
 
     metadata["failed_chunks"] = remaining
     metadata["retry_attempts"] = retry_attempts + 1
-    metadata["completed_chunks"] = max(0, int(metadata.get("total_chunks", 0)) - len(remaining))
+    metadata["total_chunks"] = max(
+        0, int(metadata.get("total_chunks", 0)) - len(valid_ranges) + replaced_chunk_count,
+    )
+    metadata["completed_chunks"] = max(0, metadata["total_chunks"] - len(remaining))
     metadata["complete"] = not remaining
     source.extraction_metadata = metadata
     source.token_usage = (source.token_usage or 0) + failed_usage
@@ -347,7 +362,11 @@ async def retry_content_extraction(content_id: UUID, session: AsyncSession = Dep
     source.status = "PARTIAL" if remaining and has_results else "FAILED" if remaining or not has_results else "NEEDS_CONFIRMATION"
     if remaining:
         indexes = ", ".join(str(int(item["index"]) + 1) for item in remaining)
-        source.error = f"已识别 {metadata['completed_chunks']}/{metadata.get('total_chunks', 0)} 段；第 {indexes} 段仍未完成，可再次重试。"
+        next_step = "可以再试一次。" if metadata["retry_attempts"] < 2 else "重试次数已用完，可以删除记录后重新导入。"
+        source.error = (
+            f"已识别 {metadata['completed_chunks']}/{metadata.get('total_chunks', 0)} 段；"
+            f"第 {indexes} 段仍未完成，{next_step}"
+        )
     elif not has_results:
         source.error = "失败片段已重试，但没有识别到可用的地点或攻略细节。"
     elif map_unavailable:
@@ -356,6 +375,15 @@ async def retry_content_extraction(content_id: UUID, session: AsyncSession = Dep
         source.error = None
     await session.commit()
     return await _read(session, content_id)
+
+
+@router.delete("/content/{content_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_content(content_id: UUID, session: AsyncSession = Depends(get_session),
+                         source: ContentSourceModel = Depends(get_owned_content)):
+    """Delete an imported source and extraction artifacts, preserving confirmed trip items."""
+    await session.delete(source)
+    await session.commit()
+    return None
 
 
 @router.get("/content/{content_id}", response_model=ContentRead)

@@ -418,6 +418,8 @@ export const listTripContent = (tripId: string) =>
   request<ImportedContentSummary[]>(`/api/v1/trips/${tripId}/content`);
 export const getImportedContent = (contentId: string) =>
   request<ImportedContent>(`/api/v1/content/${contentId}`);
+export const deleteImportedContent = (contentId: string) =>
+  request<void>(`/api/v1/content/${contentId}`, { method: "DELETE" });
 export const retryContentExtraction = (contentId: string) =>
   request<ImportedContent>(`/api/v1/content/${contentId}/retry`, { method: "POST" });
 export const updateGuideFacts = (contentId: string, facts: ImportedGuideFact[]) =>

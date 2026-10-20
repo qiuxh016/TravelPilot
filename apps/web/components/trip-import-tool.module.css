@@ -23,6 +23,13 @@
   margin-top: 8px;
 }
 
+.historyItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 6px;
+}
+
 .importHistory button {
   display: grid;
   gap: 3px;
@@ -32,6 +39,17 @@
   background: var(--surface);
   color: var(--text);
   text-align: left;
+}
+
+.importHistory .historyOpen {
+  min-width: 0;
+}
+
+.importHistory .historyDelete {
+  align-content: center;
+  color: var(--danger);
+  text-align: center;
+  white-space: nowrap;
 }
 
 .importHistory button span {

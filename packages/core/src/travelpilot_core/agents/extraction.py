@@ -62,11 +62,11 @@ _PLACE = re.compile(
     r"机场|火车站|高铁站|汽车站|码头)"
 )
 _JSON_FENCE = re.compile(r"^```(?:json)?\s*\n(?P<body>.*?)\n```$", re.IGNORECASE | re.DOTALL)
-_GUIDE_CHUNK_TARGET_CHARS = 1000
-_GUIDE_CHUNK_MIN_CHARS = 800
+_GUIDE_CHUNK_TARGET_CHARS = 500
+_GUIDE_CHUNK_MIN_CHARS = 350
 _GUIDE_CHUNK_TOKEN_CAP = 768
 _GUIDE_MAX_INPUT_CHARS = 20000
-_GUIDE_MAX_CHUNKS = 25
+_GUIDE_MAX_CHUNKS = 50
 
 
 class TextExtractionFailure(RuntimeError):
@@ -418,13 +418,14 @@ async def _extract_places_once(
     if guide_import:
         extraction_input = json.dumps({"current_message": text}, ensure_ascii=False)
         system_instructions = (
-            "Extract explicitly stated travel-guide information from current_message only. Return compact JSON with "
+            "Extract explicitly stated travel-guide information from current_message only. Return very compact JSON "
             "places, guide_facts, search_queries, intent=general, pace_adjustment=none. Place fields: name, category, "
             "suggestion, confidence, action, evidence. Categories: ATTRACTION, FOOD, LODGING, OTHER. Do not invent "
             "places. Use action=mention unless the text explicitly asks to add or remove. Fact fields: kind, title, "
             "content, evidence, related_places, confidence. Preserve distinct ticket/booking, opening-hours, visit-time, "
             "duration, food, route/order, transport, lodging and practical-tip details. Keep content concise but retain "
-            "exact times, amounts, order and conditions. Evidence is the shortest exact supporting quote from the input; "
+            "exact times, amounts, order and conditions. Keep place suggestions and fact content to one short phrase. "
+            "Do not restate facts already captured in another field. Evidence is the shortest exact quote from input; "
             "do not repeat whole paragraphs. Never present guide claims as verified facts. JSON only; confidence is a "
             "number from 0 to 1; maximum 20 places and 40 facts.\n"
         ) + additional_instructions[:4000]

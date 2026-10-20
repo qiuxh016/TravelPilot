@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import styles from "./trip-import-tool.module.css";
-import { confirmCandidates, getImportedContent, importContent, listTripContent, recognizeContentImage, retryContentExtraction, updateGuideFacts, type ImportedContent, type ImportedContentSummary, type ImportedGuideFact } from "../lib/api";
+import { confirmCandidates, deleteImportedContent, getImportedContent, importContent, listTripContent, recognizeContentImage, retryContentExtraction, updateGuideFacts, type ImportedContent, type ImportedContentSummary, type ImportedGuideFact } from "../lib/api";
 
 type TripImportToolProps = {
   tripId: string;
@@ -42,6 +42,23 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
       setSelectedFactIds(result.guide_facts.filter((fact) => !fact.saved).map((fact) => fact.id));
       setFactsDirty(false);
     } catch (err) { setError(err instanceof Error ? err.message : "打开导入记录失败"); }
+    finally { setBusy(false); }
+  }
+
+  async function deleteHistoryItem(item: ImportedContentSummary) {
+    const confirmed = window.confirm(
+      "删除这条攻略导入记录？识别结果和候选项会一并删除；已经确认加入旅行的地点与备注会保留。",
+    );
+    if (!confirmed) return;
+    setBusy(true); setError("");
+    try {
+      await deleteImportedContent(item.id);
+      setHistory((current) => current.filter((entry) => entry.id !== item.id));
+      setContent((current) => current?.id === item.id ? null : current);
+      if (content?.id === item.id) {
+        setSelected([]); setSelectedFactIds([]); setFactsDirty(false); setText("");
+      }
+    } catch (err) { setError(err instanceof Error ? err.message : "删除导入记录失败"); }
     finally { setBusy(false); }
   }
 
@@ -143,9 +160,12 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
     </section>
     {!!history.length && <details className={styles.importHistory}>
       <summary>这段旅行的攻略导入记录（{history.length}）</summary>
-      <div>{history.map((item) => <button type="button" key={item.id} disabled={busy} onClick={() => void reopenContent(item.id)}>
-        <span>{new Date(item.created_at).toLocaleString()} · {item.status}</span><small>{item.error ?? "打开并继续查看或处理"}</small>
-      </button>)}</div>
+      <div>{history.map((item) => <article className={styles.historyItem} key={item.id}>
+        <button className={styles.historyOpen} type="button" disabled={busy} onClick={() => void reopenContent(item.id)}>
+          <span>{new Date(item.created_at).toLocaleString()} · {item.status}</span><small>{item.error ?? "打开并继续查看或处理"}</small>
+        </button>
+        <button className={styles.historyDelete} type="button" disabled={busy} onClick={() => void deleteHistoryItem(item)}>删除记录</button>
+      </article>)}</div>
     </details>}
     <form className="trip-import-form trip-form" onSubmit={submit}>
       <label>{ocrConfidence === null ? "攻略原文" : `识别文字（OCR 平均置信度 ${Math.round(ocrConfidence * 100)}%，请校对）`}<textarea required rows={8} maxLength={20000} value={text} onChange={(event) => setText(event.target.value)} /></label>
@@ -155,9 +175,9 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
     {content && <section className="trip-import-results"><h3>攻略识别 · {content.status}</h3>{content.error && <p role="status">{content.error}</p>}
       {content.extraction_metadata?.duplicate_source_id && <p className={styles.duplicateNotice} role="status">发现这段旅行中已有相同原文的导入记录（{content.extraction_metadata.duplicate_source_id.slice(0, 8)}…）。请检查是否重复保存地点或攻略要点。</p>}
       {content.extraction_metadata && content.extraction_metadata.total_chunks! > 1 && <p role="status">已处理 {content.extraction_metadata.completed_chunks ?? 0}/{content.extraction_metadata.total_chunks} 段</p>}
-      {!!content.extraction_metadata?.failed_chunks?.length && (content.extraction_metadata.retry_attempts ?? 0) < 1
+      {!!content.extraction_metadata?.failed_chunks?.length && (content.extraction_metadata.retry_attempts ?? 0) < 2
         ? <button type="button" disabled={busy} onClick={() => void retryFailedParts()}>{busy ? "正在重试…" : `只重试 ${content.extraction_metadata.failed_chunks.length} 个失败片段`}</button>
-        : !!content.extraction_metadata?.failed_chunks?.length && <p role="status">失败片段已达到重试次数上限；可以重新导入原文后再尝试。</p>}
+        : !!content.extraction_metadata?.failed_chunks?.length && <p role="status">失败片段已达到重试次数上限；可以删除这条记录后重新导入原文。</p>}
       <blockquote>{content.text}</blockquote>
       {!!content.guide_facts.length && <section className="trip-guide-facts" aria-label="攻略细节">
         <div><h3>识别到的攻略细节</h3><p>要点已保存在本次导入记录。勾选的内容会附加到对应已确认地点的旅行备注；请按原文核对，模型提取不等于事实核验。</p></div>
