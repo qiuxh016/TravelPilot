@@ -34,10 +34,10 @@ def test_food_search_keeps_current_plan_meal_and_lodging_choices():
 
     assert selected_ids_after_food_search(
         candidates, {"food-1", "hotel-1"}, {"hotel-1", "old-food"},
-    ) == ["food-1", "hotel-1", "tour-1"]
+    ) == ["food-1", "hotel-1", "old-food", "tour-1"]
 
 
-def test_food_search_preserves_prior_lodging_but_drops_old_temporary_food_pick():
+def test_food_search_preserves_prior_selected_food_lodging_and_sightseeing():
     candidates = [
         {"id": "tour-1", "in_current_plan": True, "planning_category": "ATTRACTION"},
         {"id": "food-1", "planning_category": "FOOD"},
@@ -46,7 +46,7 @@ def test_food_search_preserves_prior_lodging_but_drops_old_temporary_food_pick()
 
     assert selected_ids_after_food_search(
         candidates, previously_selected_ids={"hotel-1", "food-1"},
-    ) == ["hotel-1", "tour-1"]
+    ) == ["food-1", "hotel-1", "tour-1"]
 
 
 @pytest.mark.parametrize(
@@ -54,8 +54,8 @@ def test_food_search_preserves_prior_lodging_but_drops_old_temporary_food_pick()
     [
         # Searching/choosing a lunch must not clear a selected hotel or saved stop.
         ({"hotel-1"}, {"lunch-1"}, ["hotel-1", "lunch-1", "tour-1"]),
-        # Dinner replaces the old temporary lunch, while the hotel remains selected.
-        ({"hotel-1", "lunch-1"}, {"dinner-1"}, ["dinner-1", "hotel-1", "tour-1"]),
+        # A later dinner search must not clear the still-selected lunch.
+        ({"hotel-1", "lunch-1", "park-1"}, {"dinner-1"}, ["dinner-1", "hotel-1", "lunch-1", "park-1", "tour-1"]),
         # An explicit deselection is reflected by the caller's current selection set.
         (set(), {"dinner-1"}, ["dinner-1", "tour-1"]),
         # IDs no longer present in the refreshed candidate snapshot are discarded.
@@ -69,6 +69,7 @@ def test_meal_candidate_refresh_keeps_only_current_plan_active_lodging_and_curre
 ):
     candidates = [
         {"id": "tour-1", "in_current_plan": True, "planning_category": "ATTRACTION"},
+        {"id": "park-1", "planning_category": "ATTRACTION"},
         {"id": "lunch-1", "planning_category": "FOOD", "meal_type": "LUNCH"},
         {"id": "dinner-1", "planning_category": "FOOD", "meal_type": "DINNER"},
         {"id": "hotel-1", "planning_category": "LODGING"},

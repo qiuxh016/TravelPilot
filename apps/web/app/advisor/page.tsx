@@ -759,9 +759,12 @@ export default function AdvisorPage() {
   const tripActionItems = readTripActionItems(latestTripActionPayload);
   const mealCoveredInCurrentWork = (day: string, meal: "午餐" | "晚餐") => {
     const [windowStart, windowEnd] = meal === "午餐" ? [11 * 60, 14 * 60] : [17 * 60, 20 * 60];
-    const scheduledFood = [
+    const scheduledFood: {
+      category?: string; day?: string; start_time?: string; end_time?: string; duration_min?: number;
+    }[] = [
       ...(active?.draft?.stops ?? []).filter((stop) => selected.includes(stop.candidate_id)).map((stop) => ({
         category: stop.planning_category, day: stop.day, start_time: stop.start_time,
+        end_time: stop.end_time,
       })),
       ...(active?.candidates ?? [])
         .filter((candidate) => selected.includes(candidate.id))
@@ -769,13 +772,23 @@ export default function AdvisorPage() {
           category: candidate.planning_category,
           day: schedules[candidate.id]?.day,
           start_time: schedules[candidate.id]?.start_time,
+          duration_min: candidate.duration_min,
         })),
     ];
     return scheduledFood.some((item) => {
       if (item.category !== "FOOD" || item.day !== day || !item.start_time) return false;
       const [hour, minute] = item.start_time.slice(0, 5).split(":").map(Number);
       const start = hour * 60 + minute;
-      return Number.isFinite(start) && start >= windowStart && start < windowEnd;
+      if (!Number.isFinite(start)) return false;
+      const [endHour, endMinute] = item.end_time
+        ? item.end_time.slice(0, 5).split(":").map(Number)
+        : [Number.NaN, Number.NaN];
+      const end = Number.isFinite(endHour) && Number.isFinite(endMinute)
+        ? endHour * 60 + endMinute
+        : start + Math.max(0, item.duration_min ?? 0);
+      return end === start
+        ? start >= windowStart && start < windowEnd
+        : Math.max(0, Math.min(end, windowEnd) - Math.max(start, windowStart)) >= 30;
     });
   };
   const lodgingSelectedInCurrentWork = Boolean(
@@ -1185,15 +1198,7 @@ export default function AdvisorPage() {
       ) ?? false;
     }
     if (item.kind !== "MEAL_MISSING") return false;
-    const window = item.meal_type === "LUNCH" ? [11 * 60, 14 * 60] : [17 * 60, 20 * 60];
-    return active?.candidates.some((candidate) => {
-      if (candidate.planning_category !== "FOOD" || !selected.includes(candidate.id)) return false;
-      const schedule = schedules[candidate.id];
-      if (schedule?.day !== item.day || !schedule.start_time) return false;
-      const [hour, minute] = schedule.start_time.slice(0, 5).split(":").map(Number);
-      const start = hour * 60 + minute;
-      return Number.isFinite(start) && start >= window[0] && start < window[1];
-    }) ?? false;
+    return mealCoveredInCurrentWork(item.day, item.meal_type === "LUNCH" ? "午餐" : "晚餐");
   });
   const locallyCoveredAttentionKeys = new Set(locallyCoveredAttentionItems.map(checklistItemKey));
   const currentAttentionItems = allAttentionItems.filter((item) => !locallyCoveredAttentionKeys.has(checklistItemKey(item)));

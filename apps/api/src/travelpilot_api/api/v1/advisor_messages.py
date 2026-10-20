@@ -280,6 +280,11 @@ async def send_message(
         saved_snapshot = previous.payload.get("selection_snapshot")
         if isinstance(saved_snapshot, list) and all(isinstance(value, str) for value in saved_snapshot):
             selection_snapshot = sorted(saved_snapshot)
+            # A failed turn may have rolled back the context update while the
+            # idempotent user message and its selection snapshot were committed.
+            # Restore only the newly selected IDs so the turn can apply them
+            # again instead of silently reverting the user's choice.
+            explicit_selection_ids.update(set(selection_snapshot) - current_selection_ids)
     if selection_snapshot is not None:
         known_candidate_ids = {
             str(item.get("id")) for item in (row.candidates or [])
@@ -293,8 +298,7 @@ async def send_message(
         if sorted(str(value) for value in context.get("selected_candidate_ids", [])) != selection_snapshot:
             context["selected_candidate_ids"] = selection_snapshot
             context["revision"] = int(context.get("revision", 0)) + 1
-        if explicit_selection_ids:
-            row.context = context
+        row.context = context
     if not resume_existing_user_message:
         # Keep the original request recoverable if the API process exits while
         # a model or provider call is in flight. The retry path detects this

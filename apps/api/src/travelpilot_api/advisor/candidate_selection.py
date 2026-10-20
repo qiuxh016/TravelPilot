@@ -30,26 +30,23 @@ def selected_ids_after_food_search(
     explicit_selection_ids: set[str] | list[str] | tuple[str, ...] = (),
     previously_selected_ids: set[str] | list[str] | tuple[str, ...] = (),
 ) -> list[str]:
-    """Keep current stops, active lodging, and current-turn food/lodging picks."""
+    """Keep current stops and every still-selected candidate.
+
+    A follow-up meal search must not silently clear an earlier meal choice. The
+    caller's previous selection snapshot already reflects explicit UI removals.
+    """
     kept = {
         str(candidate["id"])
         for candidate in candidates
         if isinstance(candidate, dict) and candidate.get("id") and candidate.get("in_current_plan")
     }
-    food_ids = {
+    known_ids = {
         str(candidate["id"])
         for candidate in candidates
         if isinstance(candidate, dict) and candidate.get("id")
-        and candidate.get("planning_category") == "FOOD"
-    }
-    lodging_ids = {
-        str(candidate["id"])
-        for candidate in candidates
-        if isinstance(candidate, dict) and candidate.get("id")
-        and candidate.get("planning_category") == "LODGING"
     }
     previously_selected = {str(value) for value in previously_selected_ids}
     explicitly_selected = {str(value) for value in explicit_selection_ids}
-    kept.update(previously_selected & lodging_ids)
-    kept.update(explicitly_selected & (food_ids | lodging_ids))
+    kept.update(previously_selected & known_ids)
+    kept.update(explicitly_selected & known_ids)
     return sorted(kept)

@@ -248,6 +248,7 @@ async def test_message_endpoint_applies_and_persists_current_selection(monkeypat
     async def execute(*_args, **_kwargs):
         assert row.context == {
             "revision": 5, "selected_candidate_ids": [str(candidate_id)],
+            "selection_confirmation_candidate_ids": [str(candidate_id)],
         }
         return "completed"
 
@@ -301,6 +302,7 @@ async def test_retry_restores_persisted_selection_snapshot_after_context_rollbac
         calls.append(kwargs)
         assert row.context == {
             "revision": 5, "selected_candidate_ids": [str(candidate_id)],
+            "selection_confirmation_candidate_ids": [str(candidate_id)],
         }
         return "resumed"
 
@@ -357,7 +359,7 @@ async def test_message_endpoint_records_turn_terminal_state(monkeypatch, fails):
     from travelpilot_api.advisor import turn_service
 
     user_id, session_id = uuid4(), uuid4()
-    row = SimpleNamespace(id=session_id, status="ACTIVE")
+    row = SimpleNamespace(id=session_id, status="ACTIVE", context={}, candidates=[])
     checkpoints = []
     persisted = []
 
@@ -413,7 +415,7 @@ async def test_idempotent_retry_resumes_persisted_user_message_without_reply(mon
     from travelpilot_api.advisor import turn_service
 
     user_id, session_id = uuid4(), uuid4()
-    row = SimpleNamespace(id=session_id, status="ACTIVE")
+    row = SimpleNamespace(id=session_id, status="ACTIVE", context={}, candidates=[])
     previous = SimpleNamespace(
         id=uuid4(), created_at=datetime.now(UTC), content="查路线",
     )
@@ -452,7 +454,7 @@ async def test_idempotent_retry_with_reply_returns_without_rerunning(monkeypatch
     from travelpilot_api.advisor import turn_service
 
     user_id, session_id = uuid4(), uuid4()
-    row = SimpleNamespace(id=session_id, status="ACTIVE")
+    row = SimpleNamespace(id=session_id, status="ACTIVE", context={}, candidates=[])
     previous = SimpleNamespace(
         id=uuid4(), created_at=datetime.now(UTC), content="查路线",
     )
@@ -491,7 +493,7 @@ async def test_idempotent_retry_with_reply_returns_without_rerunning(monkeypatch
 @pytest.mark.asyncio
 async def test_idempotent_retry_does_not_overtake_a_later_user_message(monkeypatch):
     user_id, session_id = uuid4(), uuid4()
-    row = SimpleNamespace(id=session_id, status="ACTIVE")
+    row = SimpleNamespace(id=session_id, status="ACTIVE", context={}, candidates=[])
     previous = SimpleNamespace(
         id=uuid4(), created_at=datetime.now(UTC), content="查路线",
     )
@@ -516,7 +518,7 @@ async def test_idempotent_retry_does_not_overtake_a_later_user_message(monkeypat
 @pytest.mark.asyncio
 async def test_idempotent_retry_rejects_a_reply_linked_to_another_turn(monkeypatch):
     user_id, session_id = uuid4(), uuid4()
-    row = SimpleNamespace(id=session_id, status="ACTIVE")
+    row = SimpleNamespace(id=session_id, status="ACTIVE", context={}, candidates=[])
     previous = SimpleNamespace(id=uuid4(), created_at=datetime.now(UTC), content="查路线")
 
     async def owned(*_args, **_kwargs):

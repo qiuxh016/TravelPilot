@@ -522,9 +522,8 @@ async def execute_advisor_turn(
             ),
         )
         if requested_category == "FOOD" and row.trip_id and not schedule_intent_requested:
-            # Keep confirmed itinerary stops and an explicit food choice made in
-            # this turn. Preserve the selected lodging across meal searches, but
-            # discard unrelated temporary sightseeing picks from earlier searches.
+            # Searching for food must not clear earlier user selections. The
+            # selection snapshot already excludes items the user explicitly removed.
             context["selected_candidate_ids"] = selected_ids_after_food_search(
                 row.candidates,
                 explicitly_selected_candidate_ids,
@@ -1885,7 +1884,7 @@ async def execute_advisor_turn(
         answers=task_answers,
         question=pending_question_text if has_pending_question else None,
         confirmation_options=(
-            [option.model_dump() for option in composed.follow_up_options]
+            [option.model_dump() for option in getattr(composed, "follow_up_options", [])]
             if composed and composed.follow_up_question and pending_question_text == composed.follow_up_question.strip()
             else []
         ),
