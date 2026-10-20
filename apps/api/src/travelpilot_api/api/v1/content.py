@@ -28,7 +28,9 @@ from travelpilot_api.schemas.content import (
     ConfirmCandidates,
     ContentCreate,
     ContentRead,
+    ContentSummaryRead,
     EntityRead,
+    GuideFactsUpdate,
     OcrTextRead,
 )
 from travelpilot_api.settings import settings
@@ -163,8 +165,17 @@ def _deepseek_thinking_mode() -> str | None:
 async def create_content(trip_id: UUID, payload: ContentCreate,
                          session: AsyncSession = Depends(get_session), maps=Depends(get_maps_provider),
                          _trip: TripModel = Depends(get_owned_trip)):
+    duplicate_rows = (await session.scalars(
+        select(ContentSourceModel.id).where(
+            ContentSourceModel.trip_id == trip_id,
+            ContentSourceModel.text == payload.text,
+        ).limit(1)
+    )).all()
+    duplicate_of = duplicate_rows[0] if duplicate_rows else None
     source = ContentSourceModel(trip_id=trip_id, content_type=payload.content_type,
                                 text=payload.text, status="PARSING")
+    if duplicate_of:
+        source.extraction_metadata = {"duplicate_source_id": str(duplicate_of)}
     session.add(source)
     await session.flush()
     session.add(ContentItemModel(source_id=source.id, text=payload.text, kind="TEXT"))
@@ -197,7 +208,9 @@ async def create_content(trip_id: UUID, payload: ContentCreate,
             "total_chunks": extraction.chunk_count,
             "completed_chunks": completed,
             "failed_chunks": failed,
+            "retry_attempts": 0,
             "complete": not failed,
+            **({"duplicate_source_id": str(duplicate_of)} if duplicate_of else {}),
         }
         has_results = bool(extraction.places or extraction.guide_facts)
         source.status = (
@@ -222,14 +235,20 @@ async def create_content(trip_id: UUID, payload: ContentCreate,
             exc.provider_metadata,
         )
         source.status = "FAILED"
-        source.extraction_metadata = {
-            "total_chunks": 1, "completed_chunks": 0,
-            "failed_chunks": [{"index": 0, "start": 0, "end": len(payload.text),
-                               "failure_code": (exc.provider_metadata or {}).get("failure_code", "MODEL_RESPONSE_INVALID"),
-                               "finish_reason": (exc.provider_metadata or {}).get("finish_reason")}],
-            "complete": False,
-        }
         failure_code = (exc.provider_metadata or {}).get("failure_code")
+        retryable = failure_code not in {"INPUT_TOO_LONG", "RESULT_LIMIT_EXCEEDED", "CHUNK_LIMIT_EXCEEDED"}
+        source.extraction_metadata = {
+            "total_chunks": 1 if retryable else None,
+            "completed_chunks": 0 if retryable else None,
+            "failed_chunks": ([{"index": 0, "start": 0, "end": len(payload.text),
+                                "failure_code": failure_code or "MODEL_RESPONSE_INVALID",
+                                "finish_reason": (exc.provider_metadata or {}).get("finish_reason")}]
+                              if retryable else []),
+            "retry_attempts": 0,
+            "complete": False,
+            "failure_code": failure_code,
+            **({"duplicate_source_id": str(duplicate_of)} if duplicate_of else {}),
+        }
         if failure_code == "INPUT_TOO_LONG":
             source.error = "攻略超过 20,000 字符的导入上限；请拆分后分别导入。"
         elif failure_code == "RESULT_LIMIT_EXCEEDED":
@@ -247,6 +266,20 @@ async def create_content(trip_id: UUID, payload: ContentCreate,
     return await _read(session, source.id)
 
 
+@router.get("/trips/{trip_id}/content", response_model=list[ContentSummaryRead])
+async def list_trip_content(trip_id: UUID, session: AsyncSession = Depends(get_session),
+                            _trip: TripModel = Depends(get_owned_trip)):
+    sources = (await session.scalars(
+        select(ContentSourceModel).where(ContentSourceModel.trip_id == trip_id)
+        .order_by(ContentSourceModel.created_at.desc()).limit(30)
+    )).all()
+    return [ContentSummaryRead(
+        id=source.id, content_type=source.content_type, status=source.status,
+        error=source.error, extraction_metadata=source.extraction_metadata,
+        created_at=source.created_at,
+    ) for source in sources]
+
+
 @router.post("/content/{content_id}/retry", response_model=ContentRead)
 async def retry_content_extraction(content_id: UUID, session: AsyncSession = Depends(get_session),
                                    maps=Depends(get_maps_provider),
@@ -255,6 +288,9 @@ async def retry_content_extraction(content_id: UUID, session: AsyncSession = Dep
     if source.status not in {"PARTIAL", "FAILED"} or source.status == "IMPORTED":
         raise HTTPException(409, detail="Content has no retryable extraction failures")
     metadata = source.extraction_metadata or {}
+    retry_attempts = metadata.get("retry_attempts", 0)
+    if type(retry_attempts) is not int or retry_attempts >= 1:
+        raise HTTPException(429, detail="This extraction has reached its retry limit")
     failed = metadata.get("failed_chunks")
     if not isinstance(failed, list) or not failed:
         raise HTTPException(409, detail="Content has no retryable extraction failures")
@@ -298,6 +334,7 @@ async def retry_content_extraction(content_id: UUID, session: AsyncSession = Dep
                              for chunk in extraction.failed_chunks)
 
     metadata["failed_chunks"] = remaining
+    metadata["retry_attempts"] = retry_attempts + 1
     metadata["completed_chunks"] = max(0, int(metadata.get("total_chunks", 0)) - len(remaining))
     metadata["complete"] = not remaining
     source.extraction_metadata = metadata
@@ -352,7 +389,9 @@ async def confirm_content(content_id: UUID, payload: ConfirmCandidates,
     known_fact_ids = {str(fact.get("id")) for fact in stored_facts}
     if not requested_fact_ids.issubset(known_fact_ids):
         raise HTTPException(400, detail="Unknown guide fact")
-    saved_fact_ids: set[str] = set()
+    # Explicitly selected facts remain saved in the trip's guide source even
+    # when they are trip-wide or belong to a place the user did not select.
+    saved_fact_ids: set[str] = requested_fact_ids
     for candidate, entity in rows:
         if candidate.confirmed:
             continue
@@ -386,5 +425,38 @@ async def confirm_content(content_id: UUID, payload: ConfirmCandidates,
         for fact in stored_facts
     ]
     source.status = "IMPORTED"
+    await session.commit()
+    return await _read(session, content_id)
+
+
+@router.put("/content/{content_id}/facts", response_model=ContentRead)
+async def update_content_facts(content_id: UUID, payload: GuideFactsUpdate,
+                               session: AsyncSession = Depends(get_session),
+                               source: ContentSourceModel = Depends(get_owned_content)):
+    if source.status not in {"PARTIAL", "FAILED", "NEEDS_CONFIRMATION"}:
+        raise HTTPException(409, detail="Guide facts can only be edited before import confirmation")
+    current = {str(item.get("id")): item for item in (source.guide_facts or [])}
+    requested = [str(item.id) for item in payload.facts]
+    if len(requested) != len(set(requested)) or not set(requested).issubset(current):
+        raise HTTPException(400, detail="Unknown or duplicate guide fact")
+    entities = (await session.scalars(select(ExtractedEntityModel).where(
+        ExtractedEntityModel.source_id == content_id
+    ))).all()
+    place_names = {entity.name.casefold(): entity.name for entity in entities}
+    updated = []
+    for fact in payload.facts:
+        if fact.evidence and fact.evidence not in source.text:
+            raise HTTPException(400, detail="Evidence must quote the imported source")
+        if any(name.casefold() not in place_names for name in fact.related_places):
+            raise HTTPException(400, detail="Related place must match an extracted place")
+        old = current[str(fact.id)]
+        updated.append({
+            "id": str(fact.id), "kind": fact.kind, "title": fact.title,
+            "content": fact.content, "evidence": fact.evidence,
+            "related_places": [place_names[name.casefold()] for name in fact.related_places],
+            "confidence": fact.confidence, "saved": bool(old.get("saved", False)),
+            "edited": True,
+        })
+    source.guide_facts = updated
     await session.commit()
     return await _read(session, content_id)

@@ -4,8 +4,18 @@ from uuid import uuid4
 
 import pytest
 from travelpilot_api.api.v1 import content as content_api
-from travelpilot_api.api.v1.content import create_content, retry_content_extraction
-from travelpilot_api.schemas.content import ContentCreate
+from travelpilot_api.api.v1.content import (
+    confirm_content,
+    create_content,
+    retry_content_extraction,
+    update_content_facts,
+)
+from travelpilot_api.schemas.content import (
+    ConfirmCandidates,
+    ContentCreate,
+    GuideFactsUpdate,
+    GuideFactUpdate,
+)
 from travelpilot_core.agents.extraction import Extraction, TextExtractionFailure
 from travelpilot_infra.db.models.workflow import ContentSourceModel
 
@@ -159,5 +169,45 @@ async def test_retry_content_extraction_retries_only_failed_range(monkeypatch):
     assert requested == ["FAILED RANGE"]
     assert result.status == "NEEDS_CONFIRMATION"
     assert result.extraction_metadata == {
-        "total_chunks": 2, "completed_chunks": 2, "complete": True, "failed_chunks": [],
+        "total_chunks": 2, "completed_chunks": 2, "retry_attempts": 1,
+        "complete": True, "failed_chunks": [],
     }
+
+
+@pytest.mark.asyncio
+async def test_trip_level_guide_fact_can_be_edited_and_confirmed_without_place():
+    fact_id = uuid4()
+    source = ContentSourceModel(
+        id=uuid4(), trip_id=uuid4(), content_type="TEXT", text="建议预留午餐时间",
+        status="NEEDS_CONFIRMATION", created_at=datetime.now(UTC), token_usage=0,
+        guide_facts=[{"id": str(fact_id), "kind": "TIP", "title": "提示", "content": "建议预留午餐时间",
+                      "evidence": "建议预留午餐时间", "related_places": [], "confidence": 0.7}],
+    )
+
+    class Result:
+        def all(self):
+            return []
+
+    class Session(_Session):
+        async def execute(self, _statement):
+            return Result()
+
+    session = Session()
+    session.source = source
+    updated = await update_content_facts(
+        source.id,
+        GuideFactsUpdate(facts=[GuideFactUpdate(
+            id=fact_id, kind="TIP", title="午餐安排", content="建议预留午餐时间",
+            evidence="建议预留午餐时间", related_places=[], confidence=0.9,
+        )]),
+        session=session, source=source,
+    )
+    assert updated.guide_facts[0].title == "午餐安排"
+    assert updated.guide_facts[0].saved is False
+
+    confirmed = await confirm_content(
+        source.id, ConfirmCandidates(candidate_ids=[], fact_ids=[fact_id]),
+        session=session, source=source,
+    )
+    assert confirmed.status == "IMPORTED"
+    assert confirmed.guide_facts[0].saved is True

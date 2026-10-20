@@ -1,0 +1,138 @@
+.factGroup {
+  display: grid;
+  gap: 8px;
+}
+
+.importHistory {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--surface-raised);
+}
+
+.importHistory > summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.importHistory > div {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.importHistory button {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+
+.importHistory button span {
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.importHistory button small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.candidateSource {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.advisorLink {
+  justify-self: start;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.advisorLink:hover {
+  text-decoration: underline;
+}
+
+.duplicateNotice {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 9px;
+  padding: 9px 11px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.groupTitle {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: .04em;
+}
+
+.factContent {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  line-height: 1.45;
+}
+
+.factContent > strong {
+  font-size: 13px;
+}
+
+.factContent > small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.factEditor {
+  display: grid;
+  gap: 8px;
+  margin-top: 5px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.factEditor summary {
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.factEditor label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.factEditor input,
+.factEditor textarea,
+.factEditor select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.factEditor button {
+  justify-self: start;
+  color: var(--danger);
+}

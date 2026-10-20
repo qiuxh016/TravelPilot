@@ -392,13 +392,17 @@ export type ContentEntity = {
 };
 export type ImportedGuideFact = {
   id: string; kind: "TICKET" | "OPENING_HOURS" | "SUGGESTED_TIME" | "FOOD" | "ROUTE" | "TRANSPORT" | "ACCOMMODATION" | "TIP" | "OTHER";
-  title: string; content: string; evidence: string | null; related_places: string[]; confidence: number; saved?: boolean;
+  title: string; content: string; evidence: string | null; related_places: string[]; confidence: number; saved?: boolean; edited?: boolean;
 };
 export type ImportedContent = {
   id: string; trip_id: string; content_type: string; text: string;
   status: string; error: string | null; token_usage: number;
-  extraction_metadata: { total_chunks?: number; completed_chunks?: number; complete?: boolean; failed_chunks?: { index: number; start: number; end: number }[] } | null;
+  extraction_metadata: { total_chunks?: number; completed_chunks?: number; retry_attempts?: number; complete?: boolean; duplicate_source_id?: string; failed_chunks?: { index: number; start: number; end: number }[] } | null;
   created_at: string; entities: ContentEntity[]; guide_facts: ImportedGuideFact[];
+};
+export type ImportedContentSummary = {
+  id: string; content_type: string; status: string; error: string | null;
+  extraction_metadata: ImportedContent["extraction_metadata"]; created_at: string;
 };
 export type OcrText = { text: string; confidence: number | null; stored: boolean };
 export const recognizeContentImage = (tripId: string, file: File) => {
@@ -410,8 +414,16 @@ export const importContent = (tripId: string, text: string) =>
   request<ImportedContent>(`/api/v1/trips/${tripId}/content`, {
     method: "POST", body: JSON.stringify({ content_type: "TEXT", text }),
   });
+export const listTripContent = (tripId: string) =>
+  request<ImportedContentSummary[]>(`/api/v1/trips/${tripId}/content`);
+export const getImportedContent = (contentId: string) =>
+  request<ImportedContent>(`/api/v1/content/${contentId}`);
 export const retryContentExtraction = (contentId: string) =>
   request<ImportedContent>(`/api/v1/content/${contentId}/retry`, { method: "POST" });
+export const updateGuideFacts = (contentId: string, facts: ImportedGuideFact[]) =>
+  request<ImportedContent>(`/api/v1/content/${contentId}/facts`, {
+    method: "PUT", body: JSON.stringify({ facts }),
+  });
 export const confirmCandidates = (contentId: string, candidateIds: string[], factIds: string[] = []) =>
   request<ImportedContent>(`/api/v1/content/${contentId}/confirm`, {
     method: "POST", body: JSON.stringify({ candidate_ids: candidateIds, fact_ids: factIds }),
