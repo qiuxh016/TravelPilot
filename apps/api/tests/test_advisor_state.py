@@ -1,4 +1,5 @@
 from travelpilot_api.advisor.state import (
+    affirms_pending_action,
     cancelled_task_reply,
     cancels_pending_task,
     pending_agent_question,
@@ -291,6 +292,33 @@ def test_pending_turn_lifecycle_resumes_task_and_clears_context_checkpoint():
     assert "pending_agent_question" not in context
     assert not result.invalidated
     assert not result.cancelled
+
+
+def test_short_affirmative_continues_pending_action_without_reasking():
+    question = "要我现在按日期把每天的游览顺序排出来吗？"
+    assert affirms_pending_action(question, "好的帮我确认")
+    context = {
+        "revision": 2,
+        "pending_agent_question": {
+            "task": "帮我安排梅州两日游",
+            "question": question,
+            "context_revision": 2,
+            "task_type": "SCHEDULE",
+        },
+    }
+
+    result = resolve_pending_turn(
+        context=context, previous_payload=None, content="好的帮我确认",
+    )
+
+    assert "立即继续该问题所指的原任务" in result.turn_goal
+    assert "不要再次询问同一个问题" in result.turn_goal
+    assert "仍须在写入旅行数据前请求用户确认" in result.turn_goal
+
+
+def test_short_affirmative_does_not_match_information_question():
+    assert not affirms_pending_action("你更喜欢自然还是历史文化？", "好的")
+    assert not affirms_pending_action("要我现在按日期排出游览顺序吗？", "不用，谢谢")
 
 
 def test_pending_turn_accepts_short_choice_after_transient_selection_change():

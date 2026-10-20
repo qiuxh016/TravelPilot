@@ -5,6 +5,7 @@ from typing import Any
 
 from travelpilot_api.advisor.state import (
     PendingAgentQuestion,
+    affirms_pending_action,
     cancels_pending_task,
     pending_agent_question,
     pending_agent_question_from_context,
@@ -49,6 +50,13 @@ def resolve_pending_turn(
 
     if pending and not cancelled:
         pending, turn_goal = resume_pending_task(pending, content)
+        if affirms_pending_action(continuing_task.question, content):
+            turn_goal += (
+                "\n控制指令：用户已明确肯定答复上一个行动确认问题。"
+                "立即继续该问题所指的原任务，不要再次询问同一个问题。"
+                "这只授权执行该问题明确描述的动作；若正式保存/提交并未被明确询问，"
+                "仍须在写入旅行数据前请求用户确认。"
+            )
     else:
         turn_goal = content
 

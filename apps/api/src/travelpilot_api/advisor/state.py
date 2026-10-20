@@ -171,6 +171,27 @@ def resume_pending_task(pending: PendingAgentQuestion, answer: str) -> tuple[Pen
     )
 
 
+def affirms_pending_action(question: str, answer: str) -> bool:
+    """Recognize a short affirmative only when the pending turn asks permission to act."""
+    normalized = answer.strip().casefold()
+    if not normalized or len(normalized) > 48 or any(token in normalized for token in (
+        "不需要", "不用", "不要", "不必", "不行", "不确认", "取消", "算了", "等等",
+    )):
+        return False
+    affirmative_prefixes = (
+        "好", "可以", "行", "没问题", "确认", "帮我确认", "继续", "请继续",
+        "yes", "yeah", "yep", "okay", "ok", "go ahead",
+    )
+    if not normalized.startswith(affirmative_prefixes):
+        return False
+    asks_to_act = any(token in question for token in (
+        "要我", "需要我", "是否现在", "要不要我", "帮你", "替你",
+    )) and any(token in question for token in (
+        "吗", "？", "?", "安排", "推荐", "查询", "排出来", "继续",
+    ))
+    return asks_to_act
+
+
 def cancels_pending_task(answer: str) -> bool:
     normalized = answer.strip().casefold()
     return normalized in {
