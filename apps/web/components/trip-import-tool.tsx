@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import styles from "./trip-import-tool.module.css";
-import { confirmCandidates, deleteImportedContent, getImportedContent, importContent, listTripContent, recognizeContentImage, retryContentExtraction, updateGuideFacts, type ImportedContent, type ImportedContentSummary, type ImportedGuideFact } from "../lib/api";
+import { confirmCandidates, createAdvisorSession, deleteImportedContent, getImportedContent, importContent, listTripContent, recognizeContentImage, retryContentExtraction, sendAdvisorMessage, updateGuideFacts, type ImportedContent, type ImportedContentSummary, type ImportedGuideFact } from "../lib/api";
 
 type TripImportToolProps = {
   tripId: string;
@@ -47,6 +48,7 @@ function defaultCandidateIds(entities: ImportedContent["entities"]) {
 }
 
 function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" | "onImported">) {
+  const router = useRouter();
   const [text, setText] = useState("");
   const [content, setContent] = useState<ImportedContent | null>(null);
   const [history, setHistory] = useState<ImportedContentSummary[]>([]);
@@ -56,6 +58,43 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [ocrConfidence, setOcrConfidence] = useState<number | null>(null);
+
+  async function askAdvisorToPlan() {
+    if (!content) return;
+    const places = content.entities
+      .filter((entity) => entity.candidates.some((candidate) => candidate.confirmed))
+      .map((entity) => entity.name);
+    const selectedFacts = content.guide_facts.filter((fact) => fact.saved);
+    const byKind = new Map<string, string[]>();
+    const kindLabels: Record<ImportedGuideFact["kind"], string> = {
+      TICKET: "购票与预约", OPENING_HOURS: "开放时间", SUGGESTED_TIME: "推荐时段",
+      FOOD: "美食", ROUTE: "路线", TRANSPORT: "出行方式", ACCOMMODATION: "住宿",
+      TIP: "实用提醒", OTHER: "其他",
+    };
+    for (const fact of selectedFacts) {
+      const label = kindLabels[fact.kind];
+      byKind.set(label, [...(byKind.get(label) ?? []), `${fact.related_places.length ? `【${fact.related_places.join("、")}】` : ""}${fact.content}`]);
+    }
+    const guideContext = [
+      places.length ? `攻略中已确认的地点：${places.join("、")}` : "攻略中没有已确认的地点",
+      ...[...byKind].map(([label, items]) => `${label}：${items.join("；")}`),
+    ].join("\n").slice(0, 2600);
+    const request = [
+      "请把这份已确认的旅行攻略作为上下文，结合当前旅行、已收藏地点和现有行程，给出简洁、可执行的调整建议。",
+      "重点检查相邻景点是否适合顺路安排、已有行程哪些日期或时段值得调整，以及用餐、住宿、购票预约和交通提示是否应加入。按景点、美食、住宿、其他实用信息区分建议；不要把餐厅当景点。",
+      "先说明你建议改什么和原因，再提供可操作的选项。日期、时间或住宿晚数等信息若无法从当前旅行和攻略确定，先询问我；不要猜测。不要直接修改正式行程。若我选择采纳，请生成含日期、时间、类别和变更摘要的行程草案，待我确认后再写入正式计划。",
+      "导入攻略内容：\n" + guideContext,
+    ].join("\n\n");
+
+    setBusy(true); setError("");
+    try {
+      const session = await createAdvisorSession({ mode: "existing", trip_id: tripId, pace_level: 3 });
+      await sendAdvisorMessage(session.id, request);
+      router.push(`/advisor?sessionId=${session.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "启动旅行顾问失败");
+    } finally { setBusy(false); }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -281,7 +320,10 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
         </article>;
       })}
       {content.status === "NEEDS_CONFIRMATION" && <button className="primary" disabled={busy || (selected.length === 0 && selectedFactIds.length === 0)} onClick={() => void confirm()}>确认保存所选内容（{selected.length + selectedFactIds.length}）</button>}
-      {content.status === "IMPORTED" && <Link className={styles.advisorLink} href={`/advisor?tripId=${tripId}`}>让 AI 顾问基于已保存地点继续规划 ↗</Link>}
+      {content.status === "IMPORTED" && <section className={styles.advisorStart}>
+        <div><strong>让顾问结合整段旅行整理建议</strong><p>顾问会读取当前行程和已确认的攻略内容，检查景点顺路、时间安排、餐饮、住宿与票务；只有你确认草案后才更新正式计划。</p></div>
+        <button type="button" className="primary" disabled={busy} onClick={() => void askAdvisorToPlan()}>{busy ? "正在准备旅行上下文…" : "和顾问一起整理行程"} ↗</button>
+      </section>}
     </section>}
   </>;
 }

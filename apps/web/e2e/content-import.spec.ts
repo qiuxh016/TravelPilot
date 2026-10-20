@@ -62,6 +62,8 @@ async function mockWorkspace(page: import("@playwright/test").Page) {
   let retryResponse: Record<string, unknown> | null = null;
   let importResponse: Record<string, unknown> | null = null;
   let confirmationPayload: Record<string, unknown> | null = null;
+  let advisorSessionPayload: Record<string, unknown> | null = null;
+  let advisorMessage: string | null = null;
   let importedText = "";
 
   await page.route("http://localhost:8000/api/v1/**", async (route) => {
@@ -101,6 +103,16 @@ async function mockWorkspace(page: import("@playwright/test").Page) {
     } else if (path === `/api/v1/content/${contentId}/retry`) {
       current = (retryResponse ?? guide("NEEDS_CONFIRMATION", current.text)) as typeof current;
       await route.fulfill({ json: current });
+    } else if (path === "/api/v1/advisor/sessions" && request.method() === "POST") {
+      advisorSessionPayload = request.postDataJSON() as Record<string, unknown>;
+      await route.fulfill({ json: { id: "00000000-0000-4000-8000-000000000010", trip_id: tripId } });
+    } else if (path === "/api/v1/advisor/sessions" && request.method() === "GET") {
+      await route.fulfill({ json: [] });
+    } else if (path === "/api/v1/advisor/status") {
+      await route.fulfill({ json: { llm_status: "CONFIGURED", model_name: "mock", output_token_limit: 128, upstream_status: "CHECKED_PER_REQUEST" } });
+    } else if (path.endsWith("/messages") && request.method() === "POST") {
+      advisorMessage = (request.postDataJSON() as { content: string }).content;
+      await route.fulfill({ json: {} });
     } else if (path === `/api/v1/content/${contentId}` && request.method() === "GET") {
       await route.fulfill({ json: current });
     } else if (path === `/api/v1/content/${contentId}` && request.method() === "DELETE") {
@@ -116,6 +128,8 @@ async function mockWorkspace(page: import("@playwright/test").Page) {
   return {
     getImportedText: () => importedText,
     getConfirmationPayload: () => confirmationPayload,
+    getAdvisorSessionPayload: () => advisorSessionPayload,
+    getAdvisorMessage: () => advisorMessage,
     setRetryResponse: (value: Record<string, unknown>) => { retryResponse = value; },
     setImportResponse: (value: Record<string, unknown>) => { importResponse = value; },
   };
@@ -145,6 +159,19 @@ test("攻略导入文本可提取、确认保存、重开并删除记录", async
   page.on("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "删除记录" }).click();
   await expect(page.getByText(/这段旅行的攻略导入记录/)).toHaveCount(0);
+});
+
+test("已确认攻略可带入旅行上下文交给顾问生成行程建议", async ({ page }) => {
+  const state = await mockWorkspace(page);
+  await page.getByLabel("攻略原文").fill("梅州一日游攻略\n上午11:00参观梅州学宫\n周一闭馆，其余时间开放");
+  await page.getByRole("button", { name: "提取地点" }).click();
+  await page.getByRole("button", { name: "确认保存所选内容（2）" }).click();
+  await page.getByRole("button", { name: "和顾问一起整理行程" }).click();
+  await expect(page).toHaveURL(/\/advisor\?sessionId=/);
+  expect(state.getAdvisorSessionPayload()).toMatchObject({ mode: "existing", trip_id: tripId });
+  expect(state.getAdvisorMessage()).toContain("梅州学宫");
+  expect(state.getAdvisorMessage()).toContain("开放时间");
+  expect(state.getAdvisorMessage()).toContain("现有行程");
 });
 
 test("图片 OCR 结果填入原文框，失败分段可重试且保留本地兜底提示", async ({ page }) => {

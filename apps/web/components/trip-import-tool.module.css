@@ -81,6 +81,32 @@
   text-decoration: underline;
 }
 
+.advisorStart {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: 12px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+
+.advisorStart strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.advisorStart p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.advisorStart button {
+  justify-self: start;
+}
+
 .duplicateNotice {
   margin: 0;
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
