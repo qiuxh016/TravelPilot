@@ -26,9 +26,11 @@ def explicit_candidate_selection_ids(content: str, candidates: list) -> list[str
 
 
 def selected_ids_after_food_search(
-    candidates: list, explicit_selection_ids: set[str] | list[str] | tuple[str, ...] = (),
+    candidates: list,
+    explicit_selection_ids: set[str] | list[str] | tuple[str, ...] = (),
+    previously_selected_ids: set[str] | list[str] | tuple[str, ...] = (),
 ) -> list[str]:
-    """Keep current plan stops and choices explicitly made in the current turn."""
+    """Keep current stops, active lodging, and current-turn food/lodging picks."""
     kept = {
         str(candidate["id"])
         for candidate in candidates
@@ -40,5 +42,14 @@ def selected_ids_after_food_search(
         if isinstance(candidate, dict) and candidate.get("id")
         and candidate.get("planning_category") == "FOOD"
     }
-    kept.update(str(value) for value in explicit_selection_ids if str(value) in food_ids)
+    lodging_ids = {
+        str(candidate["id"])
+        for candidate in candidates
+        if isinstance(candidate, dict) and candidate.get("id")
+        and candidate.get("planning_category") == "LODGING"
+    }
+    previously_selected = {str(value) for value in previously_selected_ids}
+    explicitly_selected = {str(value) for value in explicit_selection_ids}
+    kept.update(previously_selected & lodging_ids)
+    kept.update(explicitly_selected & (food_ids | lodging_ids))
     return sorted(kept)

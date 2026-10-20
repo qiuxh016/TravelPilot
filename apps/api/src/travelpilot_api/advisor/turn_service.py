@@ -523,9 +523,12 @@ async def execute_advisor_turn(
         )
         if requested_category == "FOOD" and row.trip_id and not schedule_intent_requested:
             # Keep confirmed itinerary stops and an explicit food choice made in
-            # this turn; discard unrelated temporary picks from earlier searches.
+            # this turn. Preserve the selected lodging across meal searches, but
+            # discard unrelated temporary sightseeing picks from earlier searches.
             context["selected_candidate_ids"] = selected_ids_after_food_search(
-                row.candidates, explicitly_selected_candidate_ids,
+                row.candidates,
+                explicitly_selected_candidate_ids,
+                context.get("selected_candidate_ids", []),
             )
             context["revision"] = int(context.get("revision", 0)) + 1
         found = []

@@ -22,7 +22,7 @@ def test_does_not_guess_when_candidate_alias_is_ambiguous():
     assert explicit_candidate_selection_ids("我选鑫丰", candidates) == []
 
 
-def test_food_search_keeps_current_plan_and_explicit_food_choice_only():
+def test_food_search_keeps_current_plan_meal_and_lodging_choices():
     candidates = [
         {"id": "tour-1", "in_current_plan": True, "planning_category": "ATTRACTION"},
         {"id": "food-1", "in_current_plan": False, "planning_category": "FOOD"},
@@ -30,4 +30,18 @@ def test_food_search_keeps_current_plan_and_explicit_food_choice_only():
         {"id": "old-food", "in_current_plan": False, "planning_category": "FOOD"},
     ]
 
-    assert selected_ids_after_food_search(candidates, {"food-1", "hotel-1"}) == ["food-1", "tour-1"]
+    assert selected_ids_after_food_search(
+        candidates, {"food-1", "hotel-1"}, {"hotel-1", "old-food"},
+    ) == ["food-1", "hotel-1", "tour-1"]
+
+
+def test_food_search_preserves_prior_lodging_but_drops_old_temporary_food_pick():
+    candidates = [
+        {"id": "tour-1", "in_current_plan": True, "planning_category": "ATTRACTION"},
+        {"id": "food-1", "planning_category": "FOOD"},
+        {"id": "hotel-1", "planning_category": "LODGING"},
+    ]
+
+    assert selected_ids_after_food_search(
+        candidates, previously_selected_ids={"hotel-1", "food-1"},
+    ) == ["hotel-1", "tour-1"]

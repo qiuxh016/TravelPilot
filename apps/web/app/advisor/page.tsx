@@ -756,17 +756,48 @@ export default function AdvisorPage() {
   const latestTripActionPayload = [...(active?.messages ?? [])].reverse().find((item) =>
     item.role === "assistant" && Array.isArray(item.payload?.trip_action_items),
   )?.payload;
-  const latestDraftFollowUpPayload = [...(active?.messages ?? [])].reverse().find((item) =>
-    item.role === "assistant" && Array.isArray(item.payload?.draft_follow_up_options),
-  )?.payload;
   const tripActionItems = readTripActionItems(latestTripActionPayload);
-  const latestDraftMealTypes = new Set(readDraftFollowUpOptions(latestDraftFollowUpPayload ?? null)
-    .map((option) => option.key.match(/^DRAFT_MEAL:(LUNCH|DINNER)$/)?.[1])
-    .filter((meal): meal is string => Boolean(meal)));
-  const uniqueTripActionItems = tripActionItems.filter((item) => {
-    if (item.key === "MEAL:午餐" && latestDraftMealTypes.has("LUNCH")) return false;
-    if (item.key === "MEAL:晚餐" && latestDraftMealTypes.has("DINNER")) return false;
-    return true;
+  const mealCoveredInCurrentWork = (day: string, meal: "午餐" | "晚餐") => {
+    const [windowStart, windowEnd] = meal === "午餐" ? [11 * 60, 14 * 60] : [17 * 60, 20 * 60];
+    const scheduledFood = [
+      ...(active?.draft?.stops ?? []).filter((stop) => selected.includes(stop.candidate_id)).map((stop) => ({
+        category: stop.planning_category, day: stop.day, start_time: stop.start_time,
+      })),
+      ...(active?.candidates ?? [])
+        .filter((candidate) => selected.includes(candidate.id))
+        .map((candidate) => ({
+          category: candidate.planning_category,
+          day: schedules[candidate.id]?.day,
+          start_time: schedules[candidate.id]?.start_time,
+        })),
+    ];
+    return scheduledFood.some((item) => {
+      if (item.category !== "FOOD" || item.day !== day || !item.start_time) return false;
+      const [hour, minute] = item.start_time.slice(0, 5).split(":").map(Number);
+      const start = hour * 60 + minute;
+      return Number.isFinite(start) && start >= windowStart && start < windowEnd;
+    });
+  };
+  const lodgingSelectedInCurrentWork = Boolean(
+    active?.draft?.lodging?.some((item) => selected.includes(item.candidate_id))
+    || active?.candidates.some((candidate) =>
+      candidate.planning_category === "LODGING" && selected.includes(candidate.id),
+    ),
+  );
+  const uniqueTripActionItems = tripActionItems.flatMap((item) => {
+    if (item.key === "LODGING" && lodgingSelectedInCurrentWork) return [];
+    const meal = item.key === "MEAL:午餐" ? "午餐" : item.key === "MEAL:晚餐" ? "晚餐" : null;
+    if (!meal) return [item];
+    const dates = [...new Set(item.prompt.match(/20\d{2}-\d{2}-\d{2}/g) ?? [])];
+    if (!dates.length) return [item];
+    const missingDates = dates.filter((day) => !mealCoveredInCurrentWork(day, meal));
+    if (!missingDates.length) return [];
+    return [{
+      ...item,
+      title: `有 ${missingDates.length} 天${meal}还没安排`,
+      detail: `日期：${missingDates.join("、")}。已选地点会在预览更新后重新核验。`,
+      prompt: `请为${missingDates.join("、")}推荐${meal}地点，只展示餐饮候选；我选择后再确认具体时间。`,
+    }];
   });
   const visibleTripActionItems = tripActionsExpanded ? uniqueTripActionItems : uniqueTripActionItems.slice(0, 5);
   const activePlanningCategory = typeof latestAssistantPayload?.planning_category === "string" ? latestAssistantPayload.planning_category : null;
@@ -1147,11 +1178,30 @@ export default function AdvisorPage() {
   const visibleMapDay = draftDays.includes(mapDay) ? mapDay : draftDays[0] ?? "";
   const mapStops = active?.draft?.stops.filter((stop) => stop.day === visibleMapDay) ?? [];
   const allAttentionItems = active?.draft?.attention_items ?? [];
-  const handledAttentionItems = allAttentionItems.filter((item) => {
+  const locallyCoveredAttentionItems = allAttentionItems.filter((item) => {
+    if (item.kind === "LODGING_MISSING") {
+      return active?.candidates.some((candidate) =>
+        candidate.planning_category === "LODGING" && selected.includes(candidate.id),
+      ) ?? false;
+    }
+    if (item.kind !== "MEAL_MISSING") return false;
+    const window = item.meal_type === "LUNCH" ? [11 * 60, 14 * 60] : [17 * 60, 20 * 60];
+    return active?.candidates.some((candidate) => {
+      if (candidate.planning_category !== "FOOD" || !selected.includes(candidate.id)) return false;
+      const schedule = schedules[candidate.id];
+      if (schedule?.day !== item.day || !schedule.start_time) return false;
+      const [hour, minute] = schedule.start_time.slice(0, 5).split(":").map(Number);
+      const start = hour * 60 + minute;
+      return Number.isFinite(start) && start >= window[0] && start < window[1];
+    }) ?? false;
+  });
+  const locallyCoveredAttentionKeys = new Set(locallyCoveredAttentionItems.map(checklistItemKey));
+  const currentAttentionItems = allAttentionItems.filter((item) => !locallyCoveredAttentionKeys.has(checklistItemKey(item)));
+  const handledAttentionItems = currentAttentionItems.filter((item) => {
     const decision = active?.context?.checklist_decisions?.[checklistItemKey(item)];
     return decision?.decision === "NOT_NEEDED" || (decision?.decision === "LATER" && decision.draft_version === active?.draft?.version);
   });
-  const visibleAttentionItems = allAttentionItems.filter((item) => {
+  const visibleAttentionItems = currentAttentionItems.filter((item) => {
     const decision = active?.context?.checklist_decisions?.[checklistItemKey(item)];
     const isHandled = decision?.decision === "NOT_NEEDED" || (decision?.decision === "LATER" && decision.draft_version === active?.draft?.version);
     return showHandledAttention ? isHandled : !isHandled;
@@ -1775,7 +1825,10 @@ export default function AdvisorPage() {
               <small>{active.draft.weather.attribution} · 更新于 {active.draft.weather.fetched_at.slice(0, 16).replace("T", " ")}</small>
             </div>}
             {active?.draft?.attention_items?.length ? <section className="advisor-attention-panel" aria-label="需要你决定的行程空档">
-              <div className="advisor-attention-heading"><span aria-hidden="true">✳</span><div><h3>有几段安排还没确定</h3><p>你来决定怎么处理，正式行程不会在你确认前改变。</p></div></div>
+              <div className="advisor-attention-heading"><span aria-hidden="true">✳</span><div><h3>{currentAttentionItems.length ? "有几段安排还没确定" : "当前缺项已补齐"}</h3><p>你来决定怎么处理，正式行程不会在你确认前改变。</p></div></div>
+              {locallyCoveredAttentionItems.length > 0 && <p className="advisor-attention-selection-note" role="status">
+                已按你刚才的选择补上{locallyCoveredAttentionItems.some((item) => item.kind === "MEAL_MISSING") ? "餐饮" : ""}{locallyCoveredAttentionItems.some((item) => item.kind === "MEAL_MISSING") && locallyCoveredAttentionItems.some((item) => item.kind === "LODGING_MISSING") ? "和" : ""}{locallyCoveredAttentionItems.some((item) => item.kind === "LODGING_MISSING") ? "住宿候选" : ""}。更新预览后会重新核验；点击底部“确认并应用到行程”后才会写入正式行程。
+              </p>}
               {visibleAttentionItems.length ? <ul>{visibleAttentionItems.map((item) => {
                 const dayIndex = travelDays.indexOf(item.day) + 1;
                 const mealLabel = item.meal_type === "LUNCH" ? "午餐" : "晚餐";

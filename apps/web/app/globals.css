@@ -1041,6 +1041,7 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 .advisor-attention-heading > span { display: grid; place-items: center; width: 27px; height: 27px; flex: 0 0 auto; border-radius: 50%; background: var(--surface); color: var(--action); }
 .advisor-attention-heading h3 { margin: 1px 0 4px; color: var(--text); font-size: 13px; }
 .advisor-attention-heading p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.advisor-attention-selection-note { margin: 10px 0 0; border-radius: 7px; padding: 9px 11px; background: color-mix(in srgb, var(--success, #2f684c) 9%, var(--surface)); color: var(--text); font-size: 11px; line-height: 1.55; }
 .advisor-attention-panel ul { display: grid; gap: 7px; margin: 12px 0; padding: 0; list-style: none; }
 .advisor-attention-panel li { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid color-mix(in srgb, var(--border) 75%, transparent); padding-top: 8px; color: var(--muted); font-size: 11px; }
 .advisor-attention-panel li strong { color: var(--text); }
