@@ -1027,8 +1027,9 @@ export default function AdvisorPage() {
         origin: origin.trim(), companions: splitTags(companionsText), hard_constraints: splitTags(constraintsText),
       });
       setDestination(city); setActive(updated);
+      setSelected(updated.context?.selected_candidate_ids ?? []);
       setSessions((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
-      setNotice(`${city} 已设为当前目的地。接下来可以搜索该城市的具体地点。`);
+      await submitMessage(undefined, `我选了${city}，请继续帮我规划。`);
     } catch (reason) { setError((reason as Error).message); }
     finally { setBusy(false); }
   }
@@ -1523,7 +1524,7 @@ export default function AdvisorPage() {
                 window.localStorage.setItem("travelpilot-advisor-message-height", String(nextHeight));
               }}
             ><span>拖动调整对话高度</span><i aria-hidden="true" /></div>
-            {destinationRecommendations.length > 0 && <section className="advisor-destination-results" aria-label="目的地候选">
+            {destinationRecommendations.length > 0 && !active.destination && <section className="advisor-destination-results" aria-label="目的地候选">
               <div><strong>地图证据支持的目的地</strong><small>候选来自高德地点检索{destinationSearchCount !== null ? ` · 本轮查询 ${destinationSearchCount} 组` : ""} · {destinationRecommendations[0].retrieved_at?.slice(0, 16).replace("T", " ")}</small>
                 {destinationSearchCount !== null && !destinationSearchScopeComplete && <p>这是 Agent 根据已查询证据收敛出的候选，不代表已比较全部城市、交通或费用。你可以补充偏好后再次探索。</p>}</div>
               <div className="advisor-destination-grid">{destinationRecommendations.map((item) => <article key={item.city}>

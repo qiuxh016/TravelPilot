@@ -38,7 +38,8 @@ class AdvisorTaskSnapshot(BaseModel):
         if self.status != "WAITING_USER" and self.question is not None:
             raise ValueError("Only WAITING_USER tasks may have a pending question")
         if (
-            self.status == "WAITING_USER" and self.question and self.answers
+            self.status == "WAITING_USER" and self.question
+            and (self.answers or "还是" in self.question)
             and not self.confirmation_options
         ):
             self.confirmation_options = confirmation_options_for(self.question)

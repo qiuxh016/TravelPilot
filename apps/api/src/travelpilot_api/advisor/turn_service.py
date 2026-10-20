@@ -1478,6 +1478,17 @@ async def execute_advisor_turn(
                     ],
                     "trip_completeness_audit": trip_completeness_audit(row, context),
                     "trip_mode": row.mode,
+                    "destination_selected_this_turn": bool(
+                        row.mode == "discover"
+                        and row.destination
+                        and any(
+                            message.role == "assistant"
+                            and isinstance(message.payload, dict)
+                            and message.payload.get("event") == "DESTINATION_RECOMMENDATIONS"
+                            for message in recent_messages[-3:]
+                        )
+                        and row.destination in content
+                    ),
                     "has_existing_trip": row.trip_id is not None,
                     "planning_stage": "destination_discovery" if not row.destination else "trip_planning",
                     "current_day_count": (

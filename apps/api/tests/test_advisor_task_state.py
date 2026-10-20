@@ -100,6 +100,24 @@ def test_binary_preference_question_becomes_clickable_choices_after_context_is_k
     ]
 
 
+def test_first_preference_question_becomes_clickable_choices_without_prior_answers():
+    snapshot = AdvisorTaskSnapshot(
+        task_id="destination-preference-task",
+        task_type="DISCOVERY",
+        status="WAITING_USER",
+        goal="按用户偏好继续探索泉州",
+        context_revision=1,
+        turn_number=1,
+        question="你更喜欢历史文化还是自然风景？",
+        action_summary="了解旅行兴趣",
+    )
+
+    assert [(option.label, option.answer) for option in snapshot.confirmation_options] == [
+        ("历史文化", "我选历史文化"),
+        ("自然风景", "我选自然风景"),
+    ]
+
+
 def test_confirmation_question_without_a_prior_user_choice_remains_open_ended():
     snapshot = AdvisorTaskSnapshot(
         task_id="meal-task",
