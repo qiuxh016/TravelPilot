@@ -1,3 +1,4 @@
+from datetime import date
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -12,6 +13,11 @@ from travelpilot_infra.db.models.advisor import (
 )
 from travelpilot_infra.db.models.social import FriendConversationModel, FriendMessageModel
 from travelpilot_infra.db.models.trip import TripModel
+from travelpilot_infra.db.models.trip_collaboration import (
+    TripActivityModel,
+    TripDiscussionMessageModel,
+)
+from travelpilot_infra.db.models.trip_member import TripMemberModel
 from travelpilot_infra.db.models.user import UserModel
 
 
@@ -24,22 +30,26 @@ class _Rows:
 
 
 class _ExportSession:
-    def __init__(self, advisor_event, advisor_session=None, advisor_message=None):
+    def __init__(self, advisor_event, advisor_session=None, advisor_message=None, export_rows=None):
         self.statements = []
         self.advisor_event = advisor_event
         self.advisor_session = advisor_session
         self.advisor_message = advisor_message
+        self.export_rows = export_rows or {}
+        self.trip_queries = iter(self.export_rows.get("trip_queries", []))
 
     async def scalars(self, statement):
         self.statements.append(statement)
         entity = statement.column_descriptions[0]["entity"]
+        if entity is TripModel:
+            return _Rows(next(self.trip_queries, []))
         if entity is AdvisorRunEventModel:
             return _Rows([self.advisor_event])
         if entity is AdvisorSessionModel:
             return _Rows([self.advisor_session] if self.advisor_session else [])
         if entity is AdvisorMessageModel:
             return _Rows([self.advisor_message] if self.advisor_message else [])
-        return _Rows()
+        return _Rows(self.export_rows.get(entity, []))
 
     async def get(self, _model, _key):
         return None
@@ -119,7 +129,44 @@ async def test_account_export_is_owner_scoped_and_includes_advisor_data_once():
             },
         },
     )
-    session = _ExportSession(advisor_event, advisor_session, advisor_message)
+    owned_trip = TripModel(
+        id=uuid4(), owner_id=owner_id, destination="自己的旅行",
+        start_date=date(2026, 11, 1), end_date=date(2026, 11, 2), pace_level=3,
+    )
+    shared_trip_id = uuid4()
+    shared_trip = TripModel(
+        id=shared_trip_id, owner_id=uuid4(), destination="好友共享旅行",
+        start_date=date(2026, 12, 1), end_date=date(2026, 12, 2), pace_level=2,
+    )
+    accepted_shared_trip_id = uuid4()
+    shared_trip.id = accepted_shared_trip_id
+    accepted_membership = TripMemberModel(
+        id=uuid4(), trip_id=accepted_shared_trip_id, user_id=owner_id,
+        invited_by_id=shared_trip.owner_id, role="EDITOR", status="ACCEPTED",
+    )
+    revoked_membership = TripMemberModel(
+        id=uuid4(), trip_id=uuid4(), user_id=owner_id,
+        invited_by_id=shared_trip.owner_id, role="VIEWER", status="REVOKED",
+    )
+    discussion = TripDiscussionMessageModel(
+        id=uuid4(), trip_id=owned_trip.id, author_user_id=owner_id,
+        author_display_name="Traveler", body="共享行程请确认集合时间",
+    )
+    activity = TripActivityModel(
+        id=uuid4(), trip_id=accepted_shared_trip_id, actor_user_id=owner_id,
+        actor_display_name="Traveler", event_type="PLAN_UPDATED", summary="调整了计划",
+        payload={"version": 2},
+    )
+    session = _ExportSession(
+        advisor_event, advisor_session, advisor_message,
+        export_rows={
+            TripModel: [owned_trip],
+            "trip_queries": [[owned_trip], [shared_trip]],
+            TripMemberModel: [accepted_membership, revoked_membership],
+            TripDiscussionMessageModel: [discussion],
+            TripActivityModel: [activity],
+        },
+    )
 
     payload = await export_account(user=user, session=session)
 
@@ -142,6 +189,10 @@ async def test_account_export_is_owner_scoped_and_includes_advisor_data_once():
         "rating": "NOT_HELPFUL", "reason": "NOT_ACTIONABLE",
         "submitted_at": "2026-10-20T08:00:00+00:00",
     }
+    assert payload["data"]["trip_discussion_messages"][0]["body"] == "共享行程请确认集合时间"
+    assert payload["data"]["trip_activities"][0]["payload"] == {"version": 2}
+    assert payload["shared_trips"][0]["destination"] == "好友共享旅行"
+    assert [row["status"] for row in payload["data"]["trip_memberships"]] == ["ACCEPTED", "REVOKED"]
 
     advisor_event_queries = [
         statement for statement in session.statements
@@ -150,11 +201,22 @@ async def test_account_export_is_owner_scoped_and_includes_advisor_data_once():
     assert len(advisor_event_queries) == 1
     assert str(owner_id) in str(advisor_event_queries[0].compile().params.values())
 
-    trip_query = next(
-        statement for statement in session.statements
-        if statement.column_descriptions[0]["entity"] is TripModel
-    )
+    trip_query = next(statement for statement in session.statements
+                      if statement.column_descriptions[0]["entity"] is TripModel)
     assert str(owner_id) in str(trip_query.compile().params.values())
+    group_queries = [
+        statement for statement in session.statements
+        if statement.column_descriptions[0]["entity"] in {
+            TripDiscussionMessageModel, TripActivityModel,
+        }
+    ]
+    assert len(group_queries) == 2
+    assert all(
+        str(owned_trip.id) in str(statement.compile().params.values())
+        and str(accepted_shared_trip_id) in str(statement.compile().params.values())
+        and str(revoked_membership.trip_id) not in str(statement.compile().params.values())
+        for statement in group_queries
+    )
 
 
 @pytest.mark.asyncio
@@ -209,3 +271,18 @@ def test_advisor_feedback_is_removed_by_existing_account_cascade():
 
     assert len(owner_foreign_keys) == 1
     assert owner_foreign_keys[0].ondelete == "CASCADE"
+
+
+def test_group_trip_history_survives_member_account_deletion_but_owned_trip_cascades():
+    for model in (TripDiscussionMessageModel, TripActivityModel):
+        foreign_keys = {key.column.table.name: key.ondelete for key in model.__table__.foreign_keys}
+        assert foreign_keys["trips"] == "CASCADE"
+        assert foreign_keys["users"] == "SET NULL"
+
+    membership_foreign_keys = list(TripMemberModel.__table__.foreign_keys)
+    assert any(key.column.table.name == "trips" and key.ondelete == "CASCADE"
+               for key in membership_foreign_keys)
+    assert any(key.column.table.name == "users" and key.ondelete == "CASCADE"
+               for key in membership_foreign_keys)
+    assert any(key.column.table.name == "users" and key.ondelete == "SET NULL"
+               for key in membership_foreign_keys)

@@ -27,9 +27,12 @@ test("好友可接受小团体旅行邀请并查看共享旅行，所有者可�
   test.setTimeout(90_000);
   const owner = await createVerifiedUser(request, "owner");
   const friend = await createVerifiedUser(request, "editor");
+  const observer = await createVerifiedUser(request, "observer");
   const ownerHeaders = { "X-CSRF-Token": owner.csrf };
   const friendHeaders = { "X-CSRF-Token": friend.csrf };
   let ownerId = "";
+  let ownerAccountDeleted = false;
+  let friendAccountDeleted = false;
 
   try {
     const friendSearch = await owner.context.get(`${api}/friends/search?q=${friend.username}`);
@@ -41,6 +44,15 @@ test("好友可接受小团体旅行邀请并查看共享旅行，所有者可�
     expect(incoming.ok()).toBeTruthy();
     const requestRow = (await incoming.json())[0] as { id: string };
     expect((await friend.context.post(`${api}/friends/requests/${requestRow.id}/accept`, { headers: friendHeaders })).ok()).toBeTruthy();
+
+    const observerSearch = await owner.context.get(`${api}/friends/search?q=${observer.username}`);
+    const observerProfile = (await observerSearch.json())[0] as { user_id: string };
+    expect((await owner.context.post(`${api}/friends/requests/users/${observerProfile.user_id}`, { headers: ownerHeaders })).ok()).toBeTruthy();
+    const observerRequests = await observer.context.get(`${api}/friends/requests`);
+    const observerRequest = (await observerRequests.json())[0] as { id: string };
+    expect((await observer.context.post(`${api}/friends/requests/${observerRequest.id}/accept`, {
+      headers: { "X-CSRF-Token": observer.csrf },
+    })).ok()).toBeTruthy();
 
     const ownerProfileResponse = await owner.context.get(`${api}/friends/search?q=${owner.username}`);
     const ownerProfile = (await ownerProfileResponse.json())[0] as { user_id: string };
@@ -63,6 +75,8 @@ test("好友可接受小团体旅行邀请并查看共享旅行，所有者可�
     expect(initialPlanResponse.ok()).toBeTruthy();
     const initialPlan = await initialPlanResponse.json() as { id: string; version: number; nodes: { id: string; day: string }[] };
     expect(initialPlan.nodes).toHaveLength(1);
+    expect((await observer.context.get(`${api}/group-trips/${trip.id}`)).status()).toBe(404);
+    expect((await observer.context.get(`${api}/trips/${trip.id}`)).status()).toBe(404);
 
     const invited = await owner.context.post(`${api}/trips/${trip.id}/members`, {
       headers: ownerHeaders,
@@ -146,18 +160,79 @@ test("好友可接受小团体旅行邀请并查看共享旅行，所有者可�
       expect(deniedEdit.status()).toBe(403);
       await page.goto(`/trips/${trip.id}/plan`);
       await expect(page.getByRole("button", { name: "调整", exact: true })).toHaveCount(0);
+      const revoked = await owner.context.delete(`${api}/trips/${trip.id}/members/${membership.id}`, {
+        headers: ownerHeaders,
+      });
+      expect(revoked.status()).toBe(204);
+      expect((await friend.context.get(`${api}/group-trips/${trip.id}/discussion`)).status()).toBe(404);
+      expect((await friend.context.get(`${api}/group-trips/${trip.id}`)).status()).toBe(404);
+      const ownerExport = await owner.context.get(`${api}/account/export`);
+      expect(ownerExport.ok()).toBeTruthy();
+      const exported = await ownerExport.json();
+      const preservedMessage = exported.data.trip_discussion_messages.find(
+        (item: { body: string }) => item.body === groupMessage,
+      );
+      expect(preservedMessage.author_user_id).toBe(friendProfile.user_id);
+      expect(preservedMessage.author_display_name).toBe("旅行editor");
+
+      const cascadeTripResponse = await owner.context.post(`${api}/trips`, {
+        headers: ownerHeaders,
+        data: { destination: "账户删除级联验收", start_date: "2026-11-12", end_date: "2026-11-13", pace_level: 3 },
+      });
+      expect(cascadeTripResponse.ok()).toBeTruthy();
+      const cascadeTrip = await cascadeTripResponse.json() as { id: string };
+      const cascadeInvite = await owner.context.post(`${api}/trips/${cascadeTrip.id}/members`, {
+        headers: ownerHeaders,
+        data: { user_id: observerProfile.user_id, role: "VIEWER" },
+      });
+      expect(cascadeInvite.ok()).toBeTruthy();
+      const cascadeMembership = await cascadeInvite.json() as { id: string };
+      expect((await observer.context.post(`${api}/trip-invitations/${cascadeMembership.id}/accept`, {
+        headers: { "X-CSRF-Token": observer.csrf },
+      })).ok()).toBeTruthy();
+      expect((await observer.context.get(`${api}/group-trips/${cascadeTrip.id}`)).ok()).toBeTruthy();
+      const readonlyTripResponse = await owner.context.post(`${api}/trips`, {
+        headers: ownerHeaders,
+        data: { destination: "旧版只读分享验收", start_date: "2026-11-14", end_date: "2026-11-15", pace_level: 3 },
+      });
+      expect(readonlyTripResponse.ok()).toBeTruthy();
+      const readonlyTrip = await readonlyTripResponse.json() as { id: string };
+      const shareResponse = await owner.context.post(`${api}/trips/${readonlyTrip.id}/shares`, {
+        headers: ownerHeaders,
+        data: { friend_user_id: observerProfile.user_id, scope: "TRIP_AND_PLAN" },
+      });
+      expect(shareResponse.ok()).toBeTruthy();
+      expect((await observer.context.get(`${api}/shared/trips/${readonlyTrip.id}`)).ok()).toBeTruthy();
+      expect((await observer.context.patch(`${api}/trips/${readonlyTrip.id}`, {
+        headers: { "X-CSRF-Token": observer.csrf }, data: { budget: 5000 },
+      })).status()).toBe(404);
+      expect((await friend.context.delete(`${api}/account`, { headers: friendHeaders })).status()).toBe(204);
+      friendAccountDeleted = true;
+      const afterMemberDeletion = await owner.context.get(`${api}/account/export`);
+      const memberDeletedExport = await afterMemberDeletion.json();
+      const retainedAfterDeletion = memberDeletedExport.data.trip_discussion_messages.find(
+        (item: { body: string }) => item.body === groupMessage,
+      );
+      expect(retainedAfterDeletion.author_user_id).toBeNull();
+      expect(retainedAfterDeletion.author_display_name).toBe("旅行editor");
+      expect((await owner.context.delete(`${api}/account`, { headers: ownerHeaders })).status()).toBe(204);
+      ownerAccountDeleted = true;
+      expect((await observer.context.get(`${api}/group-trips/${cascadeTrip.id}`)).status()).toBe(404);
+      expect((await observer.context.get(`${api}/shared/trips/${readonlyTrip.id}`)).status()).toBe(404);
     } finally {
       await ownerContext.close();
     }
   } finally {
     const cleanup = await Promise.allSettled([
-      ownerId ? owner.context.delete(`${api}/account`, { headers: ownerHeaders }) : Promise.resolve(null),
-      friend.context.delete(`${api}/account`, { headers: friendHeaders }),
+      ownerId && !ownerAccountDeleted ? owner.context.delete(`${api}/account`, { headers: ownerHeaders }) : Promise.resolve(null),
+      friendAccountDeleted ? Promise.resolve(null) : friend.context.delete(`${api}/account`, { headers: friendHeaders }),
+      observer.context.delete(`${api}/account`, { headers: { "X-CSRF-Token": observer.csrf } }),
     ]);
     for (const result of cleanup) {
       if (result.status === "rejected") console.warn("Temporary collaboration test account cleanup failed.");
     }
     await owner.context.dispose();
     await friend.context.dispose();
+    await observer.context.dispose();
   }
 });

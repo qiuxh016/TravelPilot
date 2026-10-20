@@ -33,6 +33,11 @@ from travelpilot_infra.db.models.social import (
     TripShareGrantModel,
 )
 from travelpilot_infra.db.models.trip import TripModel
+from travelpilot_infra.db.models.trip_collaboration import (
+    TripActivityModel,
+    TripDiscussionMessageModel,
+)
+from travelpilot_infra.db.models.trip_member import TripMemberModel
 from travelpilot_infra.db.models.user import (
     EmailTokenModel,
     LoginAttemptModel,
@@ -577,6 +582,16 @@ async def export_account(user: UserModel = Depends(get_current_user),
     trips = (await session.scalars(select(TripModel).where(TripModel.owner_id == user.id)
                                    .order_by(TripModel.created_at))).all()
     trip_ids = [trip.id for trip in trips]
+    own_memberships = (await session.scalars(select(TripMemberModel).where(
+        TripMemberModel.user_id == user.id
+    ))).all()
+    accepted_shared_trip_ids = [
+        membership.trip_id for membership in own_memberships if membership.status == "ACCEPTED"
+    ]
+    shared_trips = (await session.scalars(select(TripModel).where(
+        TripModel.id.in_(accepted_shared_trip_ids)
+    ).order_by(TripModel.created_at))).all() if accepted_shared_trip_ids else []
+    accessible_trip_ids = list(dict.fromkeys([*trip_ids, *accepted_shared_trip_ids]))
     def trip_rows(model):
         return session.scalars(select(model).where(model.trip_id.in_(trip_ids)))
 
@@ -627,6 +642,18 @@ async def export_account(user: UserModel = Depends(get_current_user),
         "trip_shares": (await session.scalars(select(TripShareGrantModel).where(
             or_(TripShareGrantModel.owner_user_id == user.id, TripShareGrantModel.grantee_user_id == user.id)
         ))).all(),
+        "trip_memberships": (await session.scalars(select(TripMemberModel).where(
+            or_(TripMemberModel.trip_id.in_(trip_ids) if trip_ids else False,
+                TripMemberModel.user_id == user.id)
+        ))).all(),
+        "trip_discussion_messages": (await session.scalars(select(TripDiscussionMessageModel).where(
+            TripDiscussionMessageModel.trip_id.in_(accessible_trip_ids)
+            if accessible_trip_ids else False
+        ).order_by(TripDiscussionMessageModel.created_at))).all(),
+        "trip_activities": (await session.scalars(select(TripActivityModel).where(
+            TripActivityModel.trip_id.in_(accessible_trip_ids)
+            if accessible_trip_ids else False
+        ).order_by(TripActivityModel.created_at))).all(),
         "travel_moments": moments,
         "moment_media": (await session.scalars(select(MomentMediaModel).where(
             MomentMediaModel.owner_user_id == user.id
@@ -646,6 +673,27 @@ async def export_account(user: UserModel = Depends(get_current_user),
         ))).all(),
         "user_memory_settings": ([row] if (row := await session.get(UserMemorySettingsModel, user.id)) else []),
     }
+    shared_wishlist = (await session.scalars(select(WishlistItemModel).where(
+        WishlistItemModel.trip_id.in_(accepted_shared_trip_ids)
+        if accepted_shared_trip_ids else False
+    ))).all()
+    shared_plans = (await session.scalars(select(TripPlanModel).where(
+        TripPlanModel.trip_id.in_(accepted_shared_trip_ids)
+        if accepted_shared_trip_ids else False
+    ))).all()
+    shared_plan_ids = [plan.id for plan in shared_plans]
+    shared_plan_nodes = (await session.scalars(select(TripPlanNodeModel).where(
+        TripPlanNodeModel.plan_id.in_(shared_plan_ids) if shared_plan_ids else False
+    ))).all()
+    shared_plan_changes = (await session.scalars(select(PlanChangeModel).where(
+        PlanChangeModel.plan_id.in_(shared_plan_ids) if shared_plan_ids else False
+    ))).all()
+    grouped.update({
+        "shared_trip_wishlist": shared_wishlist,
+        "shared_trip_plans": shared_plans,
+        "shared_trip_plan_nodes": shared_plan_nodes,
+        "shared_trip_plan_changes": shared_plan_changes,
+    })
     advisor_sessions = (await session.scalars(select(AdvisorSessionModel).where(
         AdvisorSessionModel.owner_id == user.id
     ).order_by(AdvisorSessionModel.created_at))).all()
@@ -672,6 +720,7 @@ async def export_account(user: UserModel = Depends(get_current_user),
         "user": {"email": user.email, "username": user.username, "created_at": user.created_at,
                  "display_name": user.display_name, "home_city": user.home_city, "bio": user.bio},
         "trips": [encode(trip) for trip in trips],
+        "shared_trips": [encode(trip) for trip in shared_trips],
         "data": {name: [encode(row) for row in rows] for name, rows in grouped.items()},
         "advisor_sessions": [encode(item) for item in advisor_sessions],
     }
