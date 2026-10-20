@@ -95,6 +95,7 @@ async def run():
             assert (await call("GET", f"{API}/advisor/sessions", owner_b)).json() == []
             assert (await call("GET", f"{API}/advisor/sessions/{session_id}", owner_b)).status_code == 404
             assert (await call("POST", f"{API}/advisor/sessions/{session_id}/messages", owner_b,
+                               headers={"Idempotency-Key": "foreign-message-01"},
                                json={"content": "越权消息"})).status_code == 404
 
             message = await call("POST", f"{API}/advisor/sessions/{session_id}/messages", owner_a,
@@ -116,7 +117,14 @@ async def run():
                                 if item["name"] == "宽窄巷子")
 
             draft = await call("POST", f"{API}/advisor/sessions/{session_id}/draft", owner_a,
-                               json={"candidate_ids": [candidate_id]})
+                               json={
+                                   "candidate_ids": [candidate_id],
+                                   "schedules": [{
+                                       "candidate_id": candidate_id,
+                                       "day": start_date.isoformat(),
+                                       "start_time": "12:00",
+                                   }],
+                               })
             assert draft.status_code == 200, draft.text
             advisor_session = draft.json()
             assert advisor_session["draft"]["stops"], advisor_session["draft"]
@@ -203,21 +211,43 @@ async def run():
             broken_bridge = next(item for item in existing_session["candidates"]
                                  if item.get("existing_poi_id") == bridge_poi_id)
             adjustment = await call("POST", f"{API}/advisor/sessions/{existing_session['id']}/messages", owner_a,
+                                    headers={"Idempotency-Key": f"advisor-adjust-{suffix}"},
                                     json={"content": "不要西湖，保留断桥，节奏轻松一点"})
             assert adjustment.status_code == 200, adjustment.text
             existing_session = adjustment.json()
-            assert west_lake["id"] not in existing_session["context"]["selected_candidate_ids"]
+            assert west_lake["id"] not in existing_session["context"]["selected_candidate_ids"], {
+                "removed_candidate": west_lake["id"],
+                "removed_candidate_name": west_lake["name"],
+                "candidate_names": [item["name"] for item in existing_session["candidates"]],
+                "selected_candidate_ids": existing_session["context"]["selected_candidate_ids"],
+                "user_message": existing_session["messages"][-2]["content"],
+                "applied_adjustments": existing_session["messages"][-1]["payload"].get("adjustments_applied"),
+            }
             assert broken_bridge["id"] in existing_session["context"]["selected_candidate_ids"]
             assert existing_session["pace_level"] == 2
             new_place = await call("POST", f"{API}/advisor/sessions/{existing_session['id']}/messages", owner_a,
+                                   headers={"Idempotency-Key": f"advisor-add-place-{suffix}"},
                                    json={"content": "我还想去宽窄巷子"})
             assert new_place.status_code == 200, new_place.text
             existing_session = new_place.json()
+            assert existing_session["pace_level"] == 2, existing_session["context"]
             kuanzhai = next(item for item in existing_session["candidates"] if item["name"] == "宽窄巷子")
             selected_ids = existing_session["context"]["selected_candidate_ids"]
             assert kuanzhai["id"] in selected_ids
+            timed_candidates = [
+                candidate for candidate in existing_session["candidates"]
+                if candidate["id"] in selected_ids
+                and candidate.get("planning_category") != "LODGING"
+            ]
             existing_draft = await call("POST", f"{API}/advisor/sessions/{existing_session['id']}/draft", owner_a,
-                                        json={"candidate_ids": selected_ids})
+                                        json={
+                                            "candidate_ids": selected_ids,
+                                            "schedules": [{
+                                                "candidate_id": candidate["id"],
+                                                "day": start_date.isoformat(),
+                                                "start_time": f"{9 + index * 3:02d}:00",
+                                            } for index, candidate in enumerate(timed_candidates)],
+                                        })
             assert existing_draft.status_code == 200, existing_draft.text
             existing_draft_data = existing_draft.json()["draft"]
             assert existing_draft_data["transport"]["status"] == "SIMULATED"
@@ -226,11 +256,16 @@ async def run():
             bridge_change = next(change for change in existing_draft_data["changes"]
                                  if change["stable_key"] == bridge_poi_id)
             assert bridge_change["operation"] in {"KEEP", "MOVE"}, bridge_change
-            assert existing_draft_data["pace_change"] == {"before": 3, "after": 2}
+            assert existing_draft_data["pace_change"] == {"before": 3, "after": 2}, {
+                "pace_change": existing_draft_data["pace_change"],
+                "context": existing_session["context"],
+                "pace_level": existing_session["pace_level"],
+            }
             assert existing_draft.json()["draft_stale"] is False
             unchanged_plan = await call("GET", f"{API}/trips/{existing_trip_id}/plans/{original_plan['id']}", owner_a)
             assert unchanged_plan.status_code == 200 and len(unchanged_plan.json()["nodes"]) == 2
             stale_message = await call("POST", f"{API}/advisor/sessions/{existing_session['id']}/messages", owner_a,
+                                       headers={"Idempotency-Key": f"advisor-stale-{suffix}"},
                                        json={"content": "不要安排断桥"})
             assert stale_message.status_code == 200 and stale_message.json()["draft_stale"] is True, stale_message.text
             stale_confirm = await call("POST", f"{API}/advisor/sessions/{existing_session['id']}/confirm", owner_a,
@@ -238,8 +273,20 @@ async def run():
             assert stale_confirm.status_code == 409, stale_confirm.text
             existing_session = stale_message.json()
             selected_ids = existing_session["context"]["selected_candidate_ids"]
+            timed_candidates = [
+                candidate for candidate in existing_session["candidates"]
+                if candidate["id"] in selected_ids
+                and candidate.get("planning_category") != "LODGING"
+            ]
             regenerated = await call("POST", f"{API}/advisor/sessions/{existing_session['id']}/draft", owner_a,
-                                     json={"candidate_ids": selected_ids})
+                                     json={
+                                         "candidate_ids": selected_ids,
+                                         "schedules": [{
+                                             "candidate_id": candidate["id"],
+                                             "day": start_date.isoformat(),
+                                             "start_time": f"{9 + index * 3:02d}:00",
+                                         } for index, candidate in enumerate(timed_candidates)],
+                                     })
             assert regenerated.status_code == 200 and regenerated.json()["draft_stale"] is False, regenerated.text
             existing_confirm = await call("POST", f"{API}/advisor/sessions/{existing_session['id']}/confirm", owner_a,
                                           json={"draft_version": regenerated.json()["draft_version"]})

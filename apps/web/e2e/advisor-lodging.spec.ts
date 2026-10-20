@@ -100,7 +100,7 @@ test("住宿候选只加入住宿备选，确认前不写正式行程", async ({
       new URL(response.url()).pathname.endsWith(`/sessions/${session.id}/draft`)
       && response.request().method() === "POST",
     );
-    await page.getByRole("button", { name: /检查并生成草案/ }).click();
+    await page.getByRole("button", { name: /检查并预览行程/ }).click();
     const draftResponse = await draftResponsePromise;
     expect(draftResponse.ok(), await draftResponse.text()).toBeTruthy();
     const drafted = await draftResponse.json() as {
@@ -110,7 +110,7 @@ test("住宿候选只加入住宿备选，确认前不写正式行程", async ({
     expect(drafted.draft.lodging.map((item) => item.name)).toContain("模拟旅行酒店");
     expect(await (await request.get(`${api}/api/v1/trips/${trip.id}/plans`)).json()).toEqual([]);
     await expect(page.locator(".advisor-lodging-summary")).toContainText("住宿备选 · 尚未预订");
-    await expect(page.getByRole("button", { name: "确认并保存行程" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "确认并应用到行程" })).toBeEnabled();
     expect(browserErrors).toEqual([]);
 
     const screenshotPath = process.env.TRAVELPILOT_QA_SCREENSHOT;

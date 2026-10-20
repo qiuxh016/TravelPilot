@@ -233,16 +233,16 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     await page.getByRole("button", { name: "发送" }).click();
     await expect(page.getByText("你希望每天安排得轻松一些吗？").first()).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("region", { name: "等待你补充" }).last())
-      .toContainText("回复会接着处理原任务");
+      .toContainText("点选即可继续原任务");
     const pendingQuestion = page.getByRole("region", { name: "等待你补充" }).last();
     await expect(pendingQuestion).toBeInViewport();
     await expect(pendingQuestion).toContainText("这一步需要你来决定");
-    await expect(pendingQuestion).toContainText("取消不会修改旅行安排");
+    await expect(pendingQuestion).toContainText("在下方输入自己的答案");
     if (process.env.TRAVELPILOT_QA_SCREENSHOT) {
       await page.screenshot({ path: process.env.TRAVELPILOT_QA_SCREENSHOT, fullPage: false });
     }
     await page.locator("#advisor-message").fill("推荐午餐");
-    await pendingQuestion.getByRole("button", { name: "用输入内容开启新问题" }).click();
+    await pendingQuestion.getByRole("button", { name: "改问其他问题" }).click();
     await expect(page.locator(".advisor-message.user").filter({ hasText: "取消" }).last()).toBeVisible();
     await expect(page.locator(".advisor-message.user").filter({ hasText: "推荐午餐" }).last()).toBeVisible();
     await expect(page.locator(".advisor-task-state.is-cancelled").last()).toContainText("已取消");
@@ -254,7 +254,7 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     await expect(refreshedPendingQuestion).toContainText("每天安排得轻松一些吗");
     const beforeAnswer = await request.get(`${api}/api/v1/trips/${trip.id}/plans`);
     expect(await beforeAnswer.json()).toHaveLength(1);
-    await refreshedPendingQuestion.getByRole("button", { name: "输入补充信息" }).click();
+    await refreshedPendingQuestion.getByRole("button", { name: "自定义回答" }).click();
     await page.locator("#advisor-message").fill("请把后面的行程安排得不要太赶，多留一些休息时间");
     const scheduleResponsePromise = page.waitForResponse((response) =>
       response.url().includes("/api/v1/advisor/sessions/")
@@ -288,7 +288,7 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     await expect(guideImport).toBeVisible();
     await guideImport.click();
     const guideDialog = page.getByRole("dialog");
-    await expect(guideDialog).toContainText("把攻略里的地点，收进这段旅行");
+    await expect(guideDialog).toContainText("把攻略里的地点和实用细节留下来");
     await guideDialog.getByRole("button", { name: "关闭导入窗口" }).click();
     await expect(guideDialog).not.toBeVisible();
     const mealResponsePromise = page.waitForResponse((response) =>
@@ -650,8 +650,8 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     } else {
       expect(refreshDraftResponse.status()).toBe(200);
     }
-    await expect(page.getByRole("button", { name: "确认并保存行程" })).toBeEnabled();
-    await page.getByRole("button", { name: "确认并保存行程" }).click();
+    await expect(page.getByRole("button", { name: "确认并应用到行程" })).toBeEnabled();
+    await page.getByRole("button", { name: "确认并应用到行程" }).click();
     await expect(page).toHaveURL(new RegExp(`/trips/${trip.id}/plan$`));
     const afterConfirmation = await request.get(`${api}/api/v1/trips/${trip.id}/plans`);
     expect(await afterConfirmation.json()).toHaveLength(2);
@@ -689,7 +689,7 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     expect(staleDraftRaceTriggered).toBe(true);
     const beforeStaleConfirmation = await request.get(`${api}/api/v1/trips/${trip.id}/plans`);
     expect(await beforeStaleConfirmation.json()).toHaveLength(3);
-    await page.getByRole("button", { name: "确认并保存行程" }).click();
+    await page.getByRole("button", { name: "确认并应用到行程" }).click();
     await expect(page.getByText(/原旅行计划已在其他位置更新/)).toBeVisible();
     expect(await (await request.get(`${api}/api/v1/trips/${trip.id}/plans`)).json()).toHaveLength(3);
 
@@ -963,12 +963,12 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     await selectedAttractionCard.getByLabel("开始时间").fill("09:00");
     await selectedLunchCard.getByLabel("用餐日期").selectOption(format(mixedTripStart));
     await selectedLunchCard.getByLabel("用餐时间").fill("12:00");
-    await expect(page.getByRole("button", { name: "检查并生成草案（2）" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "检查并预览行程（2）" })).toBeEnabled();
     const mixedDraftPromise = page.waitForResponse((response) =>
       response.url().includes(`/api/v1/advisor/sessions/${mixedSession.id}/draft`)
       && response.request().method() === "POST",
     );
-    await page.getByRole("button", { name: "检查并生成草案（2）" }).click();
+    await page.getByRole("button", { name: "检查并预览行程（2）" }).click();
     const mixedDraftResponse = await mixedDraftPromise;
     expect(mixedDraftResponse.ok(), await mixedDraftResponse.text()).toBeTruthy();
     const mixedDraftSession = await mixedDraftResponse.json() as {

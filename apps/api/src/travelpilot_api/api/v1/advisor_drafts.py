@@ -293,6 +293,7 @@ async def create_draft(
     for visit in visits:
         daily_counts.setdefault(visit.day, []).append(visit)
     attention_items = []
+    transitions = []
     for day, day_visits in daily_counts.items():
         attraction_count = sum(
             planning_category_by_candidate.get(str(visit.candidate.poi_id)) == "ATTRACTION"
@@ -305,6 +306,18 @@ async def create_draft(
             current_index = next(i for i, candidate in enumerate(planner_candidates) if candidate.poi_id == current.candidate.poi_id)
             travel_min = (matrix[previous_index][current_index] if matrix is not None else
                           max(5, round((((previous.candidate.latitude-current.candidate.latitude)**2 + ((previous.candidate.longitude-current.candidate.longitude)*.86)**2)**.5) * 111 * 2.5)))
+            transitions.append({
+                "day": day.isoformat(),
+                "from_candidate_id": str(previous.candidate.poi_id),
+                "from_name": previous.candidate.name,
+                "to_candidate_id": str(current.candidate.poi_id),
+                "to_name": current.candidate.name,
+                "duration_min": travel_min,
+                "status": transport_provenance["status"]
+                if transport_provenance["status"] in ("VERIFIED", "SIMULATED")
+                else "ESTIMATED",
+                "source": transport_provenance["source"],
+            })
             if _clock_minutes(previous.end_time) + travel_min + 15 > _clock_minutes(current.start_time):
                 warnings.append(f"阻断：{previous.candidate.name} 到 {current.candidate.name} 的预计游览、交通和 15 分钟换乘缓冲冲突（交通约 {travel_min} 分钟）")
             elif travel_min >= 90:
@@ -467,6 +480,7 @@ async def create_draft(
         "applied_personal_memories": profile_memories,
         "profile_memory_fingerprint": profile_memory_fingerprint(profile_memories),
         "transport": transport_provenance,
+        "transitions": transitions,
         "origin_leg": origin_leg,
         "warnings": warnings,
         "attention_items": attention_items,

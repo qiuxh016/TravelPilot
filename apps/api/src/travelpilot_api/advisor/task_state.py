@@ -7,6 +7,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from travelpilot_api.advisor.task_taxonomy import AdvisorTaskType
 
 
+class AdvisorConfirmationOption(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(min_length=1, max_length=80)
+    answer: str = Field(min_length=1, max_length=200)
+
+
 class AdvisorTaskSnapshot(BaseModel):
     """Bounded state needed to explain or resume a multi-turn Advisor task."""
 
@@ -20,6 +27,7 @@ class AdvisorTaskSnapshot(BaseModel):
     turn_number: int = Field(ge=1, le=100)
     answers: list[str] = Field(default_factory=list, max_length=6)
     question: str | None = Field(default=None, max_length=500)
+    confirmation_options: list["AdvisorConfirmationOption"] = Field(default_factory=list, max_length=3)
     action_summary: str = Field(default="", max_length=240)
 
     @model_validator(mode="after")
@@ -28,9 +36,30 @@ class AdvisorTaskSnapshot(BaseModel):
             raise ValueError("WAITING_USER tasks require a user question")
         if self.status != "WAITING_USER" and self.question is not None:
             raise ValueError("Only WAITING_USER tasks may have a pending question")
+        if (
+            self.status == "WAITING_USER" and self.question and self.answers
+            and not self.confirmation_options
+        ):
+            self.confirmation_options = confirmation_options_for(self.question)
         if self.turn_number < len(self.answers) + 1:
             raise ValueError("turn_number cannot be behind the recorded answer count")
         return self
+
+
+def confirmation_options_for(question: str) -> list[AdvisorConfirmationOption]:
+    """Turn a completed proposal's yes/no confirmation into explicit actions."""
+    normalized = question.strip().rstrip("？?")
+    if not normalized or not normalized.endswith("吗"):
+        return []
+    asks_to_commit = any(phrase in normalized for phrase in ("需要我把", "要我把", "需要我将", "要我将"))
+    proposes_an_action = any(verb in normalized for verb in ("作为", "加入", "安排", "添加", "更新"))
+    if not asks_to_commit or not proposes_an_action:
+        return []
+    return [
+        AdvisorConfirmationOption(label="确认，加入安排", answer="确认，按当前选择加入安排"),
+        AdvisorConfirmationOption(label="返回调整", answer="先不确认，我想调整这项安排"),
+        AdvisorConfirmationOption(label="暂不安排", answer="暂不安排这项内容"),
+    ]
 
 
 def resolve_task_status(

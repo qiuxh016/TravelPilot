@@ -57,7 +57,7 @@ test("真实模型识别地点，经高德核验后仅在用户确认时保存�
     await page.getByRole("button", { name: /生成草案/ }).click();
     await expect(page.getByText("第 1 版草案", { exact: true })).toBeVisible();
     await expect(page.getByText("确认后写入正式旅行")).toBeVisible();
-    await page.getByRole("button", { name: "确认并保存行程" }).click();
+    await page.getByRole("button", { name: "确认并应用到行程" }).click();
     await expect(page).toHaveURL(/\/trips\/[^/]+\/plan$/);
     await expect(page.getByRole("heading", { name: "把想去的地方，排成一天" })).toBeVisible();
   } finally {

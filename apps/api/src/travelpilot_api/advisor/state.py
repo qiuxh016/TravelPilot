@@ -1,5 +1,7 @@
 """Small, persisted Agent interaction state derived from conversation messages."""
 
+import hashlib
+import json
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -16,6 +18,32 @@ class PendingAgentQuestion:
     answers: tuple[str, ...] = ()
     turn_number: int = 1
     task_kind: str | None = None
+    context_fingerprint: str | None = None
+
+
+def pending_context_fingerprint(context: Any) -> str | None:
+    """Fingerprint only durable trip facts, not transient chat selections/revisions."""
+    if not isinstance(context, dict):
+        return None
+    trip = context.get("base_trip") if isinstance(context.get("base_trip"), dict) else {}
+    plan = context.get("current_plan") if isinstance(context.get("current_plan"), dict) else {}
+    inputs = context.get("planning_inputs") if isinstance(context.get("planning_inputs"), dict) else {}
+    planning_state = context.get("planning_state") if isinstance(context.get("planning_state"), dict) else {}
+    slots = planning_state.get("slots") if isinstance(planning_state.get("slots"), dict) else {}
+    durable_slots = {
+        name: (slots.get(name) or {}).get("value")
+        for name in ("destination", "start_date", "end_date", "budget", "pace_level", "preferences", "origin", "companions", "hard_constraints")
+        if isinstance(slots.get(name), dict)
+    }
+    value = {
+        "trip": trip,
+        "plan": {"id": plan.get("id"), "version": plan.get("version")},
+        "planning_slots": durable_slots,
+        "planning_inputs": inputs,
+        "personal_memory_fingerprint": context.get("personal_memory_fingerprint"),
+    }
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _bounded_answers(value: Any) -> tuple[str, ...] | None:
@@ -66,6 +94,11 @@ def pending_agent_question(payload: Any) -> PendingAgentQuestion | None:
         answers=answers,
         turn_number=turn_number,
         task_kind=task_kind,
+        context_fingerprint=(
+            payload.get("context_fingerprint")
+            if isinstance(payload.get("context_fingerprint"), str)
+            and len(payload.get("context_fingerprint")) == 64 else None
+        ),
     )
 
 
@@ -102,11 +135,18 @@ def pending_agent_question_from_context(context: Any) -> PendingAgentQuestion | 
         context_revision=revision, task_type=task_type, task_id=task_id,
         answers=answers, turn_number=turn_number,
         task_kind=task_kind,
+        context_fingerprint=(
+            pending.get("context_fingerprint")
+            if isinstance(pending.get("context_fingerprint"), str)
+            and len(pending.get("context_fingerprint")) == 64 else None
+        ),
     )
 
 
 def pending_question_matches_context(pending: PendingAgentQuestion, context: Any) -> bool:
-    """Reject a resumed turn when the trip/session changed after the question."""
+    """Reject a resumed turn only when durable trip facts changed after the question."""
+    if pending.context_fingerprint is not None:
+        return pending.context_fingerprint == pending_context_fingerprint(context)
     if pending.context_revision is None or not isinstance(context, dict):
         return pending.context_revision is None
     revision = context.get("revision")

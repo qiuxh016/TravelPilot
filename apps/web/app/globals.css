@@ -373,6 +373,9 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 .advisor-pending-question p { margin: 0; font-weight: 650; }
 .advisor-pending-question small { color: var(--muted); font-size: 10px; line-height: 1.45; }
 .advisor-pending-question > div:last-child { display: flex; flex-wrap: wrap; gap: 7px; }
+.advisor-pending-question .advisor-pending-quick-replies { margin: 2px 0; }
+.advisor-pending-question .advisor-pending-quick-replies button { min-height: 36px; border-radius: 999px; padding: 0 14px; font-size: 12px; }
+.advisor-pending-question .advisor-pending-quick-replies button.advisor-pending-switch { background: var(--surface); color: var(--text); }
 .advisor-pending-question button { min-height: 31px; border: 1px solid var(--action); border-radius: 7px; padding: 0 10px; background: var(--action); color: var(--action-contrast); font: inherit; font-size: 10px; font-weight: 650; cursor: pointer; }
 .advisor-pending-question button.advisor-pending-cancel { border-color: var(--border); background: var(--surface); color: var(--muted); }
 .advisor-pending-question button.advisor-pending-switch { border-color: var(--border); background: var(--surface); color: var(--text); }
@@ -411,6 +414,13 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 .advisor-day-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 2px 0 12px; }
 .advisor-day-tabs button { min-width: 0; padding: 8px 6px; font-size: 12px; }
 .advisor-stop-list { display: grid; gap: 8px; }
+.advisor-day-group { display: grid; gap: 7px; border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: color-mix(in srgb, var(--surface) 82%, var(--accent) 4%); }
+.advisor-day-heading { display: flex; align-items: baseline; gap: 10px; margin: 0; padding: 0 2px 5px; color: var(--text); font-size: 15px; }
+.advisor-day-heading time { color: var(--muted); font-size: 12px; font-weight: 500; }
+.advisor-stop-sequence { display: grid; gap: 5px; }
+.advisor-transport-leg { display: flex; align-items: center; gap: 5px; margin: 0 0 0 35px; color: var(--muted); font-size: 11px; }
+.advisor-transport-leg span { color: var(--accent); font-size: 16px; }
+.advisor-transport-leg strong { color: var(--text); font-weight: 650; }
 .advisor-stop { display: grid; grid-template-columns: 28px 54px minmax(0, 1fr) auto; align-items: start; gap: 9px; border: 1px solid var(--border); border-radius: 9px; padding: 11px 10px; }
 .advisor-stop-index { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: var(--accent-contrast); font-size: 11px; font-weight: 700; }
 .advisor-stop-time { color: var(--text); font-size: 11px; line-height: 1.55; font-variant-numeric: tabular-nums; }
@@ -1182,6 +1192,14 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 .trip-import-results { display: grid; gap: 10px; margin-top: 18px; }
 .trip-import-results > .layer { margin: 0; }
 .trip-import-results > .primary { justify-self: start; }
+.trip-guide-facts { display: grid; gap: 9px; border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--surface); }
+.trip-guide-facts h3 { margin: 0; font-family: Georgia, "Songti SC", "Noto Serif CJK SC", serif; font-size: 18px; }
+.trip-guide-facts > div > p { margin: 5px 0 2px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.trip-guide-fact { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: 9px; border: 1px solid var(--border); border-radius: 9px; padding: 10px; cursor: pointer; }
+.trip-guide-fact > input { margin-top: 3px; accent-color: var(--accent); }
+.trip-guide-fact > span { display: grid; gap: 4px; line-height: 1.45; }
+.trip-guide-fact strong { font-size: 13px; }
+.trip-guide-fact small { color: var(--muted); font-size: 11px; }
 .trip-import-back { color: var(--text); font-size: 13px; font-weight: 650; text-decoration: none; }
 .trip-import-back:hover { color: var(--accent); }
 .trip-sharing-dialog { width: min(760px, calc(100vw - 24px)); max-width: none; max-height: min(88dvh, 840px); margin: auto; overflow: visible; border: 0; border-radius: 16px; padding: 0; background: transparent; color: var(--text); }

@@ -32,7 +32,7 @@ from travelpilot_api.advisor.session_budget import (
 )
 from travelpilot_api.advisor.sessions import read_session
 from travelpilot_api.advisor.stage_execution import AdvisorTurnExecutor
-from travelpilot_api.advisor.state import PendingAgentQuestion
+from travelpilot_api.advisor.state import PendingAgentQuestion, pending_context_fingerprint
 from travelpilot_api.advisor.task_state import AdvisorTaskSnapshot
 from travelpilot_api.advisor.tools import map_evidence_source, rank_map_places
 from travelpilot_api.advisor.turn_plan import AdvisorTurnPlan, AdvisorTurnStage
@@ -367,6 +367,7 @@ async def start_destination_recommendation_from_chat(
         context["pending_agent_question"] = {
             "task": goal, "question": question,
             "context_revision": int(context.get("revision", 0)),
+            "context_fingerprint": pending_context_fingerprint(context),
             "task_type": "DISCOVERY", "task_id": task_id,
             "answers": [], "turn_number": 1,
             "task_kind": "DESTINATION_RECOMMENDATION",
@@ -604,6 +605,7 @@ async def resume_destination_recommendation(
         context["pending_agent_question"] = {
             "task": pending.task, "question": question,
             "context_revision": int(context.get("revision", 0)),
+            "context_fingerprint": pending_context_fingerprint(context),
             "task_type": "DISCOVERY", "task_id": task_id,
             "answers": task_answers, "turn_number": task_turn,
             "task_kind": "DESTINATION_RECOMMENDATION",

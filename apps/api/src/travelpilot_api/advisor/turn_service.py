@@ -1,5 +1,6 @@
 """Application orchestration for one Advisor message turn."""
 
+import re
 from datetime import UTC, datetime
 from time import perf_counter
 from uuid import uuid4
@@ -100,7 +101,7 @@ from travelpilot_api.advisor.session_budget import (
 )
 from travelpilot_api.advisor.sessions import read_session
 from travelpilot_api.advisor.stage_execution import AdvisorTurnExecutor
-from travelpilot_api.advisor.state import cancelled_task_reply
+from travelpilot_api.advisor.state import cancelled_task_reply, pending_context_fingerprint
 from travelpilot_api.advisor.task_state import AdvisorTaskSnapshot, resolve_task_status
 from travelpilot_api.advisor.task_taxonomy import (
     accepts_driving_route_confirmation,
@@ -1263,12 +1264,12 @@ async def execute_advisor_turn(
         elif schedule_suggestions:
             version = (context.get("current_plan") or {}).get("version", "当前")
             route_note = (
-                "并结合已核验的地图交通时间与地图建议游览时长"
+                "已核验的地图交通时间"
                 if schedule_agent_trace
                 and schedule_agent_trace.get("route_evidence") in {"VERIFIED", "SIMULATED"}
-                else "并用本地距离估算辅助排程（路线尚未核验）"
+                else "本地距离估算（路线尚未核验）"
             )
-            reply = f"我读取了当前计划 v{version} 中已确认的 {schedule_candidate_count} 个地点，{route_note}排出一版时间建议。它只是待确认草案；请检查路线、空档和警告，点击“确认并保存行程”才会生成新计划。"
+            reply = f"已根据当前计划 v{version} 和{route_note}生成调整预览。检查后点击“确认并应用到行程”即可更新正式计划。"
             if weather_result and weather_result.get("days"):
                 reply += " 天气参考：" + "；".join(
                     _weather_day_summary(day) for day in weather_result["days"]
@@ -1282,7 +1283,7 @@ async def execute_advisor_turn(
                 reply += (
                     f"\n另外，按{meal_label}需求核验到餐饮候选："
                     f"{'、'.join(item['name'] for item in compound_candidates[:8])}。"
-                    "选择候选并确认时间后，可再生成包含该地点的草案。"
+                    "选择候选并确认时间后，可将它加入行程调整预览。"
                 )
             elif compound_candidates and requested_category == "LODGING":
                 reply += (
@@ -1373,7 +1374,7 @@ async def execute_advisor_turn(
         elif searched_requests:
             reply = "地图服务没有找到匹配候选。可以补充更具体的地点名称或偏好关键词。"
         elif adjustments:
-            reply = "已记录你对当前计划的调整。确认变更前会生成新的草案版本，不会修改原计划。"
+            reply = "已记录你对当前计划的调整。先检查行程调整预览；确认后会更新正式计划。"
         elif extraction.intent == "general":
             reply = "我可以结合当前旅行安排回答一般问题。你更关心天气准备、交通、预算、用餐住宿，还是每天的行程节奏？"
         else:
@@ -1591,7 +1592,7 @@ async def execute_advisor_turn(
                 reply += (
                     f"\n另外，按{meal_label}需求核验到餐饮候选："
                     f"{'、'.join(item['name'] for item in compound_candidates[:8])}。"
-                    "选择候选并确认时间后，可再生成包含该地点的草案。"
+                    "选择候选并确认时间后，可将它加入行程调整预览。"
                 )
             elif compound_candidates and requested_category == "LODGING":
                 reply += (
@@ -1770,6 +1771,14 @@ async def execute_advisor_turn(
     if schedule_preference_question:
         reply += "\n\n" + schedule_preference_question
     has_pending_question = bool(pending_question_text and agent_trace)
+    if (
+        has_pending_question and pending_question_text
+        and reply.strip() != pending_question_text
+        and pending_question_text in reply
+    ):
+        # The question already has its own structured card below; avoid echoing
+        # it verbatim in the prose and presenting the same prompt twice.
+        reply = re.sub(r"\s+", " ", reply.replace(pending_question_text, " ")).strip()
     if continuing_task:
         pending_task_type = continuing_task.task_type
     elif (
@@ -1915,6 +1924,7 @@ async def execute_advisor_turn(
                 if has_pending_question else None,
                 "pending_question": pending_question_text if has_pending_question else None,
                 "context_revision": int(context.get("revision", 0)) if has_pending_question else None,
+                "context_fingerprint": pending_context_fingerprint(context) if has_pending_question else None,
                 "pending_task_id": task_id if has_pending_question else None,
                 "pending_answers": task_answers if has_pending_question else [],
                 "pending_turn_number": task_turn_number if has_pending_question else 1,
@@ -2027,6 +2037,7 @@ async def execute_advisor_turn(
             "task": task_goal,
             "question": pending_question_text,
             "context_revision": int(context.get("revision", 0)),
+            "context_fingerprint": pending_context_fingerprint(context),
             "task_type": pending_task_type,
             "task_id": task_id,
             "answers": task_answers,
