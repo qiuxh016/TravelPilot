@@ -1299,7 +1299,7 @@ export default function AdvisorPage() {
                     {taskLabel.nextStep && <p><strong>接下来</strong>{taskLabel.nextStep}</p>}
                   </section>}
                   {isLatestAssistantMessage && task?.status === "WAITING_USER" && task.question && <section className="advisor-pending-question" aria-label="等待你补充">
-                    <div><strong>{confirmationOptions.length ? "请确认这项安排" : "这一步需要你来决定"}</strong><p>{task.question}</p><small>{confirmationOptions.length ? "信息已整理好，选择一个操作即可继续。" : "点选即可继续原任务；也可以在下方输入自己的答案。"}</small></div>
+                    <div><strong>{confirmationOptions.length ? "请确认这一步" : "这一步需要你来决定"}</strong><p>{task.question}</p><small>当前任务：{task.goal}</small><small>{confirmationOptions.length ? "选择一个操作即可继续；正式行程仍会在预览后单独确认。" : "点选即可继续原任务；也可以在下方输入自己的答案。"}</small></div>
                     {confirmationOptions.length > 0 && <div className="advisor-pending-quick-replies" aria-label="确认安排选项">
                       {confirmationOptions.map((option) => <button key={option.label} type="button" disabled={busy || active.status !== "ACTIVE"} onClick={() => void submitMessage(undefined, option.answer)}>{option.label}</button>)}
                     </div>}

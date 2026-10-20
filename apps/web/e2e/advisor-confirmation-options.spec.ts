@@ -10,6 +10,7 @@ test("信息确认和继续排程分成不同结构化选项", async ({ page }) 
       content: "好的，已整理为第 1 天午餐安排。需要我把鑫丰特色餐饮作为第 1 天午餐的待确认安排吗？",
       payload: { agent_task: {
         task_id: "meal-confirmation-task", task_type: "SCHEDULE", status: "WAITING_USER",
+        goal: "安排第1天午餐",
         context_revision: 0, turn_number: 2, answers: ["鑫丰特色餐饮"],
         question: "需要我把鑫丰特色餐饮作为第 1 天午餐的待确认安排吗？",
         confirmation_options: [
@@ -62,6 +63,7 @@ test("信息确认和继续排程分成不同结构化选项", async ({ page }) 
       const assistantMessage = submittedAnswers.length === 1
         ? { id: "assistant-2", role: "assistant", content: "日期和住宿信息已核对。", payload: { agent_task: {
           task_id: "schedule-task", task_type: "SCHEDULE", status: "WAITING_USER",
+          goal: "按日期安排每天的游览顺序",
           context_revision: 0, turn_number: 3, answers: ["鑫丰特色餐饮", "确认，按当前选择加入安排"],
           question: "要我现在按日期把每天的游览顺序排出来吗？",
           confirmation_options: [
@@ -93,6 +95,7 @@ test("信息确认和继续排程分成不同结构化选项", async ({ page }) 
   const choiceCard = page.getByRole("region", { name: "等待你补充" });
   await expect(choiceCard).toBeVisible();
   await expect(choiceCard).toContainText("鑫丰特色餐饮");
+  await expect(choiceCard).toContainText("当前任务：安排第1天午餐");
   await expect(choiceCard.getByRole("button", { name: "确认，加入安排" })).toBeVisible();
   await choiceCard.getByRole("button", { name: "确认，加入安排" }).click();
   await expect.poll(() => submittedAnswers.at(-1)).toBe("确认，按当前选择加入安排");
