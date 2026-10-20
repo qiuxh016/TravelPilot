@@ -195,11 +195,31 @@
   background: var(--surface-raised);
 }
 
+.integrateGuidesButton {
+  margin: 0 0 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border));
+  border-radius: 9px;
+  padding: 9px 12px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .importHistory > summary {
   cursor: pointer;
   color: var(--accent);
   font-size: 12px;
   font-weight: 700;
+}
+
+.historyHint {
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .importHistory > div {
@@ -210,9 +230,20 @@
 
 .historyItem {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
   align-items: stretch;
   gap: 6px;
+}
+
+.historySelect {
+  display: grid;
+  place-items: center;
+}
+
+.historySelect input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
 }
 
 .importHistory button {
@@ -243,6 +274,21 @@
 }
 
 .importHistory button small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.integrateGuidesAction {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 9px;
+}
+
+.integrateGuidesAction > span {
   color: var(--muted);
   font-size: 11px;
 }
@@ -415,6 +461,25 @@
   }
 
   .summaryActions button {
+    width: 100%;
+  }
+
+  .historyItem {
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+  }
+
+  .historyItem .historyDelete {
+    grid-column: auto;
+    padding: 7px;
+    font-size: 11px;
+  }
+
+  .integrateGuidesAction {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .integrateGuidesAction button {
     width: 100%;
   }
 }

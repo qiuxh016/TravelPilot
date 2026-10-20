@@ -2,9 +2,13 @@ import { expect, test } from "@playwright/test";
 
 const tripId = "00000000-0000-4000-8000-000000000001";
 const contentId = "00000000-0000-4000-8000-000000000002";
+const secondContentId = "00000000-0000-4000-8000-000000000012";
 const entityId = "00000000-0000-4000-8000-000000000003";
 const candidateId = "00000000-0000-4000-8000-000000000004";
 const factId = "00000000-0000-4000-8000-000000000005";
+const secondEntityId = "00000000-0000-4000-8000-000000000013";
+const secondCandidateId = "00000000-0000-4000-8000-000000000014";
+const secondFactId = "00000000-0000-4000-8000-000000000015";
 
 function guide(status: string, text: string, metadata: Record<string, unknown> | null = null, error: string | null = null) {
   return {
@@ -56,9 +60,29 @@ function guide(status: string, text: string, metadata: Record<string, unknown> |
   };
 }
 
-async function mockWorkspace(page: import("@playwright/test").Page) {
+async function mockWorkspace(page: import("@playwright/test").Page, withMultipleGuides = false) {
   const history: Array<Record<string, unknown>> = [];
   let current = guide("NEEDS_CONFIRMATION", "梅州一日游攻略\n上午11:00参观梅州学宫\n周一闭馆，其余时间开放");
+  const contentRecords = new Map<string, Record<string, unknown>>();
+  if (withMultipleGuides) {
+    const first = guide("IMPORTED", "梅州一日游攻略\n上午11:00参观梅州学宫\n周一闭馆，其余时间开放");
+    const secondBase = guide("IMPORTED", "梅州美食攻略\n午餐推荐鑫丰特色餐饮");
+    const second = {
+      ...secondBase,
+      id: secondContentId,
+      guide_facts: [{ ...secondBase.guide_facts[0], id: secondFactId, kind: "FOOD", title: "午餐推荐", content: "午餐推荐鑫丰特色餐饮", evidence: "午餐推荐鑫丰特色餐饮", related_places: ["鑫丰特色餐饮"], saved: true }],
+      entities: [{
+        ...secondBase.entities[0], id: secondEntityId, name: "鑫丰特色餐饮", category: "FOOD",
+        candidates: [{ ...secondBase.entities[0].candidates[0], id: secondCandidateId, entity_id: secondEntityId, name: "鑫丰特色餐饮", category: "FOOD", confirmed: true }],
+      }],
+    };
+    contentRecords.set(contentId, first as unknown as Record<string, unknown>);
+    contentRecords.set(secondContentId, second as unknown as Record<string, unknown>);
+    history.push(
+      { id: contentId, content_type: "TEXT", status: "IMPORTED", error: null, extraction_metadata: null, created_at: "2026-10-20T02:00:00Z" },
+      { id: secondContentId, content_type: "TEXT", status: "IMPORTED", error: null, extraction_metadata: null, created_at: "2026-10-20T03:00:00Z" },
+    );
+  }
   let retryResponse: Record<string, unknown> | null = null;
   let importResponse: Record<string, unknown> | null = null;
   let confirmationPayload: Record<string, unknown> | null = null;
@@ -93,12 +117,16 @@ async function mockWorkspace(page: import("@playwright/test").Page) {
     } else if (path === `/api/v1/trips/${tripId}/content` && request.method() === "POST") {
       importedText = (request.postDataJSON() as { text: string }).text;
       current = (importResponse ?? retryResponse ?? guide("NEEDS_CONFIRMATION", importedText)) as typeof current;
+      contentRecords.set(contentId, current as unknown as Record<string, unknown>);
       history.unshift({ id: contentId, content_type: "TEXT", status: current.status, error: null,
         extraction_metadata: null, created_at: current.created_at });
       await route.fulfill({ status: 201, json: current });
     } else if (path === `/api/v1/content/${contentId}/confirm`) {
       confirmationPayload = request.postDataJSON() as Record<string, unknown>;
       current = guide("IMPORTED", importedText || current.text);
+      contentRecords.set(contentId, current as unknown as Record<string, unknown>);
+      const historyItem = history.find((item) => item.id === contentId);
+      if (historyItem) historyItem.status = "IMPORTED";
       await route.fulfill({ json: current });
     } else if (path === `/api/v1/content/${contentId}/retry`) {
       current = (retryResponse ?? guide("NEEDS_CONFIRMATION", current.text)) as typeof current;
@@ -113,10 +141,12 @@ async function mockWorkspace(page: import("@playwright/test").Page) {
     } else if (path.endsWith("/messages") && request.method() === "POST") {
       advisorMessage = (request.postDataJSON() as { content: string }).content;
       await route.fulfill({ json: {} });
-    } else if (path === `/api/v1/content/${contentId}` && request.method() === "GET") {
-      await route.fulfill({ json: current });
-    } else if (path === `/api/v1/content/${contentId}` && request.method() === "DELETE") {
-      history.splice(0, history.length);
+    } else if (/^\/api\/v1\/content\/[^/]+$/.test(path) && request.method() === "GET") {
+      const id = path.split("/").at(-1)!;
+      await route.fulfill({ json: contentRecords.get(id) ?? current });
+    } else if (/^\/api\/v1\/content\/[^/]+$/.test(path) && request.method() === "DELETE") {
+      const id = path.split("/").at(-1)!;
+      history.splice(0, history.length, ...history.filter((item) => item.id !== id));
       await route.fulfill({ status: 204, body: "" });
     } else {
       await route.fulfill({ status: 404, json: { detail: `Unexpected mocked request: ${request.method()} ${path}` } });
@@ -130,6 +160,7 @@ async function mockWorkspace(page: import("@playwright/test").Page) {
     getConfirmationPayload: () => confirmationPayload,
     getAdvisorSessionPayload: () => advisorSessionPayload,
     getAdvisorMessage: () => advisorMessage,
+    getContentRecordIds: () => [...contentRecords.keys()],
     setRetryResponse: (value: Record<string, unknown>) => { retryResponse = value; },
     setImportResponse: (value: Record<string, unknown>) => { importResponse = value; },
   };
@@ -158,7 +189,7 @@ test("攻略导入文本可提取、确认保存、重开并删除记录", async
   expect(state.getConfirmationPayload()).toEqual({ candidate_ids: [candidateId], fact_ids: [factId] });
 
   await page.getByText(/这段旅行的攻略导入记录/).click();
-  await page.getByRole("button", { name: /打开并继续查看或处理/ }).click();
+  await page.getByRole("button", { name: /可用于多篇攻略整合/ }).click();
   await expect(page.getByRole("heading", { name: "梅州学宫" })).toBeVisible();
   page.on("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "删除记录" }).click();
@@ -182,6 +213,26 @@ test("已确认攻略可带入旅行上下文交给顾问生成行程建议", as
   expect(state.getAdvisorMessage()).toContain("梅州学宫");
   expect(state.getAdvisorMessage()).toContain("开放时间");
   expect(state.getAdvisorMessage()).toContain("现有行程");
+});
+
+test("可选择多篇已确认攻略并交给顾问去重、核对冲突和结合行程整合", async ({ page }, testInfo) => {
+  const state = await mockWorkspace(page, true);
+  await page.getByRole("button", { name: /选择多篇攻略整合/ }).click();
+  await page.getByLabel("选择攻略记录 1 进行整合").check();
+  await page.getByLabel("选择攻略记录 2 进行整合").check();
+  const screenshotDirectory = process.env.TRAVELPILOT_SCREENSHOT_DIR;
+  if (screenshotDirectory) {
+    await page.screenshot({ path: `${screenshotDirectory}/${testInfo.project.name}-multi-guide.png` });
+  }
+  await page.getByRole("button", { name: "整合 2 篇攻略" }).click();
+
+  await expect(page).toHaveURL(/\/advisor\?sessionId=/);
+  expect(state.getAdvisorSessionPayload()).toMatchObject({ mode: "existing", trip_id: tripId });
+  expect(state.getAdvisorMessage()).toContain("梅州一日游攻略");
+  expect(state.getAdvisorMessage()).toContain("梅州美食攻略");
+  expect(state.getAdvisorMessage()).toContain("鑫丰特色餐饮");
+  expect(state.getAdvisorMessage()).toContain("矛盾");
+  expect(state.getContentRecordIds()).toContain(secondContentId);
 });
 
 test("图片 OCR 结果填入原文框，失败分段可重试且保留本地兜底提示", async ({ page }) => {

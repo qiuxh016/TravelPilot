@@ -47,6 +47,14 @@ function defaultCandidateIds(entities: ImportedContent["entities"]) {
   });
 }
 
+function contentStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    PARSING: "整理中", NEEDS_CONFIRMATION: "待确认", PARTIAL: "部分完成",
+    IMPORTED: "已确认", FAILED: "未完成",
+  };
+  return labels[status] ?? "待处理";
+}
+
 function guideNarrative(content: ImportedContent, selectedFactIds: string[]) {
   const facts = content.guide_facts.filter((fact) => fact.saved || selectedFactIds.includes(fact.id));
   const names = (category: string) => content.entities
@@ -104,41 +112,68 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
   const [error, setError] = useState("");
   const [ocrRecognized, setOcrRecognized] = useState(false);
   const resultsRef = useRef<HTMLElement>(null);
+  const historyRef = useRef<HTMLDetailsElement>(null);
+  const [selectedGuideIds, setSelectedGuideIds] = useState<string[]>([]);
 
-  async function askAdvisorToPlan() {
-    if (!content) return;
-    const places = content.entities
-      .filter((entity) => entity.candidates.some((candidate) => candidate.confirmed))
-      .map((entity) => entity.name);
-    const selectedFacts = content.guide_facts.filter((fact) => fact.saved);
-    const byKind = new Map<string, string[]>();
-    const kindLabels: Record<ImportedGuideFact["kind"], string> = {
-      TICKET: "购票与预约", OPENING_HOURS: "开放时间", SUGGESTED_TIME: "推荐时段",
-      FOOD: "美食", ROUTE: "路线", TRANSPORT: "出行方式", ACCOMMODATION: "住宿",
-      TIP: "实用提醒", OTHER: "其他",
-    };
-    for (const fact of selectedFacts) {
-      const label = kindLabels[fact.kind];
-      byKind.set(label, [...(byKind.get(label) ?? []), `${fact.related_places.length ? `【${fact.related_places.join("、")}】` : ""}${fact.content}`]);
-    }
-    const guideContext = [
-      places.length ? `攻略中已确认的地点：${places.join("、")}` : "攻略中没有已确认的地点",
-      ...[...byKind].map(([label, items]) => `${label}：${items.join("；")}`),
-    ].join("\n").slice(0, 2600);
-    const request = [
+  const kindLabels: Record<ImportedGuideFact["kind"], string> = {
+    TICKET: "购票与预约", OPENING_HOURS: "开放时间", SUGGESTED_TIME: "推荐时段",
+    FOOD: "美食", ROUTE: "路线", TRANSPORT: "出行方式", ACCOMMODATION: "住宿",
+    TIP: "实用提醒", OTHER: "其他",
+  };
+
+  async function startAdvisorWithGuides(guides: ImportedContent[], mode: "single" | "multiple") {
+    const guideContext = guides.map((guide, index) => {
+      const title = guide.text.split(/\r?\n/).map((line) => line.trim()).find(Boolean)?.slice(0, 60) || `攻略 ${index + 1}`;
+      const places = guide.entities
+        .filter((entity) => entity.candidates.some((candidate) => candidate.confirmed))
+        .map((entity) => entity.name);
+      const facts = guide.guide_facts.filter((fact) => fact.saved).map((fact) =>
+        `${kindLabels[fact.kind]}${fact.related_places.length ? `（${fact.related_places.join("、")}）` : ""}：${fact.content}`,
+      );
+      return [`【${title}】`, places.length ? `已确认地点：${[...new Set(places)].join("、")}` : "",
+        facts.length ? `已确认要点：${facts.join("；")}` : ""].filter(Boolean).join("\n");
+    }).join("\n\n").slice(0, mode === "multiple" ? 5600 : 2600);
+
+    const request = mode === "multiple" ? [
+      `我为这段旅行选择了 ${guides.length} 篇攻略，请把它们整合成一份简洁、实用的旅行建议，并结合当前行程、收藏地点和旅行日期。`,
+      "合并重复地点和相同建议，保留有用的时间、餐饮、住宿、路线、交通、购票及开放时间信息；检查地点是否顺路、时间是否冲突以及行程中用餐和休息是否有空缺。",
+      "如果不同攻略对营业时间、价格、路线或安排有矛盾，简短指出冲突和来源并询问我，不要自行判定哪条是真的。先用一小段话总结，再给我清楚的确认选项；只有我确认要调整后，才生成草案，未经我确认不要写入正式行程。攻略信息尚未核实的部分要提醒我出发前确认。",
+      `多篇攻略的已确认内容：\n${guideContext}`,
+    ].join("\n\n") : [
       "请把这份已确认的旅行攻略作为上下文，结合当前旅行、已收藏地点和现有行程，给出简洁、可执行的调整建议。",
       "重点检查相邻景点是否适合顺路安排、已有行程哪些日期或时段值得调整，以及用餐、住宿、购票预约和交通提示是否应加入。按景点、美食、住宿、其他实用信息区分建议；不要把餐厅当景点。",
       "先说明你建议改什么和原因，再提供可操作的选项。日期、时间或住宿晚数等信息若无法从当前旅行和攻略确定，先询问我；不要猜测。不要直接修改正式行程。若我选择采纳，请生成含日期、时间、类别和变更摘要的行程草案，待我确认后再写入正式计划。",
-      "导入攻略内容：\n" + guideContext,
+      `导入攻略内容：\n${guideContext}`,
     ].join("\n\n");
 
+    const session = await createAdvisorSession({ mode: "existing", trip_id: tripId, pace_level: 3 });
+    await sendAdvisorMessage(session.id, request);
+    router.push(`/advisor?sessionId=${session.id}`);
+  }
+
+  async function askAdvisorToPlan() {
+    if (!content) return;
     setBusy(true); setError("");
     try {
-      const session = await createAdvisorSession({ mode: "existing", trip_id: tripId, pace_level: 3 });
-      await sendAdvisorMessage(session.id, request);
-      router.push(`/advisor?sessionId=${session.id}`);
+      await startAdvisorWithGuides([content], "single");
     } catch (err) {
       setError(err instanceof Error ? err.message : "启动旅行顾问失败");
+    } finally { setBusy(false); }
+  }
+
+  async function integrateSelectedGuides() {
+    if (selectedGuideIds.length < 2) return;
+    setBusy(true); setError("");
+    try {
+      const guides = await Promise.all(selectedGuideIds.map((id) => getImportedContent(id)));
+      const unconfirmed = guides.some((guide) => guide.status !== "IMPORTED");
+      if (unconfirmed) {
+        setError("请先打开并确认所选攻略，再进行整合。");
+        return;
+      }
+      await startAdvisorWithGuides(guides, "multiple");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "整合攻略并启动顾问失败");
     } finally { setBusy(false); }
   }
 
@@ -178,6 +213,7 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
     try {
       await deleteImportedContent(item.id);
       setHistory((current) => current.filter((entry) => entry.id !== item.id));
+      setSelectedGuideIds((current) => current.filter((id) => id !== item.id));
       setContent((current) => current?.id === item.id ? null : current);
       if (content?.id === item.id) {
         setSelected([]); setSelectedFactIds([]); setFactsDirty(false); setText("");
@@ -277,6 +313,7 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
   const guideSummary = content ? guideNarrative(content, selectedFactIds) : "";
   const selectedPlaceCount = content?.entities.reduce((count, entity) => count + entity.candidates.filter((candidate) => selected.includes(candidate.id) || candidate.confirmed).length, 0) ?? 0;
   const selectedFactCount = content?.guide_facts.filter((fact) => selectedFactIds.includes(fact.id) || fact.saved).length ?? 0;
+  const confirmedGuideCount = history.filter((item) => item.status === "IMPORTED").length;
 
   return <>
     <div className="trip-import-intro"><p className="eyebrow">导入攻略</p><h2>把攻略里的地点和实用细节留下来</h2><p>识别地点后匹配地图候选；同时提取购票、推荐时段、美食、路线和出行提示。核对原文依据后，由你选择哪些要点附加到已确认地点。</p></div>
@@ -290,14 +327,35 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
       <label>选择图片（JPEG、PNG 或 WebP，最多 10 MB）<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(event) => void recognizeImage(event)} /></label>
       <p>图片在本地 OCR 流程中临时处理，不保存原图，也不会发送给 LLM。识别出的文字会填入下方文本框供你校对。</p>
     </section>
-    {!!history.length && <details className={styles.importHistory}>
+    {history.length >= 2 && <button className={styles.integrateGuidesButton} type="button" disabled={busy || confirmedGuideCount < 2} onClick={() => { if (historyRef.current) historyRef.current.open = true; }}>
+      {confirmedGuideCount >= 2 ? `选择多篇攻略整合 · ${confirmedGuideCount}` : `至少确认 2 篇后可整合 · ${confirmedGuideCount}/2`}
+    </button>}
+    {!!history.length && <details className={styles.importHistory} ref={historyRef}>
       <summary>这段旅行的攻略导入记录（{history.length}）</summary>
-      <div>{history.map((item) => <article className={styles.historyItem} key={item.id}>
+      {confirmedGuideCount >= 2 && <p className={styles.historyHint}>勾选至少 2 篇已确认的攻略，顾问会合并重复信息并检查相互矛盾的时间、地点和建议。最多可同时整合 5 篇。</p>}
+      <div>{history.map((item, index) => <article className={styles.historyItem} key={item.id}>
+        <label className={styles.historySelect}>
+          <input
+            type="checkbox"
+            aria-label={`选择攻略记录 ${index + 1} 进行整合`}
+            checked={selectedGuideIds.includes(item.id)}
+            disabled={item.status !== "IMPORTED" || busy || (selectedGuideIds.length >= 5 && !selectedGuideIds.includes(item.id))}
+            onChange={() => setSelectedGuideIds((current) => current.includes(item.id)
+              ? current.filter((id) => id !== item.id)
+              : [...current, item.id])}
+          />
+        </label>
         <button className={styles.historyOpen} type="button" disabled={busy} onClick={() => void reopenContent(item.id)}>
-          <span>{new Date(item.created_at).toLocaleString()} · {item.status}</span><small>{item.error ?? "打开并继续查看或处理"}</small>
+          <span>{new Date(item.created_at).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })} · {contentStatusLabel(item.status)}</span><small>{item.status === "IMPORTED" ? "可用于多篇攻略整合" : item.error ?? "请先打开并确认这篇攻略"}</small>
         </button>
         <button className={styles.historyDelete} type="button" disabled={busy} onClick={() => void deleteHistoryItem(item)}>删除记录</button>
       </article>)}</div>
+      {selectedGuideIds.length > 0 && <div className={styles.integrateGuidesAction}>
+        <span>{selectedGuideIds.length < 2 ? "再选择 1 篇已确认攻略即可整合" : `已选择 ${selectedGuideIds.length} 篇攻略`}</span>
+        <button className="primary" type="button" disabled={busy || selectedGuideIds.length < 2} onClick={() => void integrateSelectedGuides()}>
+          {busy ? "正在整合并准备顾问…" : `整合 ${selectedGuideIds.length} 篇攻略`}
+        </button>
+      </div>}
     </details>}
     <form className={`${styles.importComposer} trip-import-form trip-form`} onSubmit={submit}>
       <label>{ocrRecognized ? "图片识别文字（请校对）" : "攻略原文"}<textarea required rows={8} maxLength={20000} value={text} onChange={(event) => { setText(event.target.value); setOcrRecognized(false); }} /></label>
