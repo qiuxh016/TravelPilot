@@ -37,11 +37,7 @@ class AdvisorTaskSnapshot(BaseModel):
             raise ValueError("WAITING_USER tasks require a user question")
         if self.status != "WAITING_USER" and self.question is not None:
             raise ValueError("Only WAITING_USER tasks may have a pending question")
-        if (
-            self.status == "WAITING_USER" and self.question
-            and (self.answers or "还是" in self.question)
-            and not self.confirmation_options
-        ):
+        if self.status == "WAITING_USER" and self.question and not self.confirmation_options:
             self.confirmation_options = confirmation_options_for(self.question)
         if self.turn_number < len(self.answers) + 1:
             raise ValueError("turn_number cannot be behind the recorded answer count")
@@ -49,27 +45,38 @@ class AdvisorTaskSnapshot(BaseModel):
 
 
 def confirmation_options_for(question: str) -> list[AdvisorConfirmationOption]:
-    """Turn a concrete next-step question into concise, actionable replies."""
+    """Turn concrete choices and confirmations into concise, actionable replies."""
     raw_question = question.strip()
     normalized = raw_question.rstrip("？?")
+    has_choice_or_confirmation_marker = bool(re.search(
+        r"(?:是否|要不要|可不可以|能否|行不行|想不想|需不需要|还是|或者|或|[/／])",
+        normalized,
+    ))
     if not normalized or not (
         raw_question.endswith(("？", "?"))
-        or re.search(r"(?:吗|是否|要不要|可不可以|行不行)$", normalized)
+        or re.search(r"(?:吗|是否|要不要|可不可以|行不行|想不想|需不需要)$", normalized)
+        or has_choice_or_confirmation_marker
     ):
         return []
 
-    asks_for_confirmation = any(
-        phrase in normalized
-        for phrase in (
-            "需要我", "要我", "要不要我", "要不要把", "要不要将",
-            "是否把", "是否将", "是否要把", "是否要将", "可以把", "可不可以把",
-        )
+    asks_for_confirmation = bool(re.search(
+        r"(?:需要我|要我|要不要(?:我|把|将)?|要把|是否(?:要|需要|可以)?(?:我|把|将)?|"
+        r"(?:可不可以|可以|能否|可否)(?:把|将)?|是否需要我)",
+        normalized,
+    ))
+    proposes_an_action = any(
+        verb in normalized
+        for verb in ("作为", "加入", "纳入", "添加", "更新", "放到", "排到", "挪到", "设为", "定为")
     )
-    proposes_an_action = any(verb in normalized for verb in ("作为", "加入", "安排", "添加", "更新", "放到", "排到", "挪到"))
     if asks_for_confirmation and proposes_an_action:
         date_or_time_proposal = bool(
             re.search(r"\d{1,2}[/月-]\d{1,2}日?", normalized)
             or re.search(r"\d{1,2}:\d{2}", normalized)
+            or re.search(r"(?:上午|下午|中午|晚上)?\s*[一二两三四五六七八九十\d]+点", normalized)
+            or (
+                re.search(r"第[一二两三四五六七八九十\d]+天", normalized)
+                and any(verb in normalized for verb in ("放到", "排到", "挪到", "调整到", "安排到"))
+            )
             or any(word in normalized for word in ("这一天", "当天", "这个日期", "这天"))
         )
         if date_or_time_proposal:
@@ -84,23 +91,44 @@ def confirmation_options_for(question: str) -> list[AdvisorConfirmationOption]:
             AdvisorConfirmationOption(label="暂不安排", answer="暂不安排这项内容"),
         ]
 
-    if "还是" in normalized and raw_question.endswith(("？", "?")):
-        left, right = normalized.rsplit("还是", 1)
-        left = re.sub(r"^.*?(?:更喜欢|更偏好|偏好|选择|选|喜欢)\s*", "", left).strip(" ，,：:是")
-        right = re.split(r"[，,。；;]", right, maxsplit=1)[0].strip(" ，,。；;？?吗")
-        if left and right and len(left) <= 40 and len(right) <= 40:
-            return [
-                AdvisorConfirmationOption(label=left, answer=f"我选{left}"),
-                AdvisorConfirmationOption(label=right, answer=f"我选{right}"),
-            ]
+    if "还是" in normalized or "或者" in normalized or "或" in normalized or re.search(r"[/／]", normalized):
+        choices = re.split(r"还是|或者|或|[/／]", normalized)
+        choices = [choice.strip(" ，,、：:；;。？?吗 ") for choice in choices]
+        if choices:
+            choices[0] = re.sub(
+                r"^.*?(?:更倾向于|倾向于|更喜欢|更偏爱|更偏好|偏爱|偏向|更看重|更在意|偏好|更想|想体验|希望去|希望是|希望|想要|想去|选择|选|喜欢)\s*",
+                "", choices[0],
+            ).strip(" ，,、：:；;。？?吗 ")
+            # A common three-way form places the first two options before “还是”.
+            if len(choices) == 2:
+                choices = re.split(r"[、，,：:]", choices[0]) + [choices[1]]
+            choices = [choice for choice in choices if 0 < len(choice) <= 40]
+            if 2 <= len(choices) <= 3:
+                return [
+                    AdvisorConfirmationOption(label=choice, answer=f"我选{choice}")
+                    for choice in choices
+                ]
 
-    asks_to_continue = any(phrase in normalized for phrase in ("要我", "需要我", "要不要我", "是否要"))
+    asks_to_continue = any(
+        phrase in normalized
+        for phrase in ("要我", "需要我", "要不要", "是否要", "是否需要", "想不想", "需不需要")
+    )
     proposes_a_next_step = any(verb in normalized for verb in ("排出来", "生成", "推荐", "查询", "按日期安排"))
     if asks_to_continue and proposes_a_next_step:
         return [
             AdvisorConfirmationOption(label="继续，生成待确认建议", answer="好的，继续生成待确认建议"),
             AdvisorConfirmationOption(label="补充或调整要求", answer="我想先补充或调整要求"),
             AdvisorConfirmationOption(label="暂不处理", answer="暂不处理这项任务"),
+        ]
+
+    asks_yes_no = bool(re.search(
+        r"(?:是否|要不要|可不可以|可以吗|能不能|行不行|好吗|合适吗|合理吗|可行吗|想不想|需不需要|同意吗|确认吗|接受吗|要吗|需要吗|(?:需要我|要我).{0,12}吗)$",
+        normalized,
+    )) or bool(re.search(r"是否(?:合理|合适|可行|需要|确认|同意|接受)", normalized))
+    if asks_yes_no:
+        return [
+            AdvisorConfirmationOption(label="是，继续", answer="是，请继续"),
+            AdvisorConfirmationOption(label="否，先不用", answer="否，暂时不用"),
         ]
     return []
 

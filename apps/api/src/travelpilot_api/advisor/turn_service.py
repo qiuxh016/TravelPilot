@@ -1878,6 +1878,11 @@ async def execute_advisor_turn(
         turn_number=task_turn_number,
         answers=task_answers,
         question=pending_question_text if has_pending_question else None,
+        confirmation_options=(
+            [option.model_dump() for option in composed.follow_up_options]
+            if composed and composed.follow_up_question and pending_question_text == composed.follow_up_question.strip()
+            else []
+        ),
         action_summary=str((agent_trace or {}).get("decision_summary") or "")[:240],
     ).model_dump(mode="json")
     context["last_agent_task"] = task_snapshot

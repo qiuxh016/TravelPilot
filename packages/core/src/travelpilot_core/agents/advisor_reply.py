@@ -16,9 +16,15 @@ class AdvisorMemorySuggestion(BaseModel):
     evidence: str = Field(min_length=2, max_length=180)
 
 
+class AdvisorReplyOption(BaseModel):
+    label: str = Field(min_length=1, max_length=80)
+    answer: str = Field(min_length=1, max_length=200)
+
+
 class AdvisorReply(BaseModel):
     reply: str = Field(min_length=1, max_length=1200)
     follow_up_question: str | None = Field(default=None, max_length=300)
+    follow_up_options: list[AdvisorReplyOption] = Field(default_factory=list, max_length=3)
     memory_suggestion: AdvisorMemorySuggestion | None = None
 
 
@@ -104,7 +110,12 @@ async def compose_advisor_reply_with_diagnostics(
                         "role": "system",
                         "content": (
                             "You are a helpful Chinese travel advisor. Return JSON with reply, "
-                            "optional follow_up_question, and memory_suggestion (an object or null). "
+                            "optional follow_up_question, follow_up_options (an array), and memory_suggestion (an object or null). "
+                            "Whenever a follow_up_question asks the user to choose between concrete alternatives, "
+                            "or asks whether to take a specific action, return 2-3 follow_up_options. Each option "
+                            "must have a short label and an answer string that can be submitted as the user's reply. "
+                            "Use only alternatives or actions already stated in the question; do not invent choices. "
+                            "For an open-ended request for information, return an empty follow_up_options array. "
                             "Only suggest a memory when memory_suggestions_enabled is true and the user "
                             "clearly states a stable, non-sensitive travel preference that could help future trips. "
                             "Return category, a short faithful summary and an exact short quote from current_message "

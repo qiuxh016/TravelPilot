@@ -85,7 +85,14 @@ test("日期建议显示为可点选方案，继续排程不代表保存确认",
             { label: "暂不处理", answer: "暂不处理这项任务" },
           ],
         } }, created_at: now }
-        : { id: "assistant-3", role: "assistant", content: "已继续生成待确认建议。", payload: { response_source: "TEMPLATE" }, created_at: now };
+        : submittedAnswers.length === 2
+          ? { id: "assistant-3", role: "assistant", content: "要不要把雅瑞斯酒店作为住宿候选加入行程？", payload: { agent_task: {
+            task_id: "lodging-task", task_type: "LODGING", status: "WAITING_USER",
+            goal: "选择住宿候选", context_revision: 0, turn_number: 2,
+            answers: ["雅瑞斯酒店"], question: "要不要把雅瑞斯酒店作为住宿候选加入行程？",
+            confirmation_options: [],
+          } }, created_at: now }
+          : { id: "assistant-4", role: "assistant", content: "已继续处理住宿安排。", payload: { response_source: "TEMPLATE" }, created_at: now };
       const updated = {
         ...session,
         messages: [...messages,
@@ -158,6 +165,11 @@ test("日期建议显示为可点选方案，继续排程不代表保存确认",
   await expect(continueCard.getByRole("button", { name: "继续，生成待确认建议" })).toBeVisible();
   await continueCard.getByRole("button", { name: "继续，生成待确认建议" }).click();
   await expect.poll(() => submittedAnswers.at(-1)).toBe("好的，继续生成待确认建议");
-  await expect(page.getByText("已继续生成待确认建议。", { exact: true })).toBeVisible();
+  const lodgingCard = page.getByRole("region", { name: "等待你补充" });
+  await expect(lodgingCard.getByRole("button", { name: "确认，加入安排" })).toBeVisible();
+  await expect(lodgingCard.getByRole("button", { name: "返回调整" })).toBeVisible();
+  await expect(lodgingCard.getByRole("button", { name: "自定义回答" })).toHaveCount(0);
+  await lodgingCard.getByRole("button", { name: "确认，加入安排" }).click();
+  await expect.poll(() => submittedAnswers.at(-1)).toBe("确认，按当前选择加入安排");
   expect(confirmed).toBe(false);
 });

@@ -151,14 +151,16 @@ function readAdvisorTask(payload: Record<string, unknown> | null): AdvisorTaskSn
     || typeof task.turn_number !== "number" || !Array.isArray(task.answers)) return null;
   const question = typeof task.question === "string" ? task.question.trim() : "";
   const answers = task.answers;
-  const asksForAction = /(?:需要我|要我|要不要我|是否把|是否将|可以把|可不可以把)/.test(question)
-    && /作为|加入|安排|添加|更新|放到|排到|挪到/.test(question)
-    && /[？?]|吗/.test(question);
-  const isTimeProposal = /\d{1,2}[/月-]\d{1,2}日?|\d{1,2}:\d{2}|这一天|当天|这个日期|这天/.test(question);
-  const preferenceParts = question.includes("还是") ? question.split("还是", 2) : [];
-  const preferenceLeft = preferenceParts[0]?.replace(/^.*?(更喜欢|更偏好|偏好|选择|选|喜欢)\s*/, "").trim();
-  const preferenceRight = preferenceParts[1]?.replace(/[？?].*$/, "").trim();
-  const generatedOptions = asksForAction && answers.length > 0
+  const normalizedQuestion = question.replace(/[？?]+$/, "").trim();
+  const hasQuestionShape = /[？?]/.test(question)
+    || /(?:吗|是否|要不要|可不可以|行不行|想不想|需不需要)$/.test(normalizedQuestion)
+    || /是否|要不要|可不可以|能否|行不行|想不想|需不需要|还是|或者|或|[/／]/.test(normalizedQuestion);
+  const asksForAction = /(?:需要我|要我|要不要(?:我|把|将)?|要把|是否(?:要|需要|可以)?(?:我|把|将)?|(?:可不可以|可以|能否|可否)(?:把|将)?|是否需要我)/.test(normalizedQuestion)
+    && /作为|加入|纳入|添加|更新|放到|排到|挪到|设为|定为/.test(normalizedQuestion)
+    && hasQuestionShape;
+  const isTimeProposal = /\d{1,2}[/月-]\d{1,2}日?|\d{1,2}:\d{2}|(?:上午|下午|中午|晚上)?\s*[一二两三四五六七八九十\d]+点|这一天|当天|这个日期|这天/.test(normalizedQuestion)
+    || (/第[一二两三四五六七八九十\d]+天/.test(normalizedQuestion) && /放到|排到|挪到|调整到|安排到/.test(normalizedQuestion));
+  const actionChoices = asksForAction
     ? isTimeProposal ? [
       { label: "可以，按这个时间继续", answer: "可以，按你刚才建议的日期和时间继续安排" },
       { label: "换个日期或时间", answer: "我想调整刚才建议的日期或时间，先不要按原时间安排" },
@@ -168,13 +170,39 @@ function readAdvisorTask(payload: Record<string, unknown> | null): AdvisorTaskSn
       { label: "返回调整", answer: "先不确认，我想调整这项安排" },
       { label: "暂不安排", answer: "暂不安排这项内容" },
     ]
-    : answers.length > 0 && preferenceLeft && preferenceRight
-      && preferenceLeft.length <= 40 && preferenceRight.length <= 40
-      ? [
-        { label: preferenceLeft, answer: `我选${preferenceLeft}` },
-        { label: preferenceRight, answer: `我选${preferenceRight}` },
-      ]
-      : [];
+    : [];
+  const alternatives = /还是|或者|或|[/／]/.test(normalizedQuestion)
+    ? normalizedQuestion.split(/还是|或者|或|[/／]/).map((part) => part.trim().replace(/^[，,、：:；;\s]+|[，,、：:；;\s]+$/g, ""))
+    : [];
+  if (alternatives.length) {
+    alternatives[0] = alternatives[0]
+      .replace(/^.*?(更倾向于|倾向于|更喜欢|更偏爱|更偏好|偏爱|偏向|更看重|更在意|偏好|更想|想体验|希望去|希望是|希望|想要|想去|选择|选|喜欢)\s*/, "")
+      .replace(/^[，,、：:；;\s]+|[，,、：:；;\s]+$/g, "");
+    if (alternatives.length === 2) {
+      const firstChoices = alternatives[0].split(/[、，,：:]/).map((part) => part.trim()).filter(Boolean);
+      if (firstChoices.length > 1) alternatives.splice(0, 1, ...firstChoices);
+    }
+  }
+  const choiceOptions = alternatives.length >= 2 && alternatives.length <= 3
+    && alternatives.every((choice) => choice.length > 0 && choice.length <= 40)
+    ? alternatives.map((choice) => ({ label: choice, answer: `我选${choice}` }))
+    : [];
+  const asksToContinue = /要我|需要我|要不要|是否要|是否需要|想不想|需不需要/.test(normalizedQuestion)
+    && /排出来|生成|推荐|查询|按日期安排/.test(normalizedQuestion);
+  const continuationOptions = asksToContinue ? [
+    { label: "继续，生成待确认建议", answer: "好的，继续生成待确认建议" },
+    { label: "补充或调整要求", answer: "我想先补充或调整要求" },
+    { label: "暂不处理", answer: "暂不处理这项任务" },
+  ] : [];
+  const asksYesNo = /(?:是否|要不要|可不可以|可以吗|能不能|行不行|好吗|合适吗|合理吗|可行吗|想不想|需不需要|同意吗|确认吗|接受吗|要吗|需要吗|(?:需要我|要我).{0,12}吗)$/.test(normalizedQuestion)
+    || /是否(?:合理|合适|可行|需要|确认|同意|接受)/.test(normalizedQuestion);
+  const yesNoOptions = asksYesNo ? [
+    { label: "是，继续", answer: "是，请继续" },
+    { label: "否，先不用", answer: "否，暂时不用" },
+  ] : [];
+  const generatedOptions = !hasQuestionShape ? [] : actionChoices.length ? actionChoices
+    : choiceOptions.length ? choiceOptions
+      : continuationOptions.length ? continuationOptions : yesNoOptions;
   const confirmationOptions = Array.isArray(task.confirmation_options) && task.confirmation_options.length
     ? task.confirmation_options
     : generatedOptions;

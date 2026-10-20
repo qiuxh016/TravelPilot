@@ -1,6 +1,7 @@
 import pytest
 from travelpilot_api.advisor.task_state import (
     AdvisorTaskSnapshot,
+    confirmation_options_for,
     resolve_task_status,
     restore_task_snapshot,
 )
@@ -138,7 +139,7 @@ def test_first_preference_question_becomes_clickable_choices_without_prior_answe
     ]
 
 
-def test_confirmation_question_without_a_prior_user_choice_remains_open_ended():
+def test_action_confirmation_is_clickable_even_without_a_prior_answer():
     snapshot = AdvisorTaskSnapshot(
         task_id="meal-task",
         task_type="MEAL",
@@ -149,7 +150,39 @@ def test_confirmation_question_without_a_prior_user_choice_remains_open_ended():
         question="需要我把鑫丰特色餐饮作为第1天午餐的待确认安排吗？",
         action_summary="确认餐饮地点",
     )
-    assert snapshot.confirmation_options == []
+    assert [option.label for option in snapshot.confirmation_options] == [
+        "确认，加入安排", "返回调整", "暂不安排",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("question", "expected_labels"),
+    [
+        ("你更喜欢客家菜还是潮汕菜？", ["客家菜", "潮汕菜"]),
+        ("你更喜欢客家菜还是潮汕菜", ["客家菜", "潮汕菜"]),
+        ("你更喜欢自然景点、历史街区还是本地美食？", ["自然景点", "历史街区", "本地美食"]),
+        ("你希望去厦门或泉州？", ["厦门", "泉州"]),
+        ("你偏向自然风景／历史文化？", ["自然风景", "历史文化"]),
+        ("要我现在按日期把每天的游览顺序排出来吗？", ["继续，生成待确认建议", "补充或调整要求", "暂不处理"]),
+        ("你还需要我继续查询吗？", ["继续，生成待确认建议", "补充或调整要求", "暂不处理"]),
+        ("你需要我继续吗？", ["是，继续", "否，先不用"]),
+        ("需要我把这家餐厅加入行程吗？", ["确认，加入安排", "返回调整", "暂不安排"]),
+        ("是否需要将七尚酒店纳入住宿备选？", ["确认，加入安排", "返回调整", "暂不安排"]),
+        ("要不要把这条线放到第2天下午两点？", ["可以，按这个时间继续", "换个日期或时间", "暂不安排"]),
+        ("这个时间安排合理吗？", ["是，继续", "否，先不用"]),
+    ],
+)
+def test_common_choice_and_confirmation_phrasings_become_options(question, expected_labels):
+    assert [option.label for option in confirmation_options_for(question)] == expected_labels
+
+
+@pytest.mark.parametrize("question", [
+    "你最想体验什么？",
+    "请告诉我你的预算范围。",
+    "方便说一下同行人情况吗？",
+])
+def test_open_ended_questions_keep_custom_answer(question):
+    assert confirmation_options_for(question) == []
 
 
 def test_task_snapshot_rejects_unbounded_or_unknown_state():
