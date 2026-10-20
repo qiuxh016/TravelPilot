@@ -60,7 +60,10 @@ def confirmation_options_for(question: str) -> list[AdvisorConfirmationOption]:
 
     asks_for_confirmation = any(
         phrase in normalized
-        for phrase in ("需要我", "要我", "要不要我", "是否把", "是否将", "可以把", "可不可以把")
+        for phrase in (
+            "需要我", "要我", "要不要我", "要不要把", "要不要将",
+            "是否把", "是否将", "是否要把", "是否要将", "可以把", "可不可以把",
+        )
     )
     proposes_an_action = any(verb in normalized for verb in ("作为", "加入", "安排", "添加", "更新", "放到", "排到", "挪到"))
     if asks_for_confirmation and proposes_an_action:

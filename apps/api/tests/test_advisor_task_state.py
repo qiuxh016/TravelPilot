@@ -42,6 +42,26 @@ def test_completed_meal_proposal_confirmation_becomes_clickable_actions():
     ]
 
 
+def test_selected_lodging_confirmation_phrase_becomes_clickable_actions():
+    snapshot = AdvisorTaskSnapshot(
+        task_id="lodging-task",
+        task_type="LODGING",
+        status="WAITING_USER",
+        goal="选择住宿候选",
+        context_revision=2,
+        turn_number=2,
+        answers=["雅瑞斯酒店"],
+        question="要不要把雅瑞斯酒店作为住宿候选加入行程？",
+        action_summary="确认住宿候选",
+    )
+
+    assert [(option.label, option.answer) for option in snapshot.confirmation_options] == [
+        ("确认，加入安排", "确认，按当前选择加入安排"),
+        ("返回调整", "先不确认，我想调整这项安排"),
+        ("暂不安排", "暂不安排这项内容"),
+    ]
+
+
 def test_date_reschedule_question_becomes_clickable_choices():
     snapshot = AdvisorTaskSnapshot(
         task_id="route-date-task",
