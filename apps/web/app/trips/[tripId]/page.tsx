@@ -9,12 +9,15 @@ import {
   deleteTrip,
   deleteWishlistItem,
   getTrip,
+  listPlans,
   listWishlist,
   updateTrip,
   updateWishlistItem,
   type Trip,
+  type Plan,
   type WishlistItem,
 } from "../../../lib/api";
+import { downloadTripPoster } from "../../../lib/trip-poster";
 import { RouteMap } from "../../../components/route-map";
 import { TripImportTool } from "../../../components/trip-import-tool";
 import { TripSharingTool } from "../../../components/trip-sharing-tool";
@@ -29,12 +32,14 @@ export default function TripDetailPage() {
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
+  const [latestPlan, setLatestPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [editingTrip, setEditingTrip] = useState(false);
   const [tripSaving, setTripSaving] = useState(false);
   const [tripDeleting, setTripDeleting] = useState(false);
+  const [posterExporting, setPosterExporting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [sharingOpen, setSharingOpen] = useState(false);
   const closeImport = useCallback(() => setImportOpen(false), []);
@@ -68,13 +73,15 @@ export default function TripDetailPage() {
       setLoading(true);
       setError("");
 
-      const [tripResult, wishlistResult] = await Promise.all([
+      const [tripResult, wishlistResult, plansResult] = await Promise.all([
         getTrip(tripId),
         listWishlist(tripId),
+        listPlans(tripId).catch(() => []),
       ]);
 
       setTrip(tripResult);
       setWishlist(wishlistResult);
+      setLatestPlan(plansResult[0]?.nodes.length ? plansResult[0] : null);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "加载旅行失败",
@@ -225,11 +232,27 @@ export default function TripDetailPage() {
       setError("");
       await deleteWishlistItem(item.id);
       setWishlist((current) => current.filter((entry) => entry.id !== item.id));
+      const plans = await listPlans(tripId);
+      setLatestPlan(plans[0]?.nodes.length ? plans[0] : null);
       setNotice("收藏地点已删除；若它在当前计划中，也已从新版本移除。历史版本仍保留。");
     } catch (err) {
       setError(err instanceof Error ? err.message : "删除收藏地点失败");
     } finally {
       setWishlistSavingId(null);
+    }
+  }
+
+  async function handleExportPoster() {
+    if (!trip || !latestPlan) return;
+    try {
+      setPosterExporting(true);
+      setError("");
+      await downloadTripPoster(trip, latestPlan, wishlist);
+      setNotice("行程手账图片已生成并保存到本地下载目录。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "导出行程图片失败");
+    } finally {
+      setPosterExporting(false);
     }
   }
 
@@ -259,6 +282,7 @@ export default function TripDetailPage() {
         <p className="trip-overview-note">把想去的地方收在一起，再慢慢排成适合自己的旅程。</p>
         <div className="trip-overview-actions" aria-label="旅行操作">
           <Link className="primary" href={`/trips/${tripId}/plan`}>规划行程 <span aria-hidden="true">→</span></Link>
+          {latestPlan && <button className="secondary trip-overview-import-button" type="button" onClick={() => void handleExportPoster()} disabled={posterExporting}>{posterExporting ? "正在制作手账…" : "导出行程手账 ↓"}</button>}
           <button className="secondary trip-overview-import-button" type="button" onClick={() => setImportOpen(true)}>导入攻略</button>
           <button className="secondary trip-overview-import-button" type="button" onClick={() => setSharingOpen(true)}>分享设置</button>
           <button className="trip-overview-edit" type="button" onClick={beginTripEdit}>编辑旅行</button>

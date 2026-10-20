@@ -213,6 +213,8 @@ def _is_schedule_recommendation_request(content: str) -> bool:
         "路线怎么排", "安排行程", "规划行程", "调整行程", "优化行程",
         "安排景点", "规划景点", "排一下景点", "安排游览", "规划游览",
         "整天行程", "全天行程", "一日游", "两日游", "多日游",
+        "生成完整计划", "直接生成计划", "生成完整行程", "直接生成完整计划",
+        "帮我生成计划", "帮我生成行程", "完整的计划",
     )
     if any(_has_unnegated_schedule_phrase(normalized, phrase) for phrase in phrases):
         return True

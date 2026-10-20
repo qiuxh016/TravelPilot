@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
+from travelpilot_api.advisor.interpretation import _is_schedule_recommendation_request
 from travelpilot_api.advisor.state import (
     PendingAgentQuestion,
     affirms_pending_action,
@@ -39,7 +40,16 @@ def resolve_pending_turn(
         or (isinstance(previous_payload, dict) and previous_payload.get("invalidated_pending_task"))
         or (pending and not pending_question_matches_context(pending, context))
     )
+    # A stale pending task must not swallow a clearly new itinerary request.
+    # Drop the old task and let normal intent handling plan against freshly
+    # loaded trip context; short answers to the old question remain stale.
+    supersedes_stale_task = bool(invalidated and _is_schedule_recommendation_request(content))
+    if supersedes_stale_task:
+        invalidated = False
+        continuing_task = None
     if invalidated:
+        pending = None
+    elif supersedes_stale_task:
         pending = None
 
     context.pop("pending_agent_question", None)

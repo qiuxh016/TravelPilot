@@ -1225,6 +1225,7 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 .trip-overview-actions > a.primary { background: var(--action); color: var(--action-contrast); }
 .trip-overview-actions > a.secondary { border: 1px solid var(--border); background: var(--surface); color: var(--text); }
 .trip-overview-actions > button.trip-overview-import-button { min-height: 40px; border: 1px solid var(--border); border-radius: 7px; padding: 0 13px; background: var(--surface); color: var(--text); font: inherit; font-size: 11px; font-weight: 650; cursor: pointer; }
+.trip-overview-actions > button.trip-overview-import-button:disabled { cursor: wait; opacity: .68; }
 .trip-import-dialog { width: min(820px, calc(100vw - 24px)); max-width: none; max-height: min(90dvh, 900px); margin: auto; overflow: visible; border: 0; border-radius: 16px; padding: 0; background: transparent; color: var(--text); }
 .trip-import-dialog::backdrop { background: rgb(13 27 22 / 58%); backdrop-filter: blur(3px); }
 .trip-import-dialog-panel { display: grid; grid-template-rows: auto minmax(0, 1fr); max-height: min(90dvh, 900px); overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); }
