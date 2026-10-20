@@ -144,6 +144,11 @@ def test_guide_chunker_preserves_all_input_characters_and_respects_chunk_limit()
     assert "".join(chunks) == text
     assert all(0 < len(chunk) <= 1000 for chunk in chunks)
 
+    natural_text = "A" * 850 + "。\n" + "B" * 1000
+    natural_chunks = _split_guide_text(natural_text)
+    assert natural_chunks[0].endswith("\n")
+    assert "".join(natural_chunks) == natural_text
+
 
 @pytest.mark.asyncio
 async def test_local_fallback_also_processes_late_guide_segments():
@@ -315,6 +320,19 @@ async def test_guide_import_keeps_successful_chunks_and_exact_failed_ranges(monk
         "index": 1, "start": len(chunks[0]), "end": len(text),
         "failure_code": "MODEL_RESPONSE_INVALID", "finish_reason": "length",
     }]
+
+
+@pytest.mark.asyncio
+async def test_short_guide_import_also_obeys_per_chunk_output_budget(monkeypatch):
+    captured = {}
+
+    async def extract_once(_text, **kwargs):
+        captured.update(kwargs)
+        return Extraction(places=[], guide_facts=[])
+
+    monkeypatch.setattr("travelpilot_core.agents.extraction._extract_places_once", extract_once)
+    await extract_places("短攻略内容", api_key="test", model="test", token_budget=1200, guide_import=True)
+    assert captured["token_budget"] == 768
 
 
 @pytest.mark.asyncio

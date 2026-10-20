@@ -63,8 +63,10 @@ _PLACE = re.compile(
 )
 _JSON_FENCE = re.compile(r"^```(?:json)?\s*\n(?P<body>.*?)\n```$", re.IGNORECASE | re.DOTALL)
 _GUIDE_CHUNK_TARGET_CHARS = 1000
+_GUIDE_CHUNK_MIN_CHARS = 800
 _GUIDE_CHUNK_TOKEN_CAP = 768
 _GUIDE_MAX_INPUT_CHARS = 20000
+_GUIDE_MAX_CHUNKS = 25
 
 
 class TextExtractionFailure(RuntimeError):
@@ -243,13 +245,20 @@ async def extract_places(
     if not api_key or not model:
         if guide_import and len(text) > _GUIDE_CHUNK_TARGET_CHARS:
             chunks = _split_guide_text(text)
+            if len(chunks) > _GUIDE_MAX_CHUNKS:
+                raise TextExtractionFailure(
+                    {"chunk_count": len(chunks), "maximum_chunks": _GUIDE_MAX_CHUNKS},
+                    {"failure_code": "CHUNK_LIMIT_EXCEEDED"},
+                )
             merged = _merge_extractions([fallback_extract(chunk) for chunk in chunks])
             return merged.model_copy(update={"chunk_count": len(chunks)})
-        return fallback_extract(text)
+        fallback = fallback_extract(text)
+        return fallback.model_copy(update={"chunk_count": 1 if guide_import else 0})
     if not guide_import or len(text) <= _GUIDE_CHUNK_TARGET_CHARS:
         extraction = await _extract_places_once(
             text, api_key=api_key, model=model, base_url=base_url,
-            token_budget=token_budget, additional_instructions=additional_instructions,
+            token_budget=min(token_budget, _GUIDE_CHUNK_TOKEN_CAP) if guide_import else token_budget,
+            additional_instructions=additional_instructions,
             thinking_mode=thinking_mode, conversation_context=conversation_context,
             travel_preferences=travel_preferences, guide_import=guide_import,
         )
@@ -261,6 +270,11 @@ async def extract_places(
         )
 
     chunks = _split_guide_text(text)
+    if len(chunks) > _GUIDE_MAX_CHUNKS:
+        raise TextExtractionFailure(
+            {"chunk_count": len(chunks), "maximum_chunks": _GUIDE_MAX_CHUNKS},
+            {"failure_code": "CHUNK_LIMIT_EXCEEDED"},
+        )
     extractions = []
     failed_chunks = []
     failed_token_usage = 0
@@ -311,7 +325,7 @@ def _split_guide_text(text: str) -> list[str]:
         if hard_end == len(text):
             chunks.append(text[start:hard_end])
             break
-        safe_start = min(start + 1200, hard_end)
+        safe_start = min(start + _GUIDE_CHUNK_MIN_CHARS, hard_end)
         boundary = max(
             text.rfind(mark, safe_start, hard_end) + len(mark)
             for mark in ("\n", "。", "！", "？", "；", "\r")
@@ -463,7 +477,8 @@ async def _extract_places_once(
                 if isinstance(finish_reason, str):
                     provider_metadata["finish_reason"] = finish_reason[:40]
             if output_tokens > token_budget:
-                raise RuntimeError("TOKEN_BUDGET_EXCEEDED")
+                provider_metadata["failure_code"] = "OUTPUT_BUDGET_EXCEEDED"
+                raise TextExtractionFailure(_response_shape(content), provider_metadata)
             content = body["choices"][0]["message"]["content"]
             extracted = Extraction.model_validate_json(_json_content(content))
             # Evidence is used to authorize a referential add/remove only when
