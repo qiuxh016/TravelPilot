@@ -23,6 +23,7 @@ from travelpilot_infra.db.models.trip_collaboration import (
     TripDiscussionMessageModel,
 )
 from travelpilot_infra.db.models.trip_member import TripMemberModel
+from travelpilot_infra.db.models.trip_reminder import TripReminderModel
 from travelpilot_infra.db.models.user import (
     EmailTokenModel,
     LoginAttemptModel,
@@ -75,6 +76,7 @@ __all__ = [
     "TripModel",
     "TripPlanModel",
     "TripPlanNodeModel",
+    "TripReminderModel",
     "TripShareGrantModel",
     "UserFeedbackModel",
     "UserMemorySettingsModel",

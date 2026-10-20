@@ -11,8 +11,8 @@ from travelpilot_infra.db.models.trip_collaboration import (
     TripActivityModel,
     TripDiscussionMessageModel,
 )
-from travelpilot_infra.db.models.user import UserModel
 from travelpilot_infra.db.models.trip_member import TripMemberModel
+from travelpilot_infra.db.models.user import UserModel
 from travelpilot_infra.db.session import get_session
 
 from travelpilot_api.auth import get_current_user

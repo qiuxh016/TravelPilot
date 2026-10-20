@@ -5,6 +5,7 @@ import re
 import secrets
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.encoders import jsonable_encoder
@@ -206,6 +207,8 @@ class UserRead(BaseModel):
     display_name: str = ""
     home_city: str = ""
     bio: str = ""
+    timezone: str = "Asia/Shanghai"
+    trip_reminders_enabled: bool = True
     has_avatar: bool = False
     model_config = ConfigDict(from_attributes=True)
 
@@ -214,11 +217,24 @@ class UserProfileUpdate(BaseModel):
     display_name: str = Field(min_length=1, max_length=48)
     home_city: str = Field(default="", max_length=120)
     bio: str = Field(default="", max_length=240)
+    timezone: str | None = Field(default=None, min_length=1, max_length=64)
+    trip_reminders_enabled: bool | None = None
 
     @field_validator("display_name", "home_city", "bio")
     @classmethod
     def strip_profile_text(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("无效的时区") from exc
+        return value
 
 
 class SessionRead(BaseModel):
@@ -505,6 +521,10 @@ async def update_profile(
     user.display_name = payload.display_name
     user.home_city = payload.home_city
     user.bio = payload.bio
+    if payload.timezone is not None:
+        user.timezone = payload.timezone
+    if payload.trip_reminders_enabled is not None:
+        user.trip_reminders_enabled = payload.trip_reminders_enabled
     await session.commit()
     await session.refresh(user)
     return UserRead.model_validate(user).model_copy(update={"has_avatar": bool(user.avatar_key)})
@@ -718,7 +738,8 @@ async def export_account(user: UserModel = Depends(get_current_user),
         "format": "travelpilot-account-export-v1",
         "exported_at": datetime.now(UTC),
         "user": {"email": user.email, "username": user.username, "created_at": user.created_at,
-                 "display_name": user.display_name, "home_city": user.home_city, "bio": user.bio},
+                 "display_name": user.display_name, "home_city": user.home_city, "bio": user.bio,
+                 "timezone": user.timezone, "trip_reminders_enabled": user.trip_reminders_enabled},
         "trips": [encode(trip) for trip in trips],
         "shared_trips": [encode(trip) for trip in shared_trips],
         "data": {name: [encode(row) for row in rows] for name, rows in grouped.items()},

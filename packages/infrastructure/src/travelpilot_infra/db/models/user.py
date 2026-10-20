@@ -18,6 +18,8 @@ class UserModel(Base):
     display_name: Mapped[str] = mapped_column(String(48), nullable=False, default="")
     home_city: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     bio: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="Asia/Shanghai")
+    trip_reminders_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     avatar_key: Mapped[str | None] = mapped_column(String(500))
     avatar_thumbnail_key: Mapped[str | None] = mapped_column(String(500))
     avatar_mime_type: Mapped[str | None] = mapped_column(String(80))

@@ -52,7 +52,7 @@ export function DashboardJourney({ trips }: { trips: Trip[] }) {
 
   return <section className="dashboard-journey" aria-label="最近的旅行">
     <header className="dashboard-journey-head">
-      <div><span className="dashboard-kicker">最近的旅程</span><h2>{trip.destination}</h2><p>{trip.start_date} — {trip.end_date}</p></div>
+      <div><span className="dashboard-kicker">最近的旅程</span><h2>{trip.destination}</h2><p>{trip.start_date} — {trip.end_date} <span className={`trip-lifecycle-badge is-${trip.lifecycle_status.toLowerCase()}`}>{({ UPCOMING: "即将出发", ONGOING: "旅途中", COMPLETED: "已完成" })[trip.lifecycle_status]}</span></p></div>
       <div className="dashboard-journey-tools">
         {trips.length > 1 && <label className="sr-only" htmlFor="dashboard-trip-select">切换旅行</label>}
         {trips.length > 1 && <select id="dashboard-trip-select" value={trip?.id ?? tripId} onChange={(event) => { setTripId(event.target.value); selectTrip(event.target.value); setSelectedStop(""); }} aria-label="切换旅行">{trips.map((item) => <option key={item.id} value={item.id}>{tripOptionLabel(item, trips)}</option>)}</select>}

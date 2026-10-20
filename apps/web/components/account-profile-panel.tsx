@@ -40,7 +40,7 @@ export function AccountProfilePanel() {
       .then(async ([profileResult, friendResult, requestResult, blockedResult]) => {
         if (!active) return;
         if (profileResult.status === "fulfilled") {
-          const user = profileResult.value;
+          const user = { ...profileResult.value, timezone: profileResult.value.timezone || "Asia/Shanghai", trip_reminders_enabled: profileResult.value.trip_reminders_enabled ?? true };
           setProfile(user);
           if (user.has_avatar) {
             try { objectUrl = await getAccountAvatarBlob(); if (active) setAvatarUrl(objectUrl); else URL.revokeObjectURL(objectUrl); }
@@ -69,7 +69,7 @@ export function AccountProfilePanel() {
     if (!profile) return;
     setSaving(true); setMessage(null);
     try {
-      const updated = await updateAccountProfile({ display_name: profile.display_name, home_city: profile.home_city, bio: profile.bio });
+      const updated = await updateAccountProfile({ display_name: profile.display_name, home_city: profile.home_city, bio: profile.bio, timezone: profile.timezone, trip_reminders_enabled: profile.trip_reminders_enabled });
       setProfile(updated); emitProfileUpdate(updated); setMessage({ text: "个人资料已保存。" });
     } catch (error) { setMessage({ text: error instanceof Error ? error.message : "资料保存失败，请重试。", error: true }); }
     finally { setSaving(false); }
@@ -137,6 +137,8 @@ export function AccountProfilePanel() {
           <label>昵称<input value={profile.display_name} required maxLength={48} placeholder="给自己取个旅行昵称" onChange={(event) => setProfile({ ...profile, display_name: event.target.value })} /></label>
           <label>常用出发地<input value={profile.home_city} maxLength={120} placeholder="例如：杭州" onChange={(event) => setProfile({ ...profile, home_city: event.target.value })} /></label>
           <label className="profile-bio-label">个人简介<textarea value={profile.bio} maxLength={240} rows={3} placeholder="喜欢怎样的旅行？可以在这里写下来。" onChange={(event) => setProfile({ ...profile, bio: event.target.value })} /><small>{profile.bio.length}/240</small></label>
+          <label>所在时区<select value={profile.timezone} onChange={(event) => setProfile({ ...profile, timezone: event.target.value })}><option value="Asia/Shanghai">中国标准时间（上海）</option><option value="Asia/Tokyo">日本标准时间（东京）</option><option value="Asia/Singapore">新加坡时间</option><option value="Europe/London">英国时间（伦敦）</option><option value="America/Los_Angeles">美国太平洋时间</option><option value="America/New_York">美国东部时间</option></select></label>
+          <label className="profile-reminder-toggle"><input type="checkbox" checked={profile.trip_reminders_enabled} onChange={(event) => setProfile({ ...profile, trip_reminders_enabled: event.target.checked })} />接收旅行规划和旅后记录提醒</label>
           <label className="profile-email-label">用户名 <span>用于登录</span><input value={profile.username} readOnly /></label>
           <label className="profile-email-label">邮箱 <span>不可修改</span><input value={profile.email} readOnly /></label>
           <button className="primary profile-save-button" type="submit" disabled={saving || !profile.display_name.trim()}>{saving ? "正在保存…" : "保存资料"}</button>

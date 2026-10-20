@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-
 from travelpilot_api.api.v1 import trip_discussion
 
 

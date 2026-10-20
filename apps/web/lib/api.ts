@@ -38,6 +38,7 @@ export type Trip = {
   updated_at: string;
   has_plan: boolean;
   access_role: "OWNER" | "EDITOR" | "VIEWER";
+  lifecycle_status: "UPCOMING" | "ONGOING" | "COMPLETED";
 };
 
 export type TripWeather = {
@@ -121,7 +122,7 @@ async function request<T>(
   return response.json() as Promise<T>;
 }
 
-export type AccountUser = { id: string; email: string; username: string; created_at: string; display_name: string; home_city: string; bio: string; has_avatar: boolean };
+export type AccountUser = { id: string; email: string; username: string; created_at: string; display_name: string; home_city: string; bio: string; timezone: string; trip_reminders_enabled: boolean; has_avatar: boolean };
 export type AuthSession = { expires_at: string; user: AccountUser };
 export type AuthNotice = { message: string };
 export const register = (input: { email: string; username: string; display_name: string; password: string; invite_code?: string }) =>
@@ -139,7 +140,7 @@ export const getCurrentUser = () => request<AccountUser>("/api/v1/auth/me", {
   signal: AbortSignal.timeout(10_000),
 });
 export const getAccountProfile = () => request<AccountUser>("/api/v1/account/profile");
-export const updateAccountProfile = (input: Pick<AccountUser, "display_name" | "home_city" | "bio">) =>
+export const updateAccountProfile = (input: Pick<AccountUser, "display_name" | "home_city" | "bio" | "timezone" | "trip_reminders_enabled">) =>
   request<AccountUser>("/api/v1/account/profile", { method: "PATCH", body: JSON.stringify(input) });
 export const uploadAccountAvatar = (file: File) => {
   const form = new FormData(); form.append("file", file);
@@ -158,6 +159,13 @@ export async function getAccountAvatarBlob(): Promise<string> {
 export async function listTrips(): Promise<Trip[]> {
   return request<Trip[]>("/api/v1/trips");
 }
+export type TripReminder = {
+  id: string; trip_id: string; kind: "PLAN_7D" | "PLAN_2D" | "AFTER_TRIP";
+  destination: string; start_date: string; end_date: string; scheduled_for: string; status: "PENDING" | "SNOOZED" | "DONE" | "DISMISSED";
+};
+export const listTripLifecyclePrompts = () => request<TripReminder[]>("/api/v1/trips/lifecycle/prompts");
+export const updateTripLifecyclePrompt = (promptId: string, action: "DONE" | "LATER" | "DISMISS") =>
+  request<TripReminder>(`/api/v1/trips/lifecycle/prompts/${promptId}`, { method: "POST", body: JSON.stringify({ action }) });
 
 export async function createTrip(
   input: TripCreateInput,

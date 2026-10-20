@@ -35,7 +35,23 @@ class TripRead(TripCreate):
     updated_at: datetime
     has_plan: bool = False
     access_role: Literal["OWNER", "EDITOR", "VIEWER"] = "OWNER"
+    lifecycle_status: Literal["UPCOMING", "ONGOING", "COMPLETED"] = "UPCOMING"
 
     model_config = {
         "from_attributes": True,
     }
+
+
+class TripReminderAction(BaseModel):
+    action: Literal["DONE", "LATER", "DISMISS"]
+
+
+class TripReminderRead(BaseModel):
+    id: UUID
+    trip_id: UUID
+    kind: Literal["PLAN_7D", "PLAN_2D", "AFTER_TRIP"]
+    destination: str
+    start_date: date
+    end_date: date
+    scheduled_for: date
+    status: Literal["PENDING", "SNOOZED", "DONE", "DISMISSED"]
