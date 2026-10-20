@@ -101,7 +101,7 @@ Latest service process-recovery check (2026-10-19): `scripts/verify_advisor_dura
 The Advisor has an adaptive, constrained Runtime for the main trip workflows, owner-scoped context, validated map/weather/route evidence, confirmation-gated plan writes, and checkpoint-backed retry paths. Destination discovery, itinerary drafting, food and lodging search, transport routes, weather preparation, memory controls, and read-only trip consultation are implemented for bounded supported cases.
 
 | Area | Status | Remaining work |
-|---|---|---|
+|---|---|---|---|
 | Shared task Runtime and recovery | **Complete for current supported workflows** | The PostgreSQL recovery verifier passes 23 checks, and destination discovery recovery is exercised across process exits. The 2026-10-20 call-site audit found no separate server-directed multi-stage ordering bypass. Current restore paths validate owner, session, task, context, observation and evidence scope; they deliberately do not promise reconstruction of arbitrary Agent state. Further compound workflows and whole-turn restoration are future extensions, not local acceptance blockers. |
 | Travel outcomes and tool coverage | **Complete for the defined supported domains** | Local product coverage includes destination/place discovery, food, lodging, itinerary, route, weather/preparation, clarification and provider failure handling. AMap/Open-Meteo adapters and desktop/mobile evidence rendering passed bounded live checks. Broader recommendation relevance, intercity rail/flight and external booking remain unsupported or unmeasured and are not claimed by this plan. |
 | Draft, verification and confirmation | **Complete for supported writes** | Local and process-recovery checks cover draft preview, hard-constraint verification, explicit approval and idempotent confirmation. New write-capable domains must meet the same gate. |
@@ -159,6 +159,41 @@ Multi-Agent orchestration, Skill self-learning, autonomous booking/payment, cont
 ## Plan closure rule
 
 This roadmap may close once its local acceptance evidence is green: the full Python API/evaluation regression, authenticated local product-service suite, deterministic planner/Agent comparison, and PostgreSQL recovery/idempotency drills. The 2026-10-20 reruns satisfy those gates. Live-model comparisons beyond the already recorded bounded run, independent human ratings, broad user-utility research and production/external-pilot operations are follow-up work; they are not prerequisites for closing this implementation plan. Closure describes the tested bounded Advisor scope and must not be presented as proof that the system can solve arbitrary travel requests or is production-ready.
+
+## Next product track: Private and small-group trips
+
+**Status: In progress.** The current friendship and trip-sharing features are read-only: a trip owner can share a summary or the current plan with an accepted friend, and the recipient can view it from Friends. Plan edit endpoints still require trip ownership. Friend direct messages are separate from trip context. This track adds an explicitly opt-in shared trip workspace while keeping personal trips and personal memories private by default. The initial backend foundation now has a membership table, role-aware access resolver, and invitation/acceptance/role-change/revocation endpoints. The UI and shared-trip read/write integration remain to be implemented.
+
+### Product boundary
+
+- A trip is private to its owner unless the owner invites members to collaborate. Sharing one trip does not expose the owner's other trips, account profile settings, personal preference memories, private travel memories, or unshared social posts.
+- Trip-scoped shared data includes trip dates/destination, confirmed places, the current itinerary and its versions, trip discussion, and trip activity history. Each write must be attributed to the acting member.
+- Roles: **Owner** manages the trip and membership; **Editor** can change shared trip details, places and plans, and participate in trip discussion; **Viewer** can read shared trip data and participate in discussion without editing the itinerary. The owner can change roles or revoke membership.
+- Invitees must be accepted friends and must accept the trip invitation before gaining access. Revocation takes effect on the next request and prevents further reads and writes.
+- The first release promises persisted shared state visible after refresh. Live push updates (WebSocket/SSE), offline editing, booking/payment, and access for non-friends are out of scope until separately planned.
+- Existing summary/plan sharing remains read-only and must not silently become collaborative. The owner explicitly creates or upgrades a trip to a group workspace and chooses members and roles.
+
+### Delivery stages
+
+| Stage | Work | Status | Acceptance |
+|---|---|---|---|
+| 1. Permission and data model | Add trip membership/invitation records, roles, membership status, and a single authorization service for owner/editor/viewer checks. Preserve owner-only personal data and existing read-only grants. | **Backend foundation implemented locally** | Migration applies; owner/editor/viewer access policy is tested; invitation acceptance, role changes, revocation, and account/trip cascade behavior are defined. Full authenticated DB integration checks remain part of final verification. |
+| 2. Shared-trip entry and management UI | Add a “我的旅行 / 与我共享” distinction, member list, invite-from-friends flow, role selector, pending invitation accept/decline, and owner revoke/remove actions. | Not started | Users can tell who can see and edit each trip; rejected, pending, and revoked invitations expose no trip details. |
+| 3. Collaborative trip and plan writes | Route allowed trip, place, wishlist and itinerary writes through membership authorization. Keep append-only plan versions; require the caller's expected base version and return a conflict with the latest version/diff when another member has already edited. | Not started | Editors can add, adjust, and remove shared stops; viewers and nonmembers cannot write; simultaneous stale edits never silently overwrite; every saved version identifies its actor and reason. |
+| 4. Trip discussion and activity | Add a trip-scoped group conversation and an activity feed for membership and plan changes, distinct from existing one-to-one friend chat and private Advisor sessions. | Not started | Only current members can read/post; removed members lose access; message and activity ownership is trip-scoped; edits can be traced to a member. |
+| 5. Verification and rollout | Add API isolation/permission matrix, stale-version concurrency tests, desktop/mobile flows, export/deletion behavior, and migration/backward-compatibility checks. | Not started | Owner/editor/viewer/nonmember/revoked scenarios pass; existing private trips and read-only shares retain their old behavior; personal memories and unshared records remain invisible to group members. |
+
+### Key safety and consistency rules
+
+- Authorize every endpoint against the trip and the member's current role; never infer permission from friendship alone or from a previously issued share link.
+- Do not place personal preference memory, private memory, or a member's private Advisor conversation in shared trip context. Shared discussion is an explicit trip-scoped resource.
+- Continue using immutable plan versions. A write based on a stale version must be rejected with enough information to review and retry; do not apply last-write-wins to itinerary edits.
+- Record actor, timestamp, operation, and before/after plan version for edits. Avoid copying secrets or unrelated private content into audit events.
+- Add member removal, owner account deletion, export and trip deletion semantics before enabling collaborative writes. On revocation, invalidate access immediately; historical authorship remains in the trip audit trail while the member's private account data follows account-deletion policy.
+
+### Suggested first complete demo
+
+An owner creates a two-day trip, invites one accepted friend as Editor and another as Viewer, and both friends accept. The editor adds lunch and adjusts a stop; the owner sees the new plan version and activity entry after refresh. The viewer can discuss the change but cannot edit it. A stale edit from a second browser receives a conflict instead of overwriting the newer version. Removing the editor immediately blocks further access while the trip remains private to the remaining members.
 
 ## Historical execution records
 
