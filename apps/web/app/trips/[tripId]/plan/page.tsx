@@ -5,6 +5,7 @@ import type { FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, createPlanRun, deletePlanNode, getTrip, listPlans, listWishlist, updatePlanNode, type Plan, type PlanNode, type Trip, type WishlistItem } from "../../../../lib/api";
+import { productConfig } from "../../../../lib/product-config";
 import { RouteMap, type RouteMapPoint } from "../../../../components/route-map";
 import { WeatherForecast } from "../../../../components/weather-forecast";
 
@@ -17,10 +18,12 @@ export default function PlanPage() {
   const [activeDay, setActiveDay] = useState("");
   const [selectedStop, setSelectedStop] = useState("");
   const [error, setError] = useState("");
+  const [syncNotice, setSyncNotice] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [editingNode, setEditingNode] = useState<PlanNode | null>(null);
   const [nodeForm, setNodeForm] = useState({ day: "", start_time: "", end_time: "", priority: 3, status: "PLANNED", note: "" });
+  const latestVersionRef = useRef(0);
   const editDialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (editingNode) editDialog.current?.showModal();
@@ -40,7 +43,7 @@ export default function PlanPage() {
       .then(([nextTrip, nextPlans, nextWishlist]) => {
         if (cancelled) return;
         setTrip(nextTrip);
-        setPlans(nextPlans);
+        setPlans((current) => nextPlans[0]?.version >= (current[0]?.version ?? 0) ? nextPlans : current);
         setWishlist(nextWishlist);
       })
       .catch((err: unknown) => {
@@ -58,6 +61,30 @@ export default function PlanPage() {
       });
 
     return () => { cancelled = true; };
+  }, [tripId, router]);
+
+  useEffect(() => {
+    latestVersionRef.current = plans[0]?.version ?? 0;
+  }, [plans]);
+
+  useEffect(() => {
+    const source = new EventSource(`${productConfig.apiBaseUrl}/api/v1/trips/${tripId}/events`, { withCredentials: true });
+    source.addEventListener("plan_updated", (event) => {
+      const update = JSON.parse((event as MessageEvent<string>).data) as { updated_by?: string | null; plan_version: number };
+      void listPlans(tripId).then((nextPlans) => {
+        if ((nextPlans[0]?.version ?? 0) <= latestVersionRef.current) return;
+        latestVersionRef.current = nextPlans[0].version;
+        setPlans(nextPlans);
+        setSyncNotice(`${update.updated_by || "旅行成员"}更新了计划，已同步到 v${update.plan_version}。`);
+      }).catch(() => setSyncNotice("计划有更新，但暂时无法刷新；请稍后重试。"));
+    });
+    source.addEventListener("access_revoked", () => {
+      source.close();
+      router.replace("/trips");
+    });
+    source.onerror = () => setSyncNotice((current) => current.includes("更新了计划，已同步") ? current : "实时同步暂时中断，正在尝试重新连接…");
+    source.onopen = () => setSyncNotice((current) => current.startsWith("实时同步暂时中断") ? "" : current);
+    return () => source.close();
   }, [tripId, router]);
 
   async function generate() {
@@ -110,6 +137,7 @@ export default function PlanPage() {
       <div className="actions">{trip?.access_role !== "VIEWER" && <button className="primary" disabled={busy} onClick={() => void generate()}>{busy ? "正在规划…" : latest ? "重新生成计划" : "生成我的第一版计划"}</button>}<Link className="secondary" href={`/advisor?tripId=${tripId}`}>和旅行顾问一起调整</Link></div>
     </section>
     {error ? <p role="alert">{error}</p> : null}
+    {syncNotice ? <p className="plan-sync-notice" role="status">{syncNotice}</p> : null}
     {loading ? <p className="status" role="status">正在加载这段旅行的安排…</p> : null}
     {!loading && !error ? <WeatherForecast tripId={tripId} /> : null}
     {!loading && !error && latest && latest.nodes.length > 0 ? <>

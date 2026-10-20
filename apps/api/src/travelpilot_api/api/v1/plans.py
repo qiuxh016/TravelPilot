@@ -1,8 +1,15 @@
+import asyncio
+import json
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from travelpilot_core.application.plans import PlanService
+from travelpilot_infra.db.models.plan import TripPlanModel
+from travelpilot_infra.db.models.trip import TripModel
+from travelpilot_infra.db.models.trip_member import TripMemberModel
 from travelpilot_infra.db.models.user import UserModel
 from travelpilot_infra.db.session import get_session
 from travelpilot_infra.providers.maps.errors import MapsProviderError
@@ -65,6 +72,78 @@ async def _version_conflict(session: AsyncSession, trip_id: UUID, service: PlanS
             "latest_version": latest_version,
             "latest_plan_id": str(latest_plan.id) if latest_plan else None,
             "latest_changes": diff,
+        },
+    )
+
+
+@router.get("/events")
+async def stream_trip_events(
+    trip_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
+):
+    """Stream persisted plan-version changes to accepted trip members."""
+    await _access(session, trip_id, user)
+
+    async def events():
+        last_signature = None
+        heartbeat = 0
+        while not await request.is_disconnected():
+            owner_id = await session.scalar(
+                select(TripModel.owner_id).where(TripModel.id == trip_id)
+            )
+            if owner_id is None:
+                yield "event: access_revoked\ndata: {}\n\n"
+                break
+            if owner_id != user.id:
+                membership_status = await session.scalar(select(TripMemberModel.status).where(
+                    TripMemberModel.trip_id == trip_id,
+                    TripMemberModel.user_id == user.id,
+                ))
+                if membership_status != "ACCEPTED":
+                    yield "event: access_revoked\ndata: {}\n\n"
+                    break
+
+            plan = (await session.execute(
+                select(
+                    TripPlanModel.id,
+                    TripPlanModel.version,
+                    TripPlanModel.created_by_user_id,
+                    TripPlanModel.created_by_display_name,
+                    TripPlanModel.created_at,
+                )
+                .where(TripPlanModel.trip_id == trip_id)
+                .order_by(TripPlanModel.version.desc())
+                .limit(1)
+            )).first()
+            signature = (str(plan.id), plan.version) if plan else (None, 0)
+            if signature != last_signature:
+                payload = {
+                    "trip_id": str(trip_id),
+                    "plan_id": str(plan.id) if plan else None,
+                    "plan_version": plan.version if plan else 0,
+                    "updated_by": plan.created_by_display_name if plan else None,
+                    "updated_at": plan.created_at.isoformat() if plan else None,
+                }
+                event_name = "snapshot" if last_signature is None else "plan_updated"
+                yield f"event: {event_name}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                last_signature = signature
+                heartbeat = 0
+            else:
+                heartbeat += 1
+                if heartbeat >= 12:
+                    yield ": keep-alive\n\n"
+                    heartbeat = 0
+            await asyncio.sleep(2)
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         },
     )
 

@@ -2,6 +2,12 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { listTripActivity, listTripDiscussion, sendTripDiscussionMessage, type TripActivity, type TripDiscussionMessage } from "../lib/api";
+import { productConfig } from "../lib/product-config";
+
+function mergeMessages(...groups: TripDiscussionMessage[][]) {
+  const byId = new Map(groups.flat().map((message) => [message.id, message]));
+  return Array.from(byId.values()).sort((left, right) => left.created_at.localeCompare(right.created_at));
+}
 
 export function TripDiscussion({ tripId }: { tripId: string }) {
   const [messages, setMessages] = useState<TripDiscussionMessage[]>([]);
@@ -17,7 +23,7 @@ export function TripDiscussion({ tripId }: { tripId: string }) {
       const [nextMessages, nextActivities] = await Promise.all([
         listTripDiscussion(tripId), listTripActivity(tripId),
       ]);
-      setMessages(nextMessages);
+      setMessages((current) => mergeMessages(current, nextMessages));
       setActivities(nextActivities);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "旅行讨论暂时无法加载");
@@ -26,6 +32,20 @@ export function TripDiscussion({ tripId }: { tripId: string }) {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  useEffect(() => {
+    const source = new EventSource(`${productConfig.apiBaseUrl}/api/v1/group-trips/${tripId}/events`, { withCredentials: true });
+    source.addEventListener("discussion_message", (event) => {
+      const message = JSON.parse((event as MessageEvent<string>).data) as TripDiscussionMessage;
+      setMessages((current) => mergeMessages(current, [message]));
+      void listTripActivity(tripId).then(setActivities).catch(() => undefined);
+    });
+    source.addEventListener("access_revoked", () => {
+      source.close();
+      setError("你已无法访问这段旅行讨论。");
+    });
+    return () => source.close();
+  }, [tripId]);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = body.trim();
@@ -33,7 +53,7 @@ export function TripDiscussion({ tripId }: { tripId: string }) {
     setBusy(true); setError("");
     try {
       const message = await sendTripDiscussionMessage(tripId, content);
-      setMessages((current) => [...current, message]);
+      setMessages((current) => mergeMessages(current, [message]));
       setBody("");
       const nextActivities = await listTripActivity(tripId);
       setActivities(nextActivities);
