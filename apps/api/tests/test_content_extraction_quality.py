@@ -151,6 +151,12 @@ def test_guide_chunker_preserves_all_input_characters_and_respects_chunk_limit()
     assert natural_chunks[0].endswith("\n")
     assert "".join(natural_chunks) == natural_text
 
+    retry_text = "梅州学宫开放时间与游览建议。" * 40
+    retry_chunks = _split_guide_text(retry_text, target_chars=240)
+    assert len(retry_chunks) > 1
+    assert "".join(retry_chunks) == retry_text
+    assert all(len(chunk) <= 240 for chunk in retry_chunks)
+
 
 def test_guide_merge_keeps_more_than_twenty_places_from_multiple_chunks():
     chunks = [

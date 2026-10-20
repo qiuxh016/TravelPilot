@@ -244,11 +244,16 @@ async def extract_places(
     conversation_context: list[dict[str, str]] | None = None,
     travel_preferences: list[str] | None = None,
     guide_import: bool = False,
+    chunk_target_chars: int | None = None,
 ) -> Extraction:
     """Extract advisor intent or, in guide mode, all bounded text chunks."""
+    effective_chunk_target = (
+        max(120, min(chunk_target_chars, _GUIDE_CHUNK_TARGET_CHARS))
+        if chunk_target_chars is not None else _GUIDE_CHUNK_TARGET_CHARS
+    )
     if not api_key or not model:
-        if guide_import and len(text) > _GUIDE_CHUNK_TARGET_CHARS:
-            chunks = _split_guide_text(text)
+        if guide_import and len(text) > effective_chunk_target:
+            chunks = _split_guide_text(text, target_chars=effective_chunk_target)
             if len(chunks) > _GUIDE_MAX_CHUNKS:
                 raise TextExtractionFailure(
                     {"chunk_count": len(chunks), "maximum_chunks": _GUIDE_MAX_CHUNKS},
@@ -267,7 +272,7 @@ async def extract_places(
             "chunk_count": 1 if guide_import else 0,
             "fallback_chunks": ([{"index": 0, "start": 0, "end": len(text)}] if guide_import else []),
         })
-    if not guide_import or len(text) <= _GUIDE_CHUNK_TARGET_CHARS:
+    if not guide_import or len(text) <= effective_chunk_target:
         try:
             extraction = await _extract_places_once(
                 text, api_key=api_key, model=model, base_url=base_url,
@@ -300,7 +305,7 @@ async def extract_places(
             {"failure_code": "INPUT_TOO_LONG"},
         )
 
-    chunks = _split_guide_text(text)
+    chunks = _split_guide_text(text, target_chars=effective_chunk_target)
     if len(chunks) > _GUIDE_MAX_CHUNKS:
         raise TextExtractionFailure(
             {"chunk_count": len(chunks), "maximum_chunks": _GUIDE_MAX_CHUNKS},
@@ -355,16 +360,18 @@ async def extract_places(
     })
 
 
-def _split_guide_text(text: str) -> list[str]:
+def _split_guide_text(text: str, *, target_chars: int = _GUIDE_CHUNK_TARGET_CHARS) -> list[str]:
     """Split without dropping characters, preferring paragraph and sentence edges."""
+    target_chars = max(120, min(target_chars, _GUIDE_CHUNK_TARGET_CHARS))
+    minimum_chars = min(_GUIDE_CHUNK_MIN_CHARS, int(target_chars * 0.7))
     chunks: list[str] = []
     start = 0
     while start < len(text):
-        hard_end = min(start + _GUIDE_CHUNK_TARGET_CHARS, len(text))
+        hard_end = min(start + target_chars, len(text))
         if hard_end == len(text):
             chunks.append(text[start:hard_end])
             break
-        safe_start = min(start + _GUIDE_CHUNK_MIN_CHARS, hard_end)
+        safe_start = min(start + minimum_chars, hard_end)
         boundary = max(
             text.rfind(mark, safe_start, hard_end) + len(mark)
             for mark in ("\n", "。", "！", "？", "；", "\r")

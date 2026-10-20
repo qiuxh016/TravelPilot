@@ -327,6 +327,7 @@ async def retry_content_extraction(content_id: UUID, session: AsyncSession = Dep
     next_chunk_index = previous_chunk_count
     fallback_chunks = list(metadata.get("fallback_chunks", []))
     skill = select_skill_decision("content_import", context={"task": "content_import", "user_content": True})
+    retry_chunk_target = 300 if retry_attempts == 0 else 180
     for item in valid_ranges:
         segment = source.text[item["start"]:item["end"]]
         try:
@@ -335,6 +336,7 @@ async def retry_content_extraction(content_id: UUID, session: AsyncSession = Dep
                 base_url=settings.llm_base_url, token_budget=settings.llm_max_tokens_per_turn,
                 additional_instructions=skill.skill.instructions if skill.skill else "",
                 thinking_mode=_deepseek_thinking_mode(), guide_import=True,
+                chunk_target_chars=retry_chunk_target,
             )
         except TextExtractionFailure as exc:
             details = exc.provider_metadata or {}

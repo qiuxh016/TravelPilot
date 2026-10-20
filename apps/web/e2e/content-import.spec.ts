@@ -162,7 +162,7 @@ test("图片 OCR 结果填入原文框，失败分段可重试且保留本地兜
   await page.getByLabel(/识别文字/).fill("梅州一日游攻略，梅州学宫开放时间攻略");
   await page.getByRole("button", { name: "提取地点" }).click();
   await expect(page.getByText(/本地规则保留地点或攻略细节/)).toBeVisible();
-  await page.getByRole("button", { name: "只重试 1 个失败片段" }).click();
+  await page.getByRole("button", { name: "缩小片段重试 1 个失败片段" }).click();
   await expect(page.getByRole("heading", { name: "攻略识别 · PARTIAL" })).toBeVisible();
 });
 

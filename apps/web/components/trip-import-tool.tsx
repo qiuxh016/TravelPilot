@@ -179,7 +179,7 @@ function ImportForm({ tripId, onImported }: Pick<TripImportToolProps, "tripId" |
       {content.extraction_metadata && content.extraction_metadata.total_chunks! > 1 && <p role="status">模型完成 {content.extraction_metadata.completed_chunks ?? 0}/{content.extraction_metadata.total_chunks} 段</p>}
       {!!content.extraction_metadata?.fallback_chunks?.length && <p className={styles.fallbackNotice} role="status">{content.extraction_metadata.fallback_chunks.length} 段已用本地规则保留地点或攻略细节，置信度偏低，请对照原文核对；失败片段仍可重试。</p>}
       {hasRetryableFailures && (content.extraction_metadata?.retry_attempts ?? 0) < 2
-        ? <button type="button" disabled={busy} onClick={() => void retryFailedParts()}>{busy ? "正在重试…" : retryWholeGuide ? "按新上限重新提取整篇攻略" : `只重试 ${content.extraction_metadata?.failed_chunks?.length ?? 0} 个失败片段`}</button>
+        ? <button type="button" disabled={busy} onClick={() => void retryFailedParts()}>{busy ? "正在重试…" : retryWholeGuide ? "按新上限重新提取整篇攻略" : `缩小片段重试 ${content.extraction_metadata?.failed_chunks?.length ?? 0} 个失败片段`}</button>
         : hasRetryableFailures && <p role="status">失败片段已达到重试次数上限；可以删除这条记录后重新导入原文。</p>}
       <blockquote>{content.text}</blockquote>
       {!!content.guide_facts.length && <section className="trip-guide-facts" aria-label="攻略细节">
