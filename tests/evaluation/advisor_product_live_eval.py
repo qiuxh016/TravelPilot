@@ -781,7 +781,14 @@ def _assess_product_outcome(
             if isinstance(item, dict)
         ]
         forecast = final_turn.get("weather_evidence", {})
-        reply = str(final_turn.get("assistant_reply", ""))
+        # Pending questions are rendered as a structured card in the product UI,
+        # so include that visible text when scoring whether the limitation and
+        # no-substitution boundary were communicated to the user.
+        reply = "\n".join(
+            str(final_turn.get(field, ""))
+            for field in ("assistant_reply", "pending_question")
+            if final_turn.get(field)
+        )
         checks.update({
             "weather_query_succeeds": "get_trip_weather" in verified_tools,
             "weather_evidence_is_source_labelled_and_dated": (
