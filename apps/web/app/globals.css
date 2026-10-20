@@ -1515,22 +1515,49 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 @media (max-width: 560px) { .trip-import-dialog-body { padding: 15px; } .trip-import-dialog-header { padding: 12px 15px; } .trip-import-intro h2 { font-size: 21px; } .trip-import-form { grid-template-columns: 1fr; } .trip-import-form button { justify-self: start; } .trip-overview-actions > button.trip-overview-import-button { min-height: 37px; padding-inline: 10px; font-size: 10px; } }
 
 /* Give the conversation the same usable vertical presence as the planning panel. */
-@media (min-width: 901px) {
-  .advisor-live-columns { align-items: start; grid-template-columns: minmax(360px, .9fr) minmax(0, 1.1fr); }
+@media (min-width: 1101px) {
+  .advisor-live-columns { align-items: start; gap: 0; }
+  .advisor-live .advisor-chat { grid-column: 1; }
+  .advisor-live .advisor-plan { grid-column: 3; padding-left: 22px; }
   .advisor-live .advisor-chat {
-    position: sticky;
-    top: 96px;
+    position: static;
     display: flex;
-    height: min(82vh, 900px);
-    min-height: min(600px, calc(100vh - 112px));
-    max-height: calc(100vh - 112px);
-    overflow: hidden;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
   }
   .advisor-live .advisor-messages { min-height: 0; max-height: none; }
+  .advisor-live .advisor-message { max-width: 100%; }
+  .advisor-live .advisor-message p { font-size: 15px; line-height: 1.72; }
+  .advisor-live-columns.is-chat-expanded .advisor-chat { grid-column: 1; }
+  .advisor-live-columns.is-chat-expanded .advisor-plan { display: none; }
 }
-@media (max-width: 900px) {
-  .advisor-live .advisor-chat { position: static; height: auto; min-height: 350px; max-height: none; overflow: visible; }
-  .advisor-live .advisor-messages { max-height: 420px; }
+.advisor-panel-title-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.advisor-expand-chat { min-height: 34px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; background: var(--surface); color: var(--accent); font: inherit; font-size: 11px; font-weight: 650; cursor: pointer; }
+.advisor-expand-chat:hover { border-color: var(--accent); background: var(--accent-soft); }
+.advisor-expand-chat:focus-visible, .advisor-column-resizer:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 38%, transparent); outline-offset: 2px; }
+.advisor-message-resizer { position: relative; display: flex; flex: 0 0 25px; align-items: center; justify-content: center; gap: 9px; width: 100%; margin: 1px 0 5px; color: var(--muted); font-size: 10px; cursor: ns-resize; touch-action: none; }
+.advisor-message-resizer i { width: 52px; height: 5px; border-radius: 99px; background: var(--border); transition: width .15s ease, background .15s ease; }
+.advisor-message-resizer:hover, .advisor-message-resizer:focus-visible { color: var(--accent); }
+.advisor-message-resizer:hover i, .advisor-message-resizer:focus-visible i { width: 76px; background: var(--action); }
+.advisor-message-resizer:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 38%, transparent); outline-offset: 0; }
+.advisor-column-resizer { position: relative; z-index: 2; grid-column: 2; grid-row: 1; width: 14px; min-height: 100%; cursor: col-resize; touch-action: none; }
+.advisor-column-resizer::after { position: absolute; top: 0; bottom: 0; left: 6px; width: 2px; border-radius: 3px; background: var(--border); content: ""; transition: width .15s ease, left .15s ease, background .15s ease; }
+.advisor-column-resizer:hover::after, .advisor-column-resizer:focus-visible::after { left: 4px; width: 6px; background: var(--action); }
+.advisor-live .advisor-plan { overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.advisor-live-columns.is-chat-expanded { display: grid; grid-template-columns: minmax(0, 1fr) !important; }
+.advisor-live-columns.is-chat-expanded .advisor-plan { display: none; }
+@media (max-width: 1100px) {
+  .advisor-live-columns { grid-template-columns: 1fr !important; }
+  .advisor-column-resizer { display: none; }
+  .advisor-live .advisor-chat { position: static; height: auto; min-height: 0; max-height: none; overflow: visible; }
+  .advisor-live .advisor-plan { max-height: none !important; overflow: visible; scrollbar-gutter: auto; }
+  .advisor-live .advisor-messages { max-height: 520px; }
+}
+@media (max-width: 560px) {
+  .advisor-live .advisor-chat { min-height: 0; }
+  .advisor-panel-title-actions { align-items: flex-end; flex-direction: column-reverse; }
 }
 
 

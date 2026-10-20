@@ -31,7 +31,13 @@ test("日期建议显示为可点选方案，继续排程不代表保存确认",
       confidence: 0.9, suggestion: null, verification_status: "VERIFIED", verified_at: now,
       guide_references: [{ source_id: "guide-1", title: "梅州一日游攻略", place_name: "梅州学宫",
         category: "ATTRACTION", guide_claim: "周一闭馆，其余时间开放", evidence_status: "IMPORTED_GUIDE" }],
-    }],
+    }].flatMap((candidate) => [candidate, ...Array.from({ length: 11 }, (_, index) => ({
+      ...candidate,
+      id: `guide-place-${index + 2}`,
+      provider_id: `place-${index + 2}`,
+      name: `梅州候选地点${index + 2}`,
+      guide_references: candidate.guide_references?.map((reference) => ({ ...reference, place_name: `梅州候选地点${index + 2}` })) ?? [],
+    }))]),
     context: { revision: 0, selected_candidate_ids: [], current_plan: null,
       confirmed_memories: [], planning_inputs: { origin: "", companions: [], hard_constraints: [] } },
     draft: null, draft_version: 0, draft_stale: false, status: "ACTIVE",
@@ -101,18 +107,49 @@ test("日期建议显示为可点选方案，继续排程不代表保存确认",
   await page.goto(`/advisor?sessionId=${sessionId}`);
   const chatPanel = page.locator(".advisor-chat");
   await expect(chatPanel).toBeVisible();
+  await expect(page.locator(".advisor-live-candidate")).toHaveCount(12);
   const desktopLayout = (await page.evaluate(() => window.innerWidth)) > 900;
   expect(await chatPanel.evaluate((element) => getComputedStyle(element).position))
-    .toBe(desktopLayout ? "sticky" : "static");
+    .toBe("static");
   if (desktopLayout) {
     expect(await chatPanel.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(500);
-    expect(await page.locator(".advisor-messages").evaluate((element) => getComputedStyle(element).maxHeight)).toBe("none");
+    const messagePane = page.locator(".advisor-messages");
+    expect(await messagePane.evaluate((element) => element.getBoundingClientRect().height)).toBe(620);
+    const heightResizer = page.getByRole("separator", { name: "调整对话消息区域高度" });
+    await expect(heightResizer).toBeVisible();
+    await heightResizer.focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(heightResizer).toHaveAttribute("aria-valuenow", "660");
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("travelpilot-advisor-message-height"))).toBe("660");
+    const heightHandleBox = await heightResizer.boundingBox();
+    expect(heightHandleBox).not.toBeNull();
+    await page.mouse.move(heightHandleBox!.x + heightHandleBox!.width / 2, heightHandleBox!.y + heightHandleBox!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(heightHandleBox!.x + heightHandleBox!.width / 2, heightHandleBox!.y + heightHandleBox!.height / 2 + 60);
+    await page.mouse.up();
+    await expect.poll(async () => Number(await heightResizer.getAttribute("aria-valuenow"))).toBeGreaterThan(660);
+    const resizer = page.getByRole("separator", { name: "调整对话和规划区域宽度" });
+    await expect(resizer).toBeVisible();
+    await resizer.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(resizer).toHaveAttribute("aria-valuenow", "52");
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("travelpilot-advisor-chat-ratio"))).toBe("52");
+    await expect.poll(async () => Number.parseInt(await page.locator(".advisor-plan").evaluate((element) => getComputedStyle(element).maxHeight), 10)).toBeGreaterThan(500);
+    await expect(page.locator(".advisor-plan")).toHaveCSS("overflow-y", "auto");
+    expect(await page.locator(".advisor-plan").evaluate((element) => element.scrollHeight)).toBeGreaterThan(await page.locator(".advisor-plan").evaluate((element) => element.clientHeight));
+  } else {
+    expect(await page.locator(".advisor-messages").evaluate((element) => element.getBoundingClientRect().height)).toBe(500);
+    await expect(page.getByRole("separator", { name: "调整对话消息区域高度" })).toBeVisible();
   }
+  await page.getByRole("button", { name: "放大对话" }).click();
+  await expect(page.locator(".advisor-plan")).toBeHidden();
+  await page.getByRole("button", { name: "返回左右布局" }).click();
+  await expect(page.locator(".advisor-plan")).toBeVisible();
   const choiceCard = page.getByRole("region", { name: "等待你补充" });
   await expect(choiceCard).toBeVisible();
   await expect(page.getByText("鑫丰特色餐饮", { exact: true }).first()).toBeVisible();
   await expect(choiceCard).toContainText("当前任务：安排鼓浪屿文化线和后续日期");
-  await expect(page.getByText("攻略线索：《梅州一日游攻略》提到：周一闭馆，其余时间开放 · 尚未核验")).toBeVisible();
+  await expect(page.getByText("攻略线索：《梅州一日游攻略》提到：周一闭馆，其余时间开放 · 尚未核验").first()).toBeVisible();
   await expect(choiceCard.getByRole("button", { name: "可以，按这个时间继续" })).toBeVisible();
   await expect(choiceCard.getByRole("button", { name: "自定义回答" })).toHaveCount(0);
   await choiceCard.getByRole("button", { name: "可以，按这个时间继续" }).click();

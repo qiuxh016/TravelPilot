@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { RouteMap } from "../../components/route-map";
@@ -395,6 +395,10 @@ export default function AdvisorPage() {
   const [stage, setStage] = useState<AdvisorStage>("home");
   const [setupChoice, setSetupChoice] = useState<"trip" | "ideas" | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [chatRatio, setChatRatio] = useState(50);
+  const [chatMessagesHeight, setChatMessagesHeight] = useState(620);
+  const [advisorChatPanelHeight, setAdvisorChatPanelHeight] = useState<number | null>(null);
+  const [chatExpanded, setChatExpanded] = useState(false);
   const [contextEditorOpen, setContextEditorOpen] = useState(false);
   const [tripActionsExpanded, setTripActionsExpanded] = useState(false);
   const [dismissedDraftFollowUps, setDismissedDraftFollowUps] = useState<string[]>([]);
@@ -437,12 +441,71 @@ export default function AdvisorPage() {
   const [notice, setNotice] = useState("");
   const [memoryConflictMessage, setMemoryConflictMessage] = useState("");
   const messagesRef = useRef<HTMLDivElement | null>(null);
+  const advisorColumnsRef = useRef<HTMLDivElement | null>(null);
+  const advisorChatPanelRef = useRef<HTMLElement | null>(null);
+  const resizingAdvisorColumnsRef = useRef(false);
+  const resizingAdvisorMessagesRef = useRef(false);
   const pendingMessageRequestRef = useRef<{ sessionId: string; content: string; idempotencyKey: string } | null>(null);
   const pendingDestinationRequestRef = useRef<{
     sessionId: string; fingerprint: string; idempotencyKey: string;
   } | null>(null);
   const pendingDraftRequestRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const progressAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const savedRatio = Number(window.localStorage.getItem("travelpilot-advisor-chat-ratio"));
+    if (Number.isFinite(savedRatio) && savedRatio >= 35 && savedRatio <= 65) {
+      setChatRatio(savedRatio);
+    }
+    const savedHeight = Number(window.localStorage.getItem("travelpilot-advisor-message-height"));
+    if (Number.isFinite(savedHeight) && savedHeight >= 360 && savedHeight <= 1000) {
+      setChatMessagesHeight(savedHeight);
+    } else if (window.innerWidth <= 1100) {
+      setChatMessagesHeight(500);
+    }
+  }, []);
+
+  useEffect(() => {
+    const panel = advisorChatPanelRef.current;
+    if (!panel || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setAdvisorChatPanelHeight(Math.round(entry.contentRect.height));
+    });
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [stage, active?.id]);
+
+  function resizeAdvisorMessages(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!resizingAdvisorMessagesRef.current || !messagesRef.current) return;
+    const bounds = messagesRef.current.getBoundingClientRect();
+    setChatMessagesHeight(Math.max(360, Math.min(1000, Math.round(event.clientY - bounds.top))));
+  }
+
+  function finishAdvisorMessageResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!resizingAdvisorMessagesRef.current) return;
+    resizingAdvisorMessagesRef.current = false;
+    window.localStorage.setItem("travelpilot-advisor-message-height", String(chatMessagesHeight));
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function resizeAdvisorColumns(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!resizingAdvisorColumnsRef.current || !advisorColumnsRef.current) return;
+    const bounds = advisorColumnsRef.current.getBoundingClientRect();
+    if (!bounds.width) return;
+    const ratio = Math.round(((event.clientX - bounds.left) / bounds.width) * 100);
+    setChatRatio(Math.max(35, Math.min(65, ratio)));
+  }
+
+  function finishAdvisorColumnResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!resizingAdvisorColumnsRef.current) return;
+    resizingAdvisorColumnsRef.current = false;
+    window.localStorage.setItem("travelpilot-advisor-chat-ratio", String(chatRatio));
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
 
   function draftRequestKey(
     sessionId: string,
@@ -1159,10 +1222,17 @@ export default function AdvisorPage() {
         {setupChoice === "trip" && trips.length === 0 && <p className="advisor-empty">你还没有创建旅行。可以先切换到“我还没有旅行”开始聊天，也可以<Link href="/trips/new">先创建一段旅行</Link>。</p>}
       </section>}
 
-      {stage === "chat" && <>{historyOpen && <section className="advisor-live-history panel"><div className="advisor-panel-title"><div><h2>切换到之前的对话</h2><p>选择一段已保存的顾问会话继续。</p></div></div>{sessionList}</section>}<div className="advisor-live-columns">
-        <section className="advisor-chat panel" aria-label="顾问对话">
+      {stage === "chat" && <>{historyOpen && <section className="advisor-live-history panel"><div className="advisor-panel-title"><div><h2>切换到之前的对话</h2><p>选择一段已保存的顾问会话继续。</p></div></div>{sessionList}</section>}<div
+        className={`advisor-live-columns${chatExpanded ? " is-chat-expanded" : ""}`}
+        ref={advisorColumnsRef}
+        style={{ gridTemplateColumns: chatExpanded ? "minmax(0, 1fr)" : `minmax(360px, ${chatRatio}fr) 14px minmax(420px, ${100 - chatRatio}fr)` }}
+      >
+        <section className="advisor-chat panel" aria-label="顾问对话" ref={advisorChatPanelRef}>
           <div className="advisor-panel-title"><div><h2>对话</h2><p>{active ? `${active.destination || selectedTrip?.destination || "未设置目的地"} · ${active.status === "ACTIVE" ? "等待你的行程确认" : "已确认"}` : "创建或打开一个会话后开始"}</p></div>
-            {active && <span className="advisor-demo-mark">已保存</span>}</div>
+            <div className="advisor-panel-title-actions">
+              <button type="button" className="advisor-expand-chat" aria-pressed={chatExpanded} onClick={() => setChatExpanded((expanded) => !expanded)}>{chatExpanded ? "返回左右布局" : "放大对话"}</button>
+              {active && <span className="advisor-demo-mark">已保存</span>}
+            </div></div>
           {active ? <>
             {active.status === "ACTIVE" && <details className="advisor-context-editor" open={contextEditorOpen || Boolean(active.context?.planning_state?.missing_required?.length)}>
               <summary>{active.context?.planning_state?.missing_required?.length
@@ -1214,7 +1284,7 @@ export default function AdvisorPage() {
                 {tripActionsExpanded ? "收起事项" : `查看另外 ${uniqueTripActionItems.length - 5} 项`}
               </button>}
             </section>}
-            <div className="advisor-messages" aria-live="polite" ref={messagesRef}>
+            <div className="advisor-messages" aria-live="polite" ref={messagesRef} style={{ height: `${chatMessagesHeight}px`, maxHeight: `${chatMessagesHeight}px`, flex: "none" }}>
               {active.messages.map((item) => {
                 const trace = readAgentTrace(item.payload);
                 const transitions = trace?.transitions ?? [];
@@ -1421,6 +1491,38 @@ export default function AdvisorPage() {
               </div>}
               {!active.messages.length && <p className="advisor-empty">告诉顾问你想去的地点或偏好。</p>}
             </div>
+            <div
+              className="advisor-message-resizer"
+              role="separator"
+              aria-label="调整对话消息区域高度"
+              title="拖动调整对话高度；双击恢复默认"
+              aria-orientation="horizontal"
+              aria-valuemin={360}
+              aria-valuemax={1000}
+              aria-valuenow={chatMessagesHeight}
+              tabIndex={0}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                resizingAdvisorMessagesRef.current = true;
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={resizeAdvisorMessages}
+              onPointerUp={finishAdvisorMessageResize}
+              onPointerCancel={finishAdvisorMessageResize}
+              onDoubleClick={() => {
+                const defaultHeight = window.innerWidth <= 1100 ? 500 : 620;
+                setChatMessagesHeight(defaultHeight);
+                window.localStorage.setItem("travelpilot-advisor-message-height", String(defaultHeight));
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "ArrowUp" && event.key !== "ArrowDown" && event.key !== "Home" && event.key !== "End") return;
+                event.preventDefault();
+                const nextHeight = event.key === "Home" ? 360 : event.key === "End" ? 1000
+                  : Math.max(360, Math.min(1000, chatMessagesHeight + (event.key === "ArrowDown" ? 40 : -40)));
+                setChatMessagesHeight(nextHeight);
+                window.localStorage.setItem("travelpilot-advisor-message-height", String(nextHeight));
+              }}
+            ><span>拖动调整对话高度</span><i aria-hidden="true" /></div>
             {destinationRecommendations.length > 0 && <section className="advisor-destination-results" aria-label="目的地候选">
               <div><strong>地图证据支持的目的地</strong><small>候选来自高德地点检索{destinationSearchCount !== null ? ` · 本轮查询 ${destinationSearchCount} 组` : ""} · {destinationRecommendations[0].retrieved_at?.slice(0, 16).replace("T", " ")}</small>
                 {destinationSearchCount !== null && !destinationSearchScopeComplete && <p>这是 Agent 根据已查询证据收敛出的候选，不代表已比较全部城市、交通或费用。你可以补充偏好后再次探索。</p>}</div>
@@ -1444,7 +1546,39 @@ export default function AdvisorPage() {
           </div>}
         </section>
 
-        <div className="advisor-plan">
+        {!chatExpanded && <div
+          className="advisor-column-resizer"
+          role="separator"
+          aria-label="调整对话和规划区域宽度"
+          aria-orientation="vertical"
+          aria-valuemin={35}
+          aria-valuemax={65}
+          aria-valuenow={chatRatio}
+          tabIndex={0}
+          onPointerDown={(event) => {
+            if (window.innerWidth <= 1100) return;
+            event.preventDefault();
+            resizingAdvisorColumnsRef.current = true;
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={resizeAdvisorColumns}
+          onPointerUp={finishAdvisorColumnResize}
+          onPointerCancel={finishAdvisorColumnResize}
+          onDoubleClick={() => {
+            setChatRatio(50);
+            window.localStorage.setItem("travelpilot-advisor-chat-ratio", "50");
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home" && event.key !== "End") return;
+            event.preventDefault();
+            const nextRatio = event.key === "Home" ? 35 : event.key === "End" ? 65
+              : Math.max(35, Math.min(65, chatRatio + (event.key === "ArrowRight" ? 2 : -2)));
+            setChatRatio(nextRatio);
+            window.localStorage.setItem("travelpilot-advisor-chat-ratio", String(nextRatio));
+          }}
+        />}
+
+        <div className="advisor-plan" style={{ maxHeight: advisorChatPanelHeight ? `${advisorChatPanelHeight}px` : undefined }}>
           <section className="advisor-preferences panel">
             <div className="advisor-panel-title"><div><h2>{showingMixedRecommendation ? "多类型旅行候选" : activeCandidateDomain === "FOOD" ? "美食与用餐安排" : activeCandidateDomain === "LODGING" ? "住宿候选" : "地图地点候选"}</h2><p>{showingMixedRecommendation ? "景点、餐饮等候选会分别标注；选中后再为每项确认日期与时间。" : activeCandidateDomain === "FOOD" ? "推荐结果只包含餐饮；选择后请确认用餐日期和时间。" : activeCandidateDomain === "LODGING" ? "住宿只加入备选清单，不会占用每日游览时间，也不代表已预订。" : "选择地点后确认日期和开始时间；地图提供的游览时长仅作估算。"}</p></div><button type="button" className="secondary" disabled={!active || (activeCandidateDomain === "FOOD" ? !foodSelectionCount : !selected.length) || !schedulesComplete || Boolean(active.context?.planning_state?.missing_required?.length) || busy || active.status !== "ACTIVE"} onClick={() => void generateDraft()}>{active?.draft ? `更新预览（${selected.length}）` : activeCandidateDomain === "FOOD" ? `生成用餐预览（${foodSelectionCount}）` : `检查并预览行程（${selected.length}）`}</button></div>
             <div className="advisor-candidate-toolbar">
