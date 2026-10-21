@@ -10,7 +10,7 @@ import { tripOptionLabel, useTripSelection } from "../../components/trip-selecti
 import {
   AdvisorCandidate, AdvisorDestinationRecommendation, AdvisorMemorySuggestion, AdvisorMessageFeedbackReason, AdvisorMessageFeedbackRating, AdvisorProgressEvent, AdvisorRuntimeStatus, AdvisorSession, AdvisorTaskSnapshot, AdvisorTransportRoute, ApiError, Trip, confirmAdvisorDraft, confirmUserMemorySuggestion, createAdvisorDraft, createAdvisorSession, createUserMemory,
   getAdvisorRunProgress, getAdvisorRuntimeStatus, getAdvisorSession, getStaticMapImage, listAdvisorSessions, listTrips, recommendAdvisorDestinations, sendAdvisorMessage, submitAdvisorMessageFeedback, updateAdvisorSessionContext,
-  updateAdvisorChecklistDecision,
+  updateAdvisorChecklistDecision, updateAdvisorSelection,
   deleteAdvisorSession as removeAdvisorSession,
 } from "../../lib/api";
 
@@ -442,6 +442,10 @@ function checklistItemKey(item: { kind: string; day: string; meal_type?: string;
 
 function schedulesForSession(session: AdvisorSession) {
   const schedules: Record<string, { day: string; start_time: string }> = {};
+  for (const [candidateId, value] of Object.entries(session.context.candidate_schedules ?? {})) {
+    if (!value || typeof value !== "object") continue;
+    schedules[candidateId] = { day: value.day ?? "", start_time: value.start_time ?? "" };
+  }
   for (const stop of session.context.current_plan?.stops ?? []) {
     schedules[stop.candidate_id] = { day: stop.day, start_time: stop.start_time.slice(0, 5) };
   }
@@ -526,7 +530,39 @@ export default function AdvisorPage() {
     sessionId: string; fingerprint: string; idempotencyKey: string;
   } | null>(null);
   const pendingDraftRequestRef = useRef<{ fingerprint: string; key: string } | null>(null);
+  const selectionSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const [selectionSyncStatus, setSelectionSyncStatus] = useState<"SAVED" | "SAVING" | "FAILED">("SAVED");
   const progressAbortRef = useRef<AbortController | null>(null);
+
+  function persistSelectionSnapshot(
+    session: AdvisorSession,
+    selectedIds: string[],
+    scheduleState: Record<string, { day: string; start_time: string }>,
+  ) {
+    if (session.status !== "ACTIVE") return Promise.resolve();
+    const selectedSet = new Set(selectedIds);
+    const schedulesToSave = Object.entries(scheduleState).flatMap(([candidate_id, schedule]) => {
+      const candidate = session.candidates.find((item) => item.id === candidate_id);
+      if (!selectedSet.has(candidate_id) || candidate?.planning_category === "LODGING") return [];
+      const day = schedule.day.trim();
+      const start_time = schedule.start_time.trim();
+      return day || start_time ? [{ candidate_id, ...(day ? { day } : {}), ...(start_time ? { start_time } : {}) }] : [];
+    });
+    setSelectionSyncStatus("SAVING");
+    const request = selectionSaveQueueRef.current.catch(() => undefined).then(async () => {
+      await updateAdvisorSelection(session.id, selectedIds, schedulesToSave);
+    });
+    selectionSaveQueueRef.current = request;
+    void request.then(() => {
+      if (active?.id === session.id && selectionSaveQueueRef.current === request) setSelectionSyncStatus("SAVED");
+    }).catch((reason) => {
+      if (active?.id === session.id && selectionSaveQueueRef.current === request) {
+        setSelectionSyncStatus("FAILED");
+        setError(`选择尚未同步到会话，稍后重试：${(reason as Error).message}`);
+      }
+    });
+    return request;
+  }
 
   useEffect(() => {
     const savedRatio = Number(window.localStorage.getItem("travelpilot-advisor-chat-ratio"));
@@ -704,6 +740,7 @@ export default function AdvisorPage() {
       setTripId(found.trip_id || "");
       setSelected(found.context?.selected_candidate_ids ?? []);
       setSchedules(schedulesForSession(found));
+      setSelectionSyncStatus("SAVED");
       setDestination(found.destination || "");
       setStartDate(found.start_date || "");
       setEndDate(found.end_date || "");
@@ -916,6 +953,8 @@ export default function AdvisorPage() {
         origin: origin.trim(), companions: splitTags(companionsText), hard_constraints: splitTags(constraintsText),
       });
       setActive(updated);
+      setSelected(updated.context?.selected_candidate_ids ?? []);
+      setSchedules(schedulesForSession(updated));
       setSessions((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
       setNotice("旅行条件已保存；旧草案如有变化需要重新生成。");
     } catch (reason) { setError((reason as Error).message); }
@@ -991,6 +1030,7 @@ export default function AdvisorPage() {
     };
     void pollProgress();
     try {
+      await persistSelectionSnapshot(active, requestSelection, schedules);
       const updated = await sendAdvisorMessage(
         active.id, content, idempotencyKey,
         isSamePendingRequest || isStoredRetry ? undefined : requestSelection,
@@ -1122,6 +1162,7 @@ export default function AdvisorPage() {
     const draftSchedules = scheduleRequiredIds.map((candidate_id) => ({ candidate_id, ...schedules[candidate_id] }));
     const draftKey = draftRequestKey(active.id, selected, draftSchedules, allowProfileMemoryConflicts);
     try {
+      await persistSelectionSnapshot(active, selected, schedules);
       const updated = await createAdvisorDraft(active.id, selected, draftSchedules, allowProfileMemoryConflicts, draftKey);
       finishDraftRequest(draftKey);
       setActive(updated); setNotice(automatic
@@ -1187,6 +1228,8 @@ export default function AdvisorPage() {
       pendingDestinationRequestRef.current = null;
       try { sessionStorage.removeItem(storageKey); } catch { /* Storage may be unavailable. */ }
       setActive(updated);
+      setSelected(updated.context?.selected_candidate_ids ?? []);
+      setSchedules(schedulesForSession(updated));
       setSessions((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
       setNotice(`${explorationCity.trim() ? `已按地图证据探索${explorationCity.trim()}` : "已按地图检索证据整理目的地候选"}；地点与出行条件仍需你确认。`);
     } catch (reason) { setError((reason as Error).message); }
@@ -1204,6 +1247,7 @@ export default function AdvisorPage() {
       });
       setDestination(city); setActive(updated);
       setSelected(updated.context?.selected_candidate_ids ?? []);
+      setSchedules(schedulesForSession(updated));
       setSessions((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
       await submitMessage(undefined, `我选了${city}，请继续帮我规划。`);
     } catch (reason) { setError((reason as Error).message); }
@@ -1292,6 +1336,7 @@ export default function AdvisorPage() {
     const draftKey = draftRequestKey(active.id, selected, draftSchedules, false);
     setBusy(true); setError(""); setNotice("");
     try {
+      await persistSelectionSnapshot(active, selected, schedules);
       const updated = await createAdvisorDraft(active.id, selected, draftSchedules, false, draftKey);
       finishDraftRequest(draftKey);
       setActive(updated);
@@ -1319,15 +1364,22 @@ export default function AdvisorPage() {
   }
 
   function toggleCandidate(id: string) {
-    setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+    const nextSelected = selected.includes(id) ? selected.filter((item) => item !== id) : [...selected, id];
+    const nextSchedules = { ...schedules };
+    if (!nextSelected.includes(id)) delete nextSchedules[id];
+    setSelected(nextSelected);
+    setSchedules(nextSchedules);
+    if (active) void persistSelectionSnapshot(active, nextSelected, nextSchedules);
     setAutoPreviewRevision((revision) => revision + 1);
   }
 
   function updateCandidateSchedule(id: string, field: "day" | "start_time", value: string) {
-    setSchedules((current) => ({
-      ...current,
-      [id]: { ...(current[id] ?? { day: "", start_time: "" }), [field]: value },
-    }));
+    const nextSchedules = {
+      ...schedules,
+      [id]: { ...(schedules[id] ?? { day: "", start_time: "" }), [field]: value },
+    };
+    setSchedules(nextSchedules);
+    if (active) void persistSelectionSnapshot(active, selected, nextSchedules);
     setAutoPreviewRevision((revision) => revision + 1);
   }
 
@@ -1427,6 +1479,7 @@ export default function AdvisorPage() {
     setCandidateFilter("AUTO"); setCandidateMapOpen(false);
     setActive(item); setSelected(item.context?.selected_candidate_ids ?? item.draft?.selected_candidate_ids ?? []);
     setSchedules(schedulesForSession(item));
+    setSelectionSyncStatus("SAVED");
     setTripId(item.trip_id || "");
     setDestination(item.destination || ""); setStartDate(item.start_date || ""); setEndDate(item.end_date || "");
     setBudget(item.budget == null ? "" : String(item.budget)); setPace(item.pace_level); setPreference(item.preference_text || "");
@@ -1467,6 +1520,7 @@ export default function AdvisorPage() {
     try {
       const updated = await getAdvisorSession(active.id);
       setActive(updated);
+      setSelected(updated.context?.selected_candidate_ids ?? []);
       setSchedules(schedulesForSession(updated));
       setSessions((current) => [updated, ...current.filter((session) => session.id !== updated.id)]);
       setNotice("攻略地点已导入并重新载入。请从候选中选择要加入行程的地点。");
@@ -1928,7 +1982,7 @@ export default function AdvisorPage() {
               <div className="advisor-candidate-filters" role="group" aria-label="筛选候选地点">
                 {([ ["AUTO", "当前推荐"], ["ALL", "全部"], ["ATTRACTION", `游玩 ${candidateCount("ATTRACTION")}`], ["FOOD", `美食 ${candidateCount("FOOD")}`], ["LODGING", `住宿 ${candidateCount("LODGING")}`] ] as const).map(([filter, label]) => <button key={filter} type="button" className={candidateFilter === filter ? "is-active" : ""} aria-pressed={candidateFilter === filter} onClick={() => setCandidateFilter(filter)}>{label}</button>)}
               </div>
-              <div className="advisor-selection-count" aria-live="polite">已选 {attractionSelectionCount} 个游玩 · {foodSelectionCount} 个用餐 · {lodgingSelectionCount} 个住宿</div>
+              <div className="advisor-selection-count" aria-live="polite">已选 {attractionSelectionCount} 个游玩 · {foodSelectionCount} 个用餐 · {lodgingSelectionCount} 个住宿 · {selectionSyncStatus === "SAVING" ? "正在同步" : selectionSyncStatus === "FAILED" ? "同步失败" : "已同步"}</div>
               {displayedCandidates.length > 0 && <button type="button" className="advisor-map-toggle" aria-expanded={candidateMapOpen} onClick={() => setCandidateMapOpen((value) => !value)}>{candidateMapOpen ? "收起地图" : "地图查看"}</button>}
             </div>
             {displayedCandidates.length > 0 && <p className="advisor-candidate-evidence-note">来源时间表示地图数据回传时间；不代表实时营业、价格或全网热度已核实。</p>}

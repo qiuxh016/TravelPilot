@@ -73,10 +73,63 @@ def _selected_candidates_after_trip_refresh(
             *(candidate_id for candidate_id in retained_candidate_ids or []
               if candidate_id in available_candidate_ids),
         ]))
-    if set(context.get("selected_candidate_ids", [])) != set(selected):
+    previous_selected_ids = list(context.get("selected_candidate_ids", []))
+    previous_schedules = context.get("candidate_schedules", {})
+    if not isinstance(previous_schedules, dict):
+        previous_schedules = {}
+    retained_schedules = {
+        str(candidate_id): schedule for candidate_id, schedule in previous_schedules.items()
+        if str(candidate_id) in selected
+    }
+    if previous_selected_ids != selected or previous_schedules != retained_schedules:
         context["selected_candidate_ids"] = selected
+        context["candidate_schedules"] = retained_schedules
         context["revision"] = int(context.get("revision", 0)) + 1
     return selected
+
+
+def _remap_selected_candidate_ids(context: dict, previous_candidates: list[dict], refreshed_candidates: list[dict]) -> None:
+    """Carry selected IDs and saved times across a provider-ID rekey when identity is stable."""
+    selected_ids = [str(value) for value in context.get("selected_candidate_ids", [])]
+    refreshed_ids = {str(candidate.get("id")) for candidate in refreshed_candidates}
+    previous_by_id = {str(candidate.get("id")): candidate for candidate in previous_candidates}
+    by_identity: dict[tuple[str, str, str | None], list[str]] = {}
+    for candidate in refreshed_candidates:
+        poi_id = str(candidate.get("existing_poi_id") or "")
+        candidate_id = str(candidate.get("id") or "")
+        if not poi_id or not candidate_id:
+            continue
+        category = str(candidate.get("planning_category") or "")
+        meal_type = str(candidate.get("meal_type") or "") if category == "FOOD" else None
+        by_identity.setdefault((poi_id, category, meal_type), []).append(candidate_id)
+
+    remapped: dict[str, str] = {}
+    next_selected: list[str] = []
+    for candidate_id in selected_ids:
+        if candidate_id in refreshed_ids:
+            next_selected.append(candidate_id)
+            continue
+        previous = previous_by_id.get(candidate_id)
+        poi_id = str((previous or {}).get("existing_poi_id") or "")
+        if not poi_id:
+            continue
+        category = str((previous or {}).get("planning_category") or "")
+        meal_type = str((previous or {}).get("meal_type") or "") if category == "FOOD" else None
+        matches = by_identity.get((poi_id, category, meal_type), [])
+        if len(matches) == 1:
+            remapped[candidate_id] = matches[0]
+            next_selected.append(matches[0])
+    if remapped:
+        context["selected_candidate_ids"] = list(dict.fromkeys(next_selected))
+        schedules = context.get("candidate_schedules", {})
+        if isinstance(schedules, dict):
+            next_schedules = {}
+            for candidate_id, schedule in schedules.items():
+                target_id = remapped.get(str(candidate_id), str(candidate_id))
+                if target_id in refreshed_ids and target_id in context["selected_candidate_ids"]:
+                    next_schedules[target_id] = schedule
+            context["candidate_schedules"] = next_schedules
+        context["revision"] = int(context.get("revision", 0)) + 1
 
 
 def planning_state(row: AdvisorSessionModel) -> dict:
@@ -189,6 +242,7 @@ async def refresh_trip_snapshot(db: AsyncSession, row: AdvisorSessionModel) -> d
         .order_by(TripPlanNodeModel.day, TripPlanNodeModel.start_time)
     )).all() if latest_plan else []
 
+    previous_candidates = list(row.candidates or [])
     existing_candidates: dict[str, list[dict]] = {}
     for candidate in row.candidates:
         if candidate.get("existing_poi_id"):
@@ -286,16 +340,35 @@ async def refresh_trip_snapshot(db: AsyncSession, row: AdvisorSessionModel) -> d
             "confidence": float(item.interest_score or 0.5), "suggestion": item.notes,
         }
     previous_selected = set(context.get("selected_candidate_ids", []))
+    wishlist_candidate_ids = {
+        str(candidate.get("id")) for candidate in wishlist_candidates_by_poi.values()
+        if candidate.get("id")
+    }
     retained_lodging_ids = [
         str(candidate.get("id")) for candidate in row.candidates
         if candidate.get("id") in previous_selected
         and candidate.get("planning_category") == "LODGING"
     ]
-    row.candidates = [
+    # Preserve every selected, session-owned candidate that has not yet been
+    # promoted to the formal plan or wishlist, including candidates carrying
+    # a local POI id. The selection and its schedule are one persisted unit.
+    retained_selected_candidates = [
+        candidate for candidate in row.candidates
+        if str(candidate.get("id")) in previous_selected
+        and str(candidate.get("id")) not in wishlist_candidate_ids
+        and str(candidate.get("existing_poi_id") or "") not in plan_poi_ids
+    ]
+    refreshed_candidates = [
         *session_only_candidates,
+        *retained_selected_candidates,
         *wishlist_candidates_by_poi.values(),
         *plan_candidates,
     ]
+    candidates_by_id: dict[str, dict] = {}
+    for candidate in refreshed_candidates:
+        candidates_by_id.setdefault(str(candidate["id"]), candidate)
+    row.candidates = list(candidates_by_id.values())
+    _remap_selected_candidate_ids(context, previous_candidates, row.candidates)
     selected_ids = [candidate["id"] for candidate in plan_candidates]
     previous_plan = context.get("current_plan") or {}
     if previous_plan.get("version") != (latest_plan.version if latest_plan else None):

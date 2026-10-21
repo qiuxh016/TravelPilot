@@ -1,5 +1,5 @@
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from time import perf_counter
 from uuid import UUID, uuid4
 
@@ -55,6 +55,7 @@ from travelpilot_api.schemas.advisor import (
     AdvisorChecklistDecision,
     AdvisorDestinationDiscoveryRequest,
     AdvisorRuntimeStatus,
+    AdvisorSelectionUpdate,
     AdvisorSessionContextUpdate,
     AdvisorSessionCreate,
     AdvisorSessionRead,
@@ -64,6 +65,74 @@ from travelpilot_api.settings import settings
 router = APIRouter(prefix="/advisor", tags=["advisor"])
 router.include_router(drafts_router)
 router.include_router(confirm_router)
+
+
+@router.patch("/sessions/{session_id}/selection", response_model=AdvisorSessionRead)
+async def update_session_selection(
+    session_id: UUID,
+    payload: AdvisorSelectionUpdate,
+    db: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
+):
+    """Persist the live candidate selection and partial time inputs."""
+    row = await owned_session(db, session_id, user.id, lock=True)
+    if row.status != "ACTIVE":
+        raise HTTPException(409, detail="已确认的会话不能继续修改")
+
+    candidates = {
+        str(candidate.get("id")): candidate
+        for candidate in (row.candidates or [])
+        if isinstance(candidate, dict) and candidate.get("id")
+    }
+    selected_ids = [str(candidate_id) for candidate_id in payload.selected_candidate_ids]
+    if not set(selected_ids).issubset(candidates):
+        raise HTTPException(422, detail="选择中包含不属于当前对话的地点")
+
+    schedule_snapshot: dict[str, dict[str, str]] = {}
+    for item in payload.schedules:
+        candidate_id = str(item.candidate_id)
+        candidate = candidates.get(candidate_id)
+        if candidate is None:
+            raise HTTPException(422, detail="时间安排中包含不属于当前对话的地点")
+        if candidate.get("planning_category") == "LODGING":
+            raise HTTPException(422, detail="住宿候选不需要安排每日游览时间")
+        if item.day and row.start_date and row.end_date and not row.start_date <= item.day <= row.end_date:
+            raise HTTPException(422, detail="地点日期必须在旅行日期范围内")
+        schedule_snapshot[candidate_id] = {
+            **({"day": item.day.isoformat()} if item.day else {}),
+            **({"start_time": item.start_time.strftime("%H:%M")} if item.start_time else {}),
+        }
+
+    context = dict(row.context or {})
+    previous_ids = list(dict.fromkeys(str(value) for value in context.get("selected_candidate_ids", [])))
+    previous_schedules = context.get("candidate_schedules", {})
+    if not isinstance(previous_schedules, dict):
+        previous_schedules = {}
+    normalized_schedules = {
+        str(candidate_id): value for candidate_id, value in previous_schedules.items()
+        if str(candidate_id) in selected_ids and str(candidate_id) in schedule_snapshot
+    }
+    normalized_schedules.update(schedule_snapshot)
+    if previous_ids != selected_ids or previous_schedules != normalized_schedules:
+        context["selected_candidate_ids"] = selected_ids
+        context["candidate_schedules"] = normalized_schedules
+        context["revision"] = int(context.get("revision", 0)) + 1
+        row.context = context
+        row.updated_at = datetime.now(UTC)
+        db.add(AdvisorRunEventModel(
+            owner_id=user.id,
+            session_id=row.id,
+            phase="user",
+            operation="update_selection",
+            status="SUCCEEDED",
+            metadata_json={
+                "selected_count": len(selected_ids),
+                "scheduled_count": len(normalized_schedules),
+            },
+        ))
+        await db.commit()
+        await db.refresh(row)
+    return await read_session(db, row)
 
 
 @router.get("/status", response_model=AdvisorRuntimeStatus)
@@ -290,7 +359,34 @@ async def update_session_context(
     row.preference_text = payload.preference_text.strip()
     after = (row.destination, row.start_date, row.end_date, row.budget, row.pace_level, row.preference_text,
              new_planning_inputs)
-    if before != after:
+    previous_schedules = context.get("candidate_schedules", {})
+    if not isinstance(previous_schedules, dict):
+        previous_schedules = {}
+    selected_ids = {str(value) for value in context.get("selected_candidate_ids", [])}
+    available_candidate_ids = {
+        str(candidate.get("id")) for candidate in row.candidates or []
+        if isinstance(candidate, dict) and candidate.get("id")
+    }
+    candidate_schedules: dict[str, dict[str, str]] = {}
+    for candidate_id, schedule in previous_schedules.items():
+        candidate_id = str(candidate_id)
+        if candidate_id not in selected_ids or candidate_id not in available_candidate_ids or not isinstance(schedule, dict):
+            continue
+        retained = dict(schedule)
+        scheduled_day = retained.get("day")
+        if scheduled_day:
+            try:
+                parsed_day = date.fromisoformat(str(scheduled_day))
+            except ValueError:
+                parsed_day = None
+            if parsed_day is None or not row.start_date or not row.end_date or not row.start_date <= parsed_day <= row.end_date:
+                retained.pop("day", None)
+        if retained:
+            candidate_schedules[candidate_id] = retained
+    selection_schedule_changed = candidate_schedules != previous_schedules
+    if selection_schedule_changed:
+        context["candidate_schedules"] = candidate_schedules
+    if before != after or selection_schedule_changed:
         context["revision"] = int(context.get("revision", 0)) + 1
     pending_invalidated = bool(before != after and pending_before_update)
     if pending_invalidated:

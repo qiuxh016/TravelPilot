@@ -109,6 +109,35 @@ class AdvisorCandidateSchedule(BaseModel):
     start_time: time
 
 
+class AdvisorCandidateScheduleState(BaseModel):
+    candidate_id: UUID
+    day: date | None = None
+    start_time: time | None = None
+
+    @model_validator(mode="after")
+    def validate_schedule_state(self):
+        if self.day is None and self.start_time is None:
+            raise ValueError("a schedule state must include a day or start_time")
+        return self
+
+
+class AdvisorSelectionUpdate(BaseModel):
+    selected_candidate_ids: list[UUID] = Field(max_length=100)
+    schedules: list[AdvisorCandidateScheduleState] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_selection_state(self):
+        selected_ids = [item for item in self.selected_candidate_ids]
+        schedule_ids = [item.candidate_id for item in self.schedules]
+        if len(set(selected_ids)) != len(selected_ids):
+            raise ValueError("selected_candidate_ids must be unique")
+        if len(set(schedule_ids)) != len(schedule_ids):
+            raise ValueError("schedule candidate_ids must be unique")
+        if not set(schedule_ids).issubset(set(selected_ids)):
+            raise ValueError("schedules must belong to selected candidates")
+        return self
+
+
 class AdvisorDraftCreate(BaseModel):
     candidate_ids: list[UUID] = Field(min_length=1, max_length=30)
     schedules: list[AdvisorCandidateSchedule] = Field(default_factory=list, max_length=30)

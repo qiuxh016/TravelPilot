@@ -10,7 +10,7 @@ from travelpilot_infra.db.models.trip import TripModel
 
 @pytest.mark.asyncio
 async def test_route_validation_snapshot_refresh_keeps_session_meal_lodging_and_selection():
-    owner_id, trip_id, plan_id, poi_id = uuid4(), uuid4(), uuid4(), uuid4()
+    owner_id, trip_id, plan_id, poi_id, meal_poi_id = uuid4(), uuid4(), uuid4(), uuid4(), uuid4()
     start, end = date(2026, 11, 2), date(2026, 11, 3)
     trip = SimpleNamespace(
         id=trip_id,
@@ -84,6 +84,7 @@ async def test_route_validation_snapshot_refresh_keeps_session_meal_lodging_and_
             },
             {
                 "id": "session-lunch",
+                "existing_poi_id": str(meal_poi_id),
                 "name": "已选午餐店",
                 "planning_category": "FOOD",
                 "meal_type": "LUNCH",
@@ -101,6 +102,9 @@ async def test_route_validation_snapshot_refresh_keeps_session_meal_lodging_and_
         context={
             "revision": 8,
             "selected_candidate_ids": ["candidate-park", "session-lunch", "session-hotel"],
+            "candidate_schedules": {
+                "session-lunch": {"day": start.isoformat(), "start_time": "12:00"},
+            },
             "current_plan": {"id": str(plan_id), "version": 4, "stops": []},
             "base_trip": {
                 "destination": "梅州",
@@ -119,4 +123,7 @@ async def test_route_validation_snapshot_refresh_keeps_session_meal_lodging_and_
     candidate_ids = {candidate["id"] for candidate in row.candidates}
     assert {"session-lunch", "session-hotel", "candidate-park"} <= candidate_ids
     assert row.context["selected_candidate_ids"] == before_selected
+    assert row.context["candidate_schedules"]["session-lunch"] == {
+        "day": start.isoformat(), "start_time": "12:00",
+    }
     assert row.context["current_plan"]["stops"][0]["candidate_id"] == "candidate-park"

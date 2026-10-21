@@ -95,6 +95,22 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
     }
     if (url.pathname.endsWith("/progress")) return route.fulfill({ status: 204 });
     if (url.pathname.endsWith("/events")) return route.fulfill({ status: 204 });
+    if (url.pathname.endsWith("/selection") && request.method() === "PATCH") {
+      const body = request.postDataJSON() as {
+        selected_candidate_ids: string[];
+        schedules: { candidate_id: string; day?: string; start_time?: string }[];
+      };
+      const current = persistedSession as typeof session;
+      persistedSession = {
+        ...current,
+        context: {
+          ...current.context,
+          selected_candidate_ids: body.selected_candidate_ids,
+          candidate_schedules: Object.fromEntries(body.schedules.map(({ candidate_id, ...schedule }) => [candidate_id, schedule])),
+        },
+      };
+      return route.fulfill({ json: persistedSession });
+    }
     if (url.pathname.endsWith("/draft") && request.method() === "POST") {
       draftRequestCount += 1;
       const body = request.postDataJSON() as {
@@ -112,9 +128,10 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
             { candidate_id: "sightseeing-1", day, start_time: "14:00" },
           ]);
       const version = draftRequestCount + 1;
+      const current = persistedSession as typeof session;
       persistedSession = {
-        ...session,
-        context: { ...session.context, revision: version, selected_candidate_ids: body.candidate_ids },
+        ...current,
+        context: { ...current.context, revision: version, selected_candidate_ids: body.candidate_ids },
         draft: {
           version, context_revision: version, generated_at: now,
           selected_candidate_ids: body.candidate_ids,
@@ -186,6 +203,12 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
   await expect(itineraryPreview).toContainText("模拟川味餐馆");
   await expect(itineraryPreview).not.toContainText("模拟旅行酒店");
 
+  await page.reload();
+  const restoredLunch = page.locator("#advisor-candidate-lunch-1");
+  await expect(restoredLunch.getByRole("button", { name: "已加入 ✓" })).toBeVisible();
+  await expect(restoredLunch.getByLabel("用餐日期")).toHaveValue(day);
+  await expect(restoredLunch.getByLabel("用餐时间")).toHaveValue("10:30");
+
   await page.getByRole("button", { name: "美食 2" }).click();
   const dinner = page.locator("#advisor-candidate-dinner-1");
   await dinner.getByRole("button", { name: "加入晚餐" }).click();
@@ -209,22 +232,23 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
   await expect(itineraryPreview).toContainText("模拟旅行酒店");
   await expect(itineraryPreview).toContainText("18:00");
   await expect(page.locator(".advisor-draft-state")).toHaveText("等待你确认");
-  await expect(page.getByRole("button", { name: "确认并应用到行程" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "确认并加入行程" })).toBeEnabled();
   await expect(itineraryPreview).toBeVisible();
 
+  await itineraryPreview.scrollIntoViewIfNeeded();
   await expect(itineraryPreview).toBeInViewport();
   await expect(itineraryPreview).toContainText("模拟川味餐馆");
   await expect(itineraryPreview).toContainText("模拟游览地点");
   await expect(itineraryPreview).toContainText("2026-11-12");
   await expect(itineraryPreview).toContainText("模拟旅行酒店");
-  await expect(page.getByRole("button", { name: "确认并应用到行程" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "确认并加入行程" })).toBeEnabled();
   await expect.poll(() => draftRequestCount).toBe(2);
 
   // The committed server snapshot is the source used when the user returns.
   await page.reload();
   await expect(page.locator(".advisor-itinerary")).toContainText("模拟川味餐馆");
   await expect(page.locator(".advisor-itinerary")).toContainText("模拟旅行酒店");
-  await page.getByRole("button", { name: "确认并应用到行程" }).click();
+  await page.getByRole("button", { name: "确认并加入行程" }).click();
   await expect.poll(() => confirmation).toEqual({ draft_version: 3 });
   await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/plan$`));
   await page.goto(`/advisor?sessionId=${sessionId}`);

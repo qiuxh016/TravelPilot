@@ -243,6 +243,7 @@ export type AdvisorMemorySnapshot = { id: string; type: string; text: string; im
 export type AdvisorPlanningSlot = { value: string | number | null; source: string | null; confidence: number; status: "known" | "missing" };
 export type AdvisorContext = {
   revision: number; selected_candidate_ids: string[]; current_plan: AdvisorPlanSnapshot | null;
+  candidate_schedules?: Record<string, { day?: string; start_time?: string }>;
   checklist_decisions?: Record<string, { decision: "LATER" | "NOT_NEEDED"; draft_version: number }>;
   confirmed_memories: AdvisorMemorySnapshot[];
   personal_memories?: { id: string; category: string; text: string; constraint_type: "PREFERENCE" | "HARD_LIMIT" }[];
@@ -293,6 +294,13 @@ export const listAdvisorSessions = () => request<AdvisorSession[]>("/api/v1/advi
 export const getAdvisorRuntimeStatus = () => request<AdvisorRuntimeStatus>("/api/v1/advisor/status");
 export const createAdvisorSession = (input: AdvisorSessionInput) => request<AdvisorSession>("/api/v1/advisor/sessions", { method: "POST", body: JSON.stringify(input) });
 export const updateAdvisorSessionContext = (sessionId: string, input: AdvisorSessionContextInput) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/context`, { method: "PATCH", body: JSON.stringify(input) });
+export const updateAdvisorSelection = (
+  sessionId: string,
+  selected_candidate_ids: string[],
+  schedules: { candidate_id: string; day?: string; start_time?: string }[],
+) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/selection`, {
+  method: "PATCH", body: JSON.stringify({ selected_candidate_ids, schedules }),
+});
 export const getAdvisorSession = (sessionId: string) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}`);
 export const updateAdvisorChecklistDecision = (sessionId: string, item_key: string, decision: "LATER" | "NOT_NEEDED" | "RESET", draft_version: number) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/checklist`, { method: "PATCH", body: JSON.stringify({ item_key, decision, draft_version }) });
 export const sendAdvisorMessage = (
