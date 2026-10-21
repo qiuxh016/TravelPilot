@@ -1,6 +1,8 @@
 # TravelPilot Roadmap
 
-Updated: 2026-10-20
+Updated: 2026-10-21
+
+Current next-agent plan status (2026-10-21): W0–W3 are complete; W4 added an in-Advisor what-if dialog that previews changes by day, shows PlanDiff/warnings, and only writes a new formal version after explicit confirmation. Local UI interaction passed in desktop Chromium and Pixel 7 with mocked API responses; backend replan/environment integration passed **27 tests**, Web TypeScript and production build passed. This is local synthetic interaction evidence, not live provider or model quality. Next: W5 expands the controlled local evaluation set and reports B1/B2/B3 boundaries. See `计划.md` for the stage log and exact commands.
 
 Latest local authenticated product-service suite (2026-10-20): **18/18 scenarios, 22 turns** passed with the loopback model stub, Fake Maps and synthetic weather/route failures. All **18/18 temporary accounts were deleted**, and every scenario prevented a formal plan write. The concise per-scenario checklist report is `tests/evaluation/results/advisor_product_local_suite_20261020_summary.json`; it records source revision `17bd262` and a dirty-tree flag, so it is local-worktree evidence rather than a clean-commit claim. Raw turn reports remain outside the repository.
 

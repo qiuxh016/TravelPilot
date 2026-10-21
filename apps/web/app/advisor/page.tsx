@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { RouteMap } from "../../components/route-map";
 import { TripImportTool } from "../../components/trip-import-tool";
+import { AdvisorWhatIf } from "../../components/advisor-what-if";
 import { tripOptionLabel, useTripSelection } from "../../components/trip-selection-context";
 import {
   AdvisorCandidate, AdvisorDestinationRecommendation, AdvisorMemorySuggestion, AdvisorMessageFeedbackReason, AdvisorMessageFeedbackRating, AdvisorProgressEvent, AdvisorRuntimeStatus, AdvisorSession, AdvisorTaskSnapshot, AdvisorTransportRoute, ApiError, Trip, confirmAdvisorDraft, confirmUserMemorySuggestion, createAdvisorDraft, createAdvisorSession, createUserMemory,
@@ -493,6 +494,7 @@ export default function AdvisorPage() {
   const [savedMemoryMessageIds, setSavedMemoryMessageIds] = useState<string[]>([]);
   const [dismissedMemorySuggestionIds, setDismissedMemorySuggestionIds] = useState<string[]>([]);
   const [importOpen, setImportOpen] = useState(false);
+  const [whatIf, setWhatIf] = useState<{ tripId: string; eventType: string; prefill?: { condition?: string; delay_min?: number } } | null>(null);
   const [showHandledAttention, setShowHandledAttention] = useState(false);
   const [selectedAttention, setSelectedAttention] = useState<{ sessionId: string; itemKey: string } | null>(null);
   const closeAdvisorImport = useCallback(() => setImportOpen(false), []);
@@ -1296,6 +1298,21 @@ export default function AdvisorPage() {
     }
   }
 
+  async function refreshAfterWhatIfApplied() {
+    if (!active) return;
+    try {
+      const updated = await getAdvisorSession(active.id);
+      setActive(updated);
+      setSelected(updated.context?.selected_candidate_ids ?? []);
+      setSchedules(schedulesForSession(updated));
+      setSessions((current) => [updated, ...current.filter((session) => session.id !== updated.id)]);
+      setNotice("途中调整已写入正式行程，并已刷新顾问上下文。");
+    } catch (reason) {
+      setNotice("途中调整已写入正式行程；顾问上下文刷新失败，请重新载入对话后继续。");
+      setError((reason as Error).message);
+    }
+  }
+
   function chooseSetup(choice: "trip" | "ideas") {
     setSetupChoice(choice);
     if (choice === "trip") {
@@ -1493,11 +1510,7 @@ export default function AdvisorPage() {
                   </section>}
                   {eventReplanHandoff?.event_type && active?.trip_id && <div className="advisor-event-replan-handoff">
                     <small>下一步会先生成途中调整预览。请核对生效时间及相关信息；确认前不会写入新计划。</small>
-                    <Link className="advisor-event-replan-action" href={`/trips/${active.trip_id}/events?${new URLSearchParams({
-                      event_type: eventReplanHandoff.event_type,
-                      ...(eventReplanHandoff.prefill?.condition ? { condition: eventReplanHandoff.prefill.condition } : {}),
-                      ...(eventReplanHandoff.prefill?.delay_min ? { delay_min: String(eventReplanHandoff.prefill.delay_min) } : {}),
-                    }).toString()}`}>{eventReplanHandoff.action_label || "核对信息并查看途中调整预览"} →</Link>
+                    <button className="advisor-event-replan-action" type="button" onClick={() => setWhatIf({ tripId: active.trip_id!, eventType: eventReplanHandoff.event_type!, prefill: eventReplanHandoff.prefill })}>{eventReplanHandoff.action_label || "核对信息并查看途中调整预览"} →</button>
                   </div>}
                   {item.role === "user" && /记住|以后.{0,8}(?:偏好|规划|安排)|(?:偏好|习惯).{0,8}(?:保存|记住)/.test(item.content) && <div className="advisor-save-memory-actions">
                     {savedMemoryMessageIds.includes(item.id) ? <span>已保存到偏好记忆</span> : item.content.trim().length > 1000 ? <span>内容较长，请到账户页填写偏好摘要</span> : <>
@@ -1919,6 +1932,7 @@ export default function AdvisorPage() {
         {active?.status === "CONFIRMED" && active.confirmed_trip_id ? <Link className="primary" href={`/trips/${active.confirmed_trip_id}/plan`}>查看已更新行程</Link> : <button type="button" className="primary" onClick={confirmDraft} disabled={!active?.draft || draftIsStale || busy}>{busy ? "正在更新行程…" : "确认并应用到行程"}</button>}
       </footer>}
       {importOpen && active?.trip_id && <TripImportTool tripId={active.trip_id} onClose={closeAdvisorImport} onImported={() => { setImportOpen(false); void refreshAfterGuideImport(); }} />}
+      {whatIf && <AdvisorWhatIf tripId={whatIf.tripId} initialEventType={whatIf.eventType} prefill={whatIf.prefill} onClose={() => setWhatIf(null)} onApplied={() => void refreshAfterWhatIfApplied()} />}
     </main>
   );
 }

@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 const api = process.env.TRAVELPILOT_TEST_API_URL ?? "http://localhost:8000";
 const stub = process.env.TRAVELPILOT_TEST_STUB_URL ?? "http://127.0.0.1:8002";
 
-test("疲劳调整从顾问交给途中事件预览，确认后才保存", async ({ page, request }) => {
+test("顾问内完成途中调整预览，确认后才保存", async ({ page, request }) => {
   test.setTimeout(120_000);
   const email = `fatigue-handoff-${Date.now()}@example.invalid`;
   const password = "travelpilot-test-2026";
@@ -86,14 +86,15 @@ test("疲劳调整从顾问交给途中事件预览，确认后才保存", async
 
     const handoff = page.locator(".advisor-event-replan-handoff");
     await expect(handoff).toContainText("确认前不会写入新计划");
-    await handoff.getByRole("link", { name: /设置时间并查看途中调整预览/ }).click();
-    await expect(page.getByLabel("事件类型")).toHaveValue("USER_FATIGUE");
+    await handoff.getByRole("button", { name: /设置时间并查看途中调整预览/ }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByLabel("发生了什么？")).toHaveValue("USER_FATIGUE");
     await page.getByLabel("生效时间").fill(`${date}T09:00`);
     const previewResponse = page.waitForResponse((response) =>
       response.request().method() === "POST"
       && new URL(response.url()).pathname.endsWith("/replan-runs"),
     );
-    await page.getByRole("button", { name: /生成调整预览/ }).click();
+    await page.getByRole("button", { name: /生成预览/ }).click();
     const preview = await previewResponse;
     expect(preview.ok(), await preview.text()).toBeTruthy();
     const previewBody = await preview.json() as {
@@ -102,8 +103,8 @@ test("疲劳调整从顾问交给途中事件预览，确认后才保存", async
     expect(previewBody.proposed_plan_status).toBe("READY");
     expect(previewBody.diff.some((item) => item.reason_code === "USER_FATIGUE" && item.operation === "REMOVE")).toBeTruthy();
     expect(await (await request.get(`${api}/api/v1/trips/${trip.id}/plans`)).json()).toHaveLength(1);
-    await page.getByRole("button", { name: /确认采用这版安排/ }).click();
-    await expect(page.getByRole("heading", { name: "调整已保存" })).toBeVisible();
+    await page.getByRole("button", { name: /确认并更新正式行程/ }).click();
+    await expect(page.getByText("调整已保存", { exact: true })).toBeVisible();
     expect(await (await request.get(`${api}/api/v1/trips/${trip.id}/plans`)).json()).toHaveLength(2);
 
     const weatherSessionResponse = await request.post(`${api}/api/v1/advisor/sessions`, {
@@ -128,17 +129,17 @@ test("疲劳调整从顾问交给途中事件预览，确认后才保存", async
       prefill: {},
     });
     const weatherHandoff = page.locator(".advisor-event-replan-handoff");
-    await weatherHandoff.getByRole("link").click();
-    await expect(page.getByLabel("事件类型")).toHaveValue("WEATHER_CHANGE");
+    await weatherHandoff.getByRole("button").click();
+    await expect(page.getByLabel("发生了什么？")).toHaveValue("WEATHER_CHANGE");
     await expect(page.getByLabel("生效时间")).toHaveValue("");
     await expect(page.getByLabel("天气情况")).toHaveValue("");
     await page.getByLabel("生效时间").fill(`${date}T09:00`);
     const invalidWeatherField = page.evaluate(() => new Promise<string>((resolve) => {
-      document.querySelector(".events-form")?.addEventListener("invalid", (event) => {
+      document.querySelector(".advisor-whatif form")?.addEventListener("invalid", (event) => {
         resolve((event.target as HTMLElement).getAttribute("aria-label") ?? "unknown");
       }, true);
     }));
-    await page.getByRole("button", { name: /生成调整预览/ }).click();
+    await page.getByRole("button", { name: /生成预览/ }).click();
     await expect(invalidWeatherField).resolves.toBe("天气情况");
     if (process.env.TRAVELPILOT_UI_EVIDENCE_PATH) {
       await page.screenshot({ path: process.env.TRAVELPILOT_UI_EVIDENCE_PATH, fullPage: false });
@@ -163,8 +164,8 @@ test("疲劳调整从顾问交给途中事件预览，确认后才保存", async
         messages: Array<{ payload: Record<string, unknown> | null }>;
       };
       expect(responseBody.messages.at(-1)?.payload?.event_replan_handoff).toMatchObject({ event_type: eventType });
-      await page.locator(".advisor-event-replan-handoff").getByRole("link").click();
-      await expect(page.getByLabel("事件类型")).toHaveValue(eventType);
+      await page.locator(".advisor-event-replan-handoff").getByRole("button").click();
+      await expect(page.getByLabel("发生了什么？")).toHaveValue(eventType);
     }
 
     async function previewAndConfirm(expectedOperation?: string, reasonCode?: string) {
@@ -174,7 +175,7 @@ test("疲劳调整从顾问交给途中事件预览，确认后才保存", async
         response.request().method() === "POST"
         && new URL(response.url()).pathname.endsWith("/replan-runs"),
       );
-      await page.getByRole("button", { name: /生成调整预览/ }).click();
+      await page.getByRole("button", { name: /生成预览/ }).click();
       const response = await previewResponsePromise;
       expect(response.ok(), await response.text()).toBeTruthy();
       const preview = await response.json() as {
@@ -186,14 +187,14 @@ test("疲劳调整从顾问交给途中事件预览，确认后才保存", async
         expect(preview.diff.some((item) => item.operation === expectedOperation && item.reason_code === reasonCode)).toBeTruthy();
       }
       expect(await (await request.get(`${api}/api/v1/trips/${trip.id}/plans`)).json()).toHaveLength(beforePlans.length);
-      await page.getByRole("button", { name: /确认采用这版安排/ }).click();
-      await expect(page.getByRole("heading", { name: "调整已保存" })).toBeVisible();
+      await page.getByRole("button", { name: /确认并更新正式行程/ }).click();
+      await expect(page.getByText("调整已保存", { exact: true })).toBeVisible();
       const afterPlans = await (await request.get(`${api}/api/v1/trips/${trip.id}/plans`)).json() as Array<{ version: number }>;
       expect(afterPlans).toHaveLength(beforePlans.length + 1);
     }
 
     await requestEventHandoff("堵车晚了半小时，重新安排后面的计划", "TIME_DELAY");
-    await expect(page.getByLabel("延误分钟")).toHaveValue("30");
+    await expect(page.getByLabel("延误分钟数")).toHaveValue("30");
     await page.getByLabel("生效时间").fill(`${date}T09:00`);
     await previewAndConfirm("MOVE", "TIME_DELAY");
 
@@ -203,7 +204,7 @@ test("疲劳调整从顾问交给途中事件预览，确认后才保存", async
       nodes: Array<{ poi_id: string }>;
     }>;
     expect(latestPlan[0]?.nodes.length).toBeGreaterThanOrEqual(2);
-    await page.getByLabel("POI ID").selectOption(latestPlan[0].nodes[0].poi_id);
+    await page.getByLabel("涉及地点").selectOption(latestPlan[0].nodes[0].poi_id);
     await previewAndConfirm("REMOVE", "POI_CANCELLED");
 
     await requestEventHandoff("我的预约时间变了，帮我调整这段行程", "RESERVATION_CHANGE");
@@ -212,16 +213,16 @@ test("疲劳调整从顾问交给途中事件预览，确认后才保存", async
       nodes: Array<{ poi_id: string }>;
     }>;
     expect(reservationPlan[0]?.nodes.length).toBeGreaterThan(0);
-    await page.getByLabel("POI ID").selectOption(reservationPlan[0].nodes[0].poi_id);
-    await page.getByLabel("预约开始时间").fill("10:00");
-    await page.getByLabel("预约结束时间").fill("11:30");
+    await page.getByLabel("涉及地点").selectOption(reservationPlan[0].nodes[0].poi_id);
+    await page.getByLabel("预约开始").fill("10:00");
+    await page.getByLabel("预约结束").fill("11:30");
     await previewAndConfirm("MOVE", "RESERVATION_CHANGE");
 
     await requestEventHandoff("我还想临时加上杜甫草堂，帮我安排到后面行程", "USER_ADD");
     await page.getByLabel("生效时间").fill(`${date}T09:00`);
-    await page.getByLabel("POI ID").selectOption(addedPoi.poi_id);
-    await page.getByLabel("地点营业开始时间").fill("09:00");
-    await page.getByLabel("地点营业结束时间").fill("20:00");
+    await page.getByLabel("涉及地点").selectOption(addedPoi.poi_id);
+    await page.getByLabel("营业开始").fill("09:00");
+    await page.getByLabel("营业结束").fill("20:00");
     await previewAndConfirm("ADD", "USER_ADD");
   } finally {
     if (registered && csrf) {

@@ -1085,8 +1085,38 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 .advisor-draft-followup > button:disabled { cursor: not-allowed; opacity: .55; }
 .advisor-event-replan-handoff { display: grid; gap: 8px; margin-top: 10px; border: 1px solid color-mix(in srgb, var(--action) 35%, var(--border)); border-radius: 10px; padding: 10px 12px; background: color-mix(in srgb, var(--accent-soft) 54%, var(--surface)); }
 .advisor-event-replan-handoff > small { color: var(--muted); font-size: 11px; line-height: 1.5; }
-.advisor-event-replan-action { justify-self: start; border-radius: 7px; padding: 7px 10px; background: var(--action); color: var(--action-contrast); font-size: 12px; font-weight: 650; text-decoration: none; }
+.advisor-event-replan-action { justify-self: start; border: 0; border-radius: 7px; padding: 7px 10px; background: var(--action); color: var(--action-contrast); font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }
 .advisor-event-replan-action:hover { filter: brightness(.96); }
+.advisor-whatif-backdrop { position: fixed; z-index: 120; inset: 0; display: grid; place-items: center; padding: 22px; background: rgb(19 31 27 / 48%); }
+.advisor-whatif { display: grid; gap: 16px; width: min(760px, 100%); max-height: min(88vh, 900px); overflow: auto; border: 1px solid var(--border); border-radius: 18px; padding: 22px; background: var(--surface); box-shadow: 0 24px 80px rgb(20 34 29 / 22%); }
+.advisor-whatif > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+.advisor-whatif > header small { color: var(--action); font-size: 11px; font-weight: 700; letter-spacing: .06em; }
+.advisor-whatif > header h2 { margin: 5px 0; color: var(--text); font: 600 24px/1.25 Georgia, serif; }
+.advisor-whatif > header p { margin: 0; color: var(--muted); font-size: 13px; }
+.advisor-whatif > header > button { flex: 0 0 auto; width: 38px; height: 38px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); color: var(--text); font-size: 24px; cursor: pointer; }
+.advisor-whatif form { display: grid; gap: 14px; }
+.advisor-whatif form > label, .advisor-whatif-pair > label { display: grid; gap: 6px; color: var(--text); font-size: 13px; font-weight: 650; }
+.advisor-whatif input, .advisor-whatif select { width: 100%; min-height: 42px; border: 1px solid var(--border); border-radius: 9px; padding: 8px 11px; background: var(--surface); color: var(--text); font: inherit; }
+.advisor-whatif-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.advisor-whatif-note { margin: 0; border-left: 3px solid #d49a3a; padding: 9px 11px; background: var(--surface-raised); color: var(--muted); font-size: 12px; line-height: 1.55; }
+.advisor-whatif-error { margin: 0; border: 1px solid color-mix(in srgb, #b54f36 45%, var(--border)); border-radius: 8px; padding: 10px 12px; color: #9d3f2a; background: color-mix(in srgb, #b54f36 7%, var(--surface)); }
+.advisor-whatif footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+.advisor-whatif footer button { min-height: 38px; border-radius: 8px; padding: 0 13px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.advisor-whatif footer .primary { border: 1px solid var(--action); background: var(--action); color: var(--action-contrast); }
+.advisor-whatif footer .secondary { border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.advisor-whatif footer button:disabled { cursor: not-allowed; opacity: .55; }
+.advisor-whatif-preview { display: grid; gap: 12px; }
+.advisor-whatif-status { display: grid; gap: 4px; border: 1px solid color-mix(in srgb, var(--action) 25%, var(--border)); border-radius: 10px; padding: 12px; background: var(--surface-raised); }
+.advisor-whatif-status strong { color: var(--text); font-size: 15px; }
+.advisor-whatif-status span, .advisor-whatif-status small { color: var(--muted); font-size: 12px; }
+.advisor-whatif-day, .advisor-whatif-changes { border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+.advisor-whatif-day h3, .advisor-whatif-changes h3 { margin: 0 0 9px; color: var(--text); font-size: 14px; }
+.advisor-whatif-day ol { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.advisor-whatif-day li { display: grid; grid-template-columns: 105px minmax(0, 1fr); gap: 10px; color: var(--text); font-size: 12px; }
+.advisor-whatif-day time, .advisor-whatif-changes small { color: var(--muted); }
+.advisor-whatif-changes p { margin: 7px 0 0; color: var(--text); font-size: 12px; }
+.advisor-whatif-changes b { display: inline-block; min-width: 34px; color: var(--action); }
+@media (max-width: 600px) { .advisor-whatif-backdrop { padding: 8px; } .advisor-whatif { max-height: 94vh; padding: 16px; } .advisor-whatif > header h2 { font-size: 20px; } .advisor-whatif-pair { grid-template-columns: 1fr; } .advisor-whatif-day li { grid-template-columns: 82px minmax(0, 1fr); } }
 .advisor-trip-action-more { margin-top: 9px; border: 0; padding: 2px 0; background: transparent; color: var(--action); font: inherit; font-size: 10px; font-weight: 650; cursor: pointer; }
 @media (max-width: 600px) {
   .advisor-workflow { justify-content: space-between; }
