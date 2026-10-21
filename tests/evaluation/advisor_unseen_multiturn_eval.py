@@ -301,7 +301,13 @@ async def _run_turn(
                 }
             )
             invalid_actions += 1
-            actions.append({"kind": "INVALID_MODEL_ACTION", "summary": exc.code})
+            actions.append(
+                {
+                    "kind": "INVALID_MODEL_ACTION",
+                    "summary": exc.code,
+                    "error_category": exc.reason or "UNCLASSIFIED",
+                }
+            )
             return AgentAction(kind="FINISH", summary="模型动作不符合约定，安全停止")
         except BaseException:
             runtime.release_output_tokens(reserved)
@@ -443,6 +449,18 @@ async def run_live(
             ),
             "verification_failures": sum(item.get("verification_failures", 0) for item in turns),
             "invalid_model_actions": sum(item.get("invalid_model_actions", 0) for item in turns),
+            "invalid_action_categories": {
+                category: sum(
+                    (item.get("action") or {}).get("error_category") == category for item in turns
+                )
+                for category in sorted(
+                    {
+                        (item.get("action") or {}).get("error_category", "UNCLASSIFIED")
+                        for item in turns
+                        if (item.get("action") or {}).get("kind") == "INVALID_MODEL_ACTION"
+                    }
+                )
+            },
             "tool_failures": sum(
                 transition.get("status") == "FAILED"
                 for item in turns

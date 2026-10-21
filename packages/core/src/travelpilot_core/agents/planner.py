@@ -1,5 +1,6 @@
 """Constrained natural language preference extraction for deterministic planning."""
 
+import json
 from dataclasses import dataclass
 from typing import Literal
 from urllib.parse import urlparse
@@ -31,9 +32,10 @@ class TokenUsage:
 
 
 class PlannerDecisionFailure(ToolFailure):
-    def __init__(self, code: str, usage: TokenUsage):
+    def __init__(self, code: str, usage: TokenUsage, reason: str | None = None):
         super().__init__(code)
         self.usage = usage
+        self.reason = reason
 
 
 def local_decision(text: str) -> PlanningDecision:
@@ -114,10 +116,12 @@ async def decide_next_action(
                             '{"kind":"CALL_TOOL","tool":"get_distance_matrix","arguments":{},"summary":"check route"}; '
                             '{"kind":"ASK_USER","question":"Which date?"}; '
                             '{"kind":"FINISH","summary":"Ready for review"}. '
-                            "Ask only for a feasibility-critical missing fact. Never invent tools or commit, "
-                            "delete, share, or publish data."
+                            "Use ASK_USER when a required user choice or feasibility-critical fact is missing; "
+                            "do not use FINISH to replace a needed question. Use FINISH only when the requested "
+                            "read-only work is complete, or when you must safely explain a blocker and no useful "
+                            "user decision can unblock it. Never invent tools or commit, delete, share, or publish data."
                         )},
-                        {"role": "user", "content": str(prompt)[:4000]},
+                        {"role": "user", "content": json.dumps(prompt, ensure_ascii=False, separators=(",", ":"))[:4000]},
                     ],
                 }
         if urlparse(base_url).hostname == "api.deepseek.com":
@@ -137,11 +141,21 @@ async def decide_next_action(
                 prompt_tokens = total_tokens - completion_tokens
             usage = TokenUsage(prompt_tokens, completion_tokens, total_tokens)
             try:
-                action = AgentAction.model_validate_json(body["choices"][0]["message"]["content"])
-            except (KeyError, IndexError, TypeError, ValueError, ValidationError) as exc:
-                raise PlannerDecisionFailure("AGENT_ACTION_INVALID", usage) from exc
+                content = body["choices"][0]["message"]["content"]
+            except (KeyError, IndexError, TypeError) as exc:
+                raise PlannerDecisionFailure("AGENT_ACTION_INVALID", usage, "MESSAGE_CONTENT_MISSING") from exc
+            if not isinstance(content, str):
+                raise PlannerDecisionFailure("AGENT_ACTION_INVALID", usage, "MESSAGE_CONTENT_NOT_TEXT")
+            try:
+                payload = json.loads(content)
+            except (json.JSONDecodeError, TypeError) as exc:
+                raise PlannerDecisionFailure("AGENT_ACTION_INVALID", usage, "MESSAGE_CONTENT_NOT_JSON") from exc
+            try:
+                action = AgentAction.model_validate(payload)
+            except (ValidationError, TypeError, ValueError) as exc:
+                raise PlannerDecisionFailure("AGENT_ACTION_INVALID", usage, "ACTION_SCHEMA_INVALID") from exc
             if action.kind == "CALL_TOOL" and action.tool not in tool_schemas:
-                raise PlannerDecisionFailure("AGENT_ACTION_INVALID", usage)
+                raise PlannerDecisionFailure("AGENT_ACTION_INVALID", usage, "TOOL_NOT_ALLOWLISTED")
             return action, usage
     except httpx.TimeoutException as exc:
         raise ToolFailure("PLANNER_TIMEOUT") from exc

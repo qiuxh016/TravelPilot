@@ -174,3 +174,59 @@ async def test_structured_output_failures_are_counted_and_usage_is_preserved(mon
             "total_tokens": 23,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_planner_sends_json_context_and_reports_safe_parse_category(monkeypatch):
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "usage": {"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14},
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"kind":"ASK_USER","question":"ok","unexpected":true}'
+                        }
+                    }
+                ],
+            }
+
+    requests = []
+
+    class FakeClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, *_args, **kwargs):
+            requests.append(kwargs["json"])
+            return FakeResponse()
+
+    monkeypatch.setattr(
+        evaluation.decide_next_action.__globals__["httpx"], "AsyncClient", FakeClient
+    )
+    with pytest.raises(PlannerDecisionFailure) as error:
+        await evaluation.decide_next_action(
+            {"current_user_message": "请帮我安排"},
+            {},
+            api_key="test-key",
+            model="test-model",
+            base_url="https://example.test/v1",
+        )
+
+    assert error.value.code == "AGENT_ACTION_INVALID"
+    assert error.value.reason == "ACTION_SCHEMA_INVALID"
+    assert error.value.usage.completion_tokens == 4
+    parsed_context = evaluation.json.loads(requests[0]["messages"][1]["content"])
+    assert parsed_context["observation"]["current_user_message"] == "请帮我安排"
+    assert "do not use FINISH to replace a needed question" in requests[0]["messages"][0]["content"]
