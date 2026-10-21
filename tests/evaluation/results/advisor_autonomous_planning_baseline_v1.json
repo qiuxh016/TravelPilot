@@ -1,0 +1,822 @@
+{
+  "evaluation_id": "advisor_autonomous_planning_baseline_v1",
+  "provider_mode": "DETERMINISTIC_PROVIDER_FIXTURES_AND_SCRIPTED_AGENT_POLICIES",
+  "case_file_sha256": "17ccb5e30576a713208a5be41575e6183c3c3bf4f306df6d3d37ee6a8f4b4f18",
+  "source_provenance": {
+    "git_revision": "d35be166a67f9e1f637e9e173628fa8f4a0a8f05",
+    "working_tree_dirty": true,
+    "source_sha256": {
+      "tests/evaluation/advisor_full_task_eval.py": "0f703b6ad783c787bc860905cd207f1f1c881f11fa89af131435313d732e88b1",
+      "tests/evaluation/advisor_fixed_workflow_baseline.py": "9816ab85a438dfd155d41e2fc121067860d698a826ca5e55fadf104087bfa77f",
+      "tests/evaluation/cases/advisor_existing_trip_agent_v3.json": "6312ae7114e5066c2686e9993a7c7895ab2ba03f2148fe508903ffd18d24fcac",
+      "packages/core/src/travelpilot_core/agents/planner.py": "0cf7514fab11cb488e0c72f364e5b179af81f811b14e97385a345a0ab351602d",
+      "packages/core/src/travelpilot_core/agents/loop.py": "969a217524106edaa7dc1650a469de7caabd3791967781e49b509b93e6456fab",
+      "packages/core/src/travelpilot_core/agents/runtime.py": "1a6ff47bc42db21de636253b779ffd60567546edacc94e153d575ebb40e71e41",
+      "packages/core/src/travelpilot_core/agents/verifiers.py": "ffbb9d7e743a4ffdd9f829b49b0c5e45f961fb51919c4bc5750f0cf06cdfbacd",
+      "apps/api/src/travelpilot_api/advisor/scheduling.py": "70a8d37f7522327156af5cac7d69356f36339c6ee7c62e39f688a917aa7a5611",
+      "packages/core/src/travelpilot_core/engines/optimizer/itinerary.py": "c017c03601c294ad8590cdf9be88523d921f2e9bb5248fe5bab37d2bada85e24"
+    }
+  },
+  "run_at_utc": "2026-10-21T02:30:34.896439+00:00",
+  "scope": "10 controlled existing-trip planning tasks across 10 constraint and failure families. Development baseline selected from an already-scored dataset; not a blind holdout. Deterministic provider fixtures and scripted B1/B2/B3 policies only; not live-model quality. Product-grounded planner comparison with scripted B2/B3 policies; not live model decision quality.",
+  "scenario_family_count": 10,
+  "groups": {
+    "B1_FIXED": {
+      "case_count": 10,
+      "expected_action_matches": 6,
+      "expected_outcome_matches": 6,
+      "hard_invariant_violations": 4,
+      "tool_calls": 7,
+      "runs": [
+        {
+          "case_id": "missing-route-evidence-should-query-variant-1",
+          "first_action": "get_distance_matrix",
+          "expected_action_match": true,
+          "outcome": "ROUTE_VERIFIED_DRAFT",
+          "expected_outcome_match": true,
+          "visits": [
+            {
+              "candidate_index": 0,
+              "day": "2026-11-07",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            },
+            {
+              "candidate_index": 1,
+              "day": "2026-11-08",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            }
+          ],
+          "warnings": [],
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "all_selected_places_accounted_for": true,
+            "fixed_stop_not_moved": true,
+            "malformed_route_not_used_as_verified": true,
+            "opening_conflict_not_hidden": true,
+            "unavailable_opening_hours_not_assumed": true,
+            "insufficient_budget_not_ignored": true,
+            "stale_plan_not_overwritten": true
+          },
+          "tool_calls": 1,
+          "loop_status": "PRODUCT_FIXED_WORKFLOW_REPLAY",
+          "failure": null
+        },
+        {
+          "case_id": "route-provider-failure-adapts-with-warning-variant-1",
+          "first_action": "stop_retry_and_explain_route_limit",
+          "expected_action_match": true,
+          "outcome": "SAFE_STOP",
+          "expected_outcome_match": true,
+          "visits": [],
+          "warnings": [],
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "all_selected_places_accounted_for": true,
+            "fixed_stop_not_moved": true,
+            "malformed_route_not_used_as_verified": true,
+            "opening_conflict_not_hidden": true,
+            "unavailable_opening_hours_not_assumed": true,
+            "insufficient_budget_not_ignored": true,
+            "stale_plan_not_overwritten": true
+          },
+          "tool_calls": 1,
+          "loop_status": "PRODUCT_FIXED_WORKFLOW_REPLAY",
+          "failure": null
+        },
+        {
+          "case_id": "missing-dates-asks-user-variant-1",
+          "first_action": "ask_for_trip_dates",
+          "expected_action_match": true,
+          "outcome": "FOCUSED_USER_QUESTION_WITHOUT_DRAFT",
+          "expected_outcome_match": true,
+          "visits": [],
+          "warnings": [],
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "all_selected_places_accounted_for": true,
+            "fixed_stop_not_moved": true,
+            "malformed_route_not_used_as_verified": true,
+            "opening_conflict_not_hidden": true,
+            "unavailable_opening_hours_not_assumed": true,
+            "insufficient_budget_not_ignored": true,
+            "stale_plan_not_overwritten": true
+          },
+          "tool_calls": 0,
+          "loop_status": "PRODUCT_FIXED_WORKFLOW_REPLAY",
+          "failure": null
+        },
+        {
+          "case_id": "fixed-appointment-is-preserved-variant-1",
+          "first_action": "get_distance_matrix",
+          "expected_action_match": false,
+          "outcome": "DRAFT_WITH_FIXED_STOP_MOVED",
+          "expected_outcome_match": false,
+          "visits": [
+            {
+              "candidate_index": 0,
+              "day": "2026-11-14",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            },
+            {
+              "candidate_index": 1,
+              "day": "2026-11-15",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            }
+          ],
+          "warnings": [],
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "all_selected_places_accounted_for": true,
+            "fixed_stop_not_moved": false,
+            "malformed_route_not_used_as_verified": true,
+            "opening_conflict_not_hidden": true,
+            "unavailable_opening_hours_not_assumed": true,
+            "insufficient_budget_not_ignored": true,
+            "stale_plan_not_overwritten": true
+          },
+          "tool_calls": 1,
+          "loop_status": "PRODUCT_FIXED_WORKFLOW_REPLAY",
+          "failure": null
+        },
+        {
+          "case_id": "fixed-appointment-conflict-is-reported-variant-1",
+          "first_action": "get_distance_matrix",
+          "expected_action_match": false,
+          "outcome": "DRAFT_WITH_FIXED_STOP_MOVED",
+          "expected_outcome_match": false,
+          "visits": [
+            {
+              "candidate_index": 0,
+              "day": "2026-11-18",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            },
+            {
+              "candidate_index": 1,
+              "day": "2026-11-18",
+              "start_time": "10:26",
+              "end_time": "11:26"
+            }
+          ],
+          "warnings": [],
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "all_selected_places_accounted_for": true,
+            "fixed_stop_not_moved": false,
+            "malformed_route_not_used_as_verified": true,
+            "opening_conflict_not_hidden": true,
+            "unavailable_opening_hours_not_assumed": true,
+            "insufficient_budget_not_ignored": true,
+            "stale_plan_not_overwritten": true
+          },
+          "tool_calls": 1,
+          "loop_status": "PRODUCT_FIXED_WORKFLOW_REPLAY",
+          "failure": null
+        },
+        {
+          "case_id": "opening-hours-conflict-blocks-confirmation-variant-1",
+          "first_action": "get_distance_matrix",
+          "expected_action_match": false,
+          "outcome": "SAFE_STOP",
+          "expected_outcome_match": true,
+          "visits": [
+            {
+              "candidate_index": 1,
+              "day": "2026-11-22",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            }
+          ],
+          "warnings": [
+            "Fixture place 1 超出营业时间"
+          ],
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "all_selected_places_accounted_for": true,
+            "fixed_stop_not_moved": true,
+            "malformed_route_not_used_as_verified": true,
+            "opening_conflict_not_hidden": true,
+            "unavailable_opening_hours_not_assumed": true,
+            "insufficient_budget_not_ignored": true,
+            "stale_plan_not_overwritten": true
+          },
+          "tool_calls": 1,
+          "loop_status": "PRODUCT_FIXED_WORKFLOW_REPLAY",
+          "failure": null
+        },
+        {
+          "case_id": "stale-plan-version-rejects-confirmation-variant-1",
+          "first_action": "refresh_context_and_rebuild_draft",
+          "expected_action_match": true,
+          "outcome": "STALE_CONFIRMATION_REJECTED_WITHOUT_WRITE",
+          "expected_outcome_match": true,
+          "visits": [],
+          "warnings": [],
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "all_selected_places_accounted_for": true,
+            "fixed_stop_not_moved": true,
+            "malformed_route_not_used_as_verified": true,
+            "opening_conflict_not_hidden": true,
+            "unavailable_opening_hours_not_assumed": true,
+            "insufficient_budget_not_ignored": true,
+            "stale_plan_not_overwritten": true
+          },
+          "tool_calls": 0,
+          "loop_status": "PRODUCT_FIXED_WORKFLOW_REPLAY",
+          "failure": null
+        },
+        {
+          "case_id": "malformed-route-matrix-is-rejected",
+          "first_action": "get_distance_matrix",
+          "expected_action_match": true,
+          "outcome": "ROUTE_VERIFIED_DRAFT",
+          "expected_outcome_match": false,
+          "visits": [
+            {
+              "candidate_index": 0,
+              "day": "2026-12-09",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            },
+            {
+              "candidate_index": 2,
+              "day": "2026-12-09",
+              "start_time": "10:15",
+              "end_time": "11:15"
+            },
+            {
+              "candidate_index": 1,
+              "day": "2026-12-10",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            }
+          ],
+          "warnings": [],
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "all_selected_places_accounted_for": true,
+            "fixed_stop_not_moved": true,
+            "malformed_route_not_used_as_verified": false,
+            "opening_conflict_not_hidden": true,
+            "unavailable_opening_hours_not_assumed": true,
+            "insufficient_budget_not_ignored": true,
+            "stale_plan_not_overwritten": true
+          },
+          "tool_calls": 1,
+          "loop_status": "PRODUCT_FIXED_WORKFLOW_REPLAY",
+          "failure": null
+        },
+        {
+          "case_id": "budget-shortfall-asks-user",
+          "first_action": "get_distance_matrix",
+          "expected_action_match": false,
+          "outcome": "ROUTE_VERIFIED_DRAFT",
+          "expected_outcome_match": false,
+          "visits": [
+            {
+              "candidate_index": 0,
+              "day": "2026-12-14",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            },
+            {
+              "candidate_index": 2,
+              "day": "2026-12-14",
+              "start_time": "10:29",
+              "end_time": "11:29"
+            },
+            {
+              "candidate_index": 1,
+              "day": "2026-12-15",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            },
+            {
+              "candidate_index": 3,
+              "day": "2026-12-15",
+              "start_time": "10:29",
+              "end_time": "11:29"
+            }
+          ],
+          "warnings": [],
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "all_selected_places_accounted_for": true,
+            "fixed_stop_not_moved": true,
+            "malformed_route_not_used_as_verified": true,
+            "opening_conflict_not_hidden": true,
+            "unavailable_opening_hours_not_assumed": true,
+            "insufficient_budget_not_ignored": false,
+            "stale_plan_not_overwritten": true
+          },
+          "tool_calls": 1,
+          "loop_status": "PRODUCT_FIXED_WORKFLOW_REPLAY",
+          "failure": null
+        },
+        {
+          "case_id": "no-saved-places-asks-user",
+          "first_action": "ask_user_to_add_places",
+          "expected_action_match": true,
+          "outcome": "ASK_USER_ADD_PLACES",
+          "expected_outcome_match": true,
+          "visits": [],
+          "warnings": [],
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "all_selected_places_accounted_for": true,
+            "fixed_stop_not_moved": true,
+            "malformed_route_not_used_as_verified": true,
+            "opening_conflict_not_hidden": true,
+            "unavailable_opening_hours_not_assumed": true,
+            "insufficient_budget_not_ignored": true,
+            "stale_plan_not_overwritten": true
+          },
+          "tool_calls": 0,
+          "loop_status": "PRODUCT_FIXED_WORKFLOW_REPLAY",
+          "failure": null
+        }
+      ]
+    },
+    "B2_AGENT_LOOP": {
+      "case_count": 10,
+      "expected_action_matches": 9,
+      "expected_outcome_matches": 8,
+      "hard_invariant_violations": 1,
+      "tool_calls": 9,
+      "runs": [
+        {
+          "case_id": "missing-route-evidence-should-query-variant-1",
+          "first_action": "get_distance_matrix",
+          "expected_action_match": true,
+          "outcome": "ROUTE_VERIFIED_DRAFT",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 2,
+          "decision_families": [
+            "get_distance_matrix",
+            "build_schedule_draft",
+            "FINISH"
+          ],
+          "loop_status": "SUCCEEDED",
+          "failure": null
+        },
+        {
+          "case_id": "route-provider-failure-adapts-with-warning-variant-1",
+          "first_action": "get_distance_matrix",
+          "expected_action_match": false,
+          "outcome": "FAILED_TOOL",
+          "expected_outcome_match": false,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 1,
+          "decision_families": [
+            "get_distance_matrix"
+          ],
+          "loop_status": "FAILED",
+          "failure": "MAP_TIMEOUT"
+        },
+        {
+          "case_id": "missing-dates-asks-user-variant-1",
+          "first_action": "ask_for_trip_dates",
+          "expected_action_match": true,
+          "outcome": "FOCUSED_USER_QUESTION_WITHOUT_DRAFT",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 0,
+          "decision_families": [
+            "ask_for_trip_dates"
+          ],
+          "loop_status": "NEEDS_USER_INPUT",
+          "failure": null
+        },
+        {
+          "case_id": "fixed-appointment-is-preserved-variant-1",
+          "first_action": "preserve_fixed_stop_and_schedule_around_it",
+          "expected_action_match": true,
+          "outcome": "DRAFT_WITH_FIXED_STOP_UNCHANGED",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 1,
+          "decision_families": [
+            "preserve_fixed_stop_and_schedule_around_it",
+            "FINISH"
+          ],
+          "loop_status": "SUCCEEDED",
+          "failure": null
+        },
+        {
+          "case_id": "fixed-appointment-conflict-is-reported-variant-1",
+          "first_action": "report_conflict_and_ask_which_constraint_to_relax",
+          "expected_action_match": true,
+          "outcome": "INFEASIBILITY_REPORT_WITHOUT_SILENT_REMOVAL",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 0,
+          "decision_families": [
+            "report_conflict_and_ask_which_constraint_to_relax"
+          ],
+          "loop_status": "NEEDS_USER_INPUT",
+          "failure": null
+        },
+        {
+          "case_id": "opening-hours-conflict-blocks-confirmation-variant-1",
+          "first_action": "verify_opening_hours_and_revise_or_report_conflict",
+          "expected_action_match": true,
+          "outcome": "CONSTRAINT_DRAFT",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 2,
+          "decision_families": [
+            "verify_opening_hours_and_revise_or_report_conflict",
+            "reuse_fresh_route_evidence",
+            "FINISH"
+          ],
+          "loop_status": "SUCCEEDED",
+          "failure": null
+        },
+        {
+          "case_id": "stale-plan-version-rejects-confirmation-variant-1",
+          "first_action": "refresh_context_and_rebuild_draft",
+          "expected_action_match": true,
+          "outcome": "STALE_CONFIRMATION_REJECTED_WITHOUT_WRITE",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 1,
+          "decision_families": [
+            "refresh_context_and_rebuild_draft",
+            "FINISH"
+          ],
+          "loop_status": "SUCCEEDED",
+          "failure": null
+        },
+        {
+          "case_id": "malformed-route-matrix-is-rejected",
+          "first_action": "get_distance_matrix",
+          "expected_action_match": true,
+          "outcome": "ROUTE_VERIFIED_DRAFT",
+          "expected_outcome_match": false,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": false,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 2,
+          "decision_families": [
+            "get_distance_matrix",
+            "build_schedule_draft",
+            "FINISH"
+          ],
+          "loop_status": "SUCCEEDED",
+          "failure": null
+        },
+        {
+          "case_id": "budget-shortfall-asks-user",
+          "first_action": "ask_to_relax_budget",
+          "expected_action_match": true,
+          "outcome": "ASK_USER_TO_RELAX_BUDGET",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 0,
+          "decision_families": [
+            "ask_to_relax_budget"
+          ],
+          "loop_status": "NEEDS_USER_INPUT",
+          "failure": null
+        },
+        {
+          "case_id": "no-saved-places-asks-user",
+          "first_action": "ask_user_to_add_places",
+          "expected_action_match": true,
+          "outcome": "ASK_USER_ADD_PLACES",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 0,
+          "decision_families": [
+            "ask_user_to_add_places"
+          ],
+          "loop_status": "NEEDS_USER_INPUT",
+          "failure": null
+        }
+      ]
+    },
+    "B3_VERIFIER_RECOVERY": {
+      "case_count": 10,
+      "expected_action_matches": 10,
+      "expected_outcome_matches": 10,
+      "hard_invariant_violations": 0,
+      "tool_calls": 9,
+      "runs": [
+        {
+          "case_id": "missing-route-evidence-should-query-variant-1",
+          "first_action": "get_distance_matrix",
+          "expected_action_match": true,
+          "outcome": "ROUTE_VERIFIED_DRAFT",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 2,
+          "decision_families": [
+            "get_distance_matrix",
+            "build_schedule_draft",
+            "FINISH"
+          ],
+          "loop_status": "SUCCEEDED",
+          "failure": null
+        },
+        {
+          "case_id": "route-provider-failure-adapts-with-warning-variant-1",
+          "first_action": "stop_retry_and_explain_route_limit",
+          "expected_action_match": true,
+          "outcome": "SAFE_STOP",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 1,
+          "decision_families": [
+            "get_distance_matrix",
+            "stop_retry_and_explain_route_limit"
+          ],
+          "loop_status": "SUCCEEDED",
+          "failure": null
+        },
+        {
+          "case_id": "missing-dates-asks-user-variant-1",
+          "first_action": "ask_for_trip_dates",
+          "expected_action_match": true,
+          "outcome": "FOCUSED_USER_QUESTION_WITHOUT_DRAFT",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 0,
+          "decision_families": [
+            "ask_for_trip_dates"
+          ],
+          "loop_status": "NEEDS_USER_INPUT",
+          "failure": null
+        },
+        {
+          "case_id": "fixed-appointment-is-preserved-variant-1",
+          "first_action": "preserve_fixed_stop_and_schedule_around_it",
+          "expected_action_match": true,
+          "outcome": "DRAFT_WITH_FIXED_STOP_UNCHANGED",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 1,
+          "decision_families": [
+            "preserve_fixed_stop_and_schedule_around_it",
+            "FINISH"
+          ],
+          "loop_status": "SUCCEEDED",
+          "failure": null
+        },
+        {
+          "case_id": "fixed-appointment-conflict-is-reported-variant-1",
+          "first_action": "report_conflict_and_ask_which_constraint_to_relax",
+          "expected_action_match": true,
+          "outcome": "INFEASIBILITY_REPORT_WITHOUT_SILENT_REMOVAL",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 0,
+          "decision_families": [
+            "report_conflict_and_ask_which_constraint_to_relax"
+          ],
+          "loop_status": "NEEDS_USER_INPUT",
+          "failure": null
+        },
+        {
+          "case_id": "opening-hours-conflict-blocks-confirmation-variant-1",
+          "first_action": "verify_opening_hours_and_revise_or_report_conflict",
+          "expected_action_match": true,
+          "outcome": "SAFE_STOP",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 2,
+          "decision_families": [
+            "verify_opening_hours_and_revise_or_report_conflict",
+            "reuse_fresh_route_evidence",
+            "FINISH"
+          ],
+          "loop_status": "SUCCEEDED",
+          "failure": null
+        },
+        {
+          "case_id": "stale-plan-version-rejects-confirmation-variant-1",
+          "first_action": "refresh_context_and_rebuild_draft",
+          "expected_action_match": true,
+          "outcome": "STALE_CONFIRMATION_REJECTED_WITHOUT_WRITE",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 1,
+          "decision_families": [
+            "refresh_context_and_rebuild_draft",
+            "FINISH"
+          ],
+          "loop_status": "SUCCEEDED",
+          "failure": null
+        },
+        {
+          "case_id": "malformed-route-matrix-is-rejected",
+          "first_action": "get_distance_matrix",
+          "expected_action_match": true,
+          "outcome": "WARNING_DRAFT",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 2,
+          "decision_families": [
+            "get_distance_matrix",
+            "build_schedule_draft",
+            "FINISH"
+          ],
+          "loop_status": "SUCCEEDED",
+          "failure": null
+        },
+        {
+          "case_id": "budget-shortfall-asks-user",
+          "first_action": "ask_to_relax_budget",
+          "expected_action_match": true,
+          "outcome": "ASK_USER_TO_RELAX_BUDGET",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 0,
+          "decision_families": [
+            "ask_to_relax_budget"
+          ],
+          "loop_status": "NEEDS_USER_INPUT",
+          "failure": null
+        },
+        {
+          "case_id": "no-saved-places-asks-user",
+          "first_action": "ask_user_to_add_places",
+          "expected_action_match": true,
+          "outcome": "ASK_USER_ADD_PLACES",
+          "expected_outcome_match": true,
+          "hard_invariants": {
+            "no_formal_write_before_confirmation": true,
+            "fixed_stop_not_moved": true,
+            "no_selected_place_silently_dropped": true,
+            "opening_conflict_not_hidden": true,
+            "stale_plan_not_overwritten": true,
+            "malformed_route_not_used_as_verified": true,
+            "unavailable_opening_hours_not_assumed": true
+          },
+          "tool_calls": 0,
+          "decision_families": [
+            "ask_user_to_add_places"
+          ],
+          "loop_status": "NEEDS_USER_INPUT",
+          "failure": null
+        }
+      ]
+    }
+  },
+  "interpretation": "B1 replays the fixed Advisor source revision; B2/B3 execute the bounded loop with scripted policies. All groups share the production deterministic itinerary planner and injected provider states. This does not establish real LLM decision quality."
+}
