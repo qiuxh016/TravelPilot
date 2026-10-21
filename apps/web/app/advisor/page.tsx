@@ -1025,18 +1025,48 @@ export default function AdvisorPage() {
         ? assistantPayload.schedule_suggestions.filter((item): item is { candidate_id: string; day: string; start_time: string } => Boolean(item && typeof item === "object" && typeof (item as Record<string, unknown>).candidate_id === "string" && typeof (item as Record<string, unknown>).day === "string" && typeof (item as Record<string, unknown>).start_time === "string"))
         : [];
       if (assistantPayload?.action === "SCHEDULE_PROPOSAL" && scheduleSuggestions.length) {
+        const selectionBeforeTurn = updated.context?.selected_candidate_ids ?? selected;
         const scheduledIds = scheduleSuggestions.map((item) => item.candidate_id);
-        const retainedLodgingIds = selected.filter((id) => updated.candidates.some((candidate) =>
-          candidate.id === id && candidate.planning_category === "LODGING",
-        ));
-        const proposedIds = [...scheduledIds, ...retainedLodgingIds];
-        const proposedSchedules = Object.fromEntries(scheduleSuggestions.map((item) => [item.candidate_id, { day: item.day, start_time: item.start_time }]));
+        const retainedIds = selectionBeforeTurn.filter((id) => {
+          const candidate = updated.candidates.find((item) => item.id === id);
+          if (!candidate) return false;
+          if (candidate.planning_category === "LODGING") return true;
+          // A later recommendation may propose times only for the newly
+          // discussed category. Keep already scheduled choices (especially
+          // meals) and let fresh suggestions override their old times.
+          return Boolean(schedules[id]?.day && schedules[id]?.start_time);
+        });
+        const proposedIds = [...new Set([...scheduledIds, ...retainedIds])];
+        const proposedSchedules: Record<string, { day: string; start_time: string }> = {
+          ...Object.fromEntries(retainedIds.flatMap((id) => {
+            const candidate = updated.candidates.find((item) => item.id === id);
+            const schedule = schedules[id];
+            return candidate?.planning_category !== "LODGING" && schedule?.day && schedule.start_time
+              ? [[id, { day: schedule.day, start_time: schedule.start_time }]]
+              : [];
+          })),
+          ...Object.fromEntries(scheduleSuggestions.map((item) => [item.candidate_id, { day: item.day, start_time: item.start_time }])),
+        };
+        const proposedScheduleItems = proposedIds.flatMap((candidate_id) => {
+          const candidate = updated.candidates.find((item) => item.id === candidate_id);
+          const schedule = proposedSchedules[candidate_id];
+          return candidate?.planning_category !== "LODGING" && schedule?.day && schedule.start_time
+            ? [{ candidate_id, day: schedule.day, start_time: schedule.start_time }]
+            : [];
+        });
         setSelected(proposedIds); setSchedules(proposedSchedules);
         setSessions((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
+        if (proposedScheduleItems.length !== proposedIds.filter((id) =>
+          updated.candidates.some((candidate) => candidate.id === id && candidate.planning_category !== "LODGING"),
+        ).length) {
+          setNotice("已保留之前选择的安排，但其中有地点缺少日期或时间。请补齐后再更新预览。");
+          setAgentActivity("");
+          return true;
+        }
         setAgentActivity("正在核验地点之间的路线，并检查日期、节奏与时间冲突…");
-        const draftKey = draftRequestKey(updated.id, proposedIds, scheduleSuggestions, false);
+        const draftKey = draftRequestKey(updated.id, proposedIds, proposedScheduleItems, false);
         try {
-          const proposedDraft = await createAdvisorDraft(updated.id, proposedIds, scheduleSuggestions, false, draftKey);
+          const proposedDraft = await createAdvisorDraft(updated.id, proposedIds, proposedScheduleItems, false, draftKey);
           finishDraftRequest(draftKey);
           setActive(proposedDraft); setSelected(proposedDraft.draft?.selected_candidate_ids ?? proposedIds);
           setMapDay(proposedDraft.draft?.stops[0]?.day ?? "");

@@ -19,6 +19,27 @@ from travelpilot_api.advisor.interpretation import _candidate_planning_category
 from travelpilot_api.advisor.route_evidence import reusable_route_evidence
 
 
+def _plan_node_meal_type(note: str | None) -> str | None:
+    """Recover an explicitly persisted meal assignment from a plan-node note."""
+    note = str(note or "")
+    return next((kind for kind, label in (
+        ("BREAKFAST", "早餐"), ("LUNCH", "午餐"),
+        ("DINNER", "晚餐"), ("SNACK", "小吃/加餐"),
+    ) if f"用餐安排：{label}" in note), None)
+
+
+def _prior_plan_assignment(
+    candidates: list[dict], meal_type: str | None, used_ids: set[str],
+) -> dict | None:
+    """Match persisted candidate identity to a specific meal when possible."""
+    available = [item for item in candidates if str(item.get("id")) not in used_ids]
+    if meal_type:
+        match = next((item for item in available if item.get("meal_type") == meal_type), None)
+        if match:
+            return match
+    return next((item for item in available if not item.get("meal_type")), None)
+
+
 def _selected_candidates_after_trip_refresh(
     context: dict,
     *,
@@ -28,7 +49,7 @@ def _selected_candidates_after_trip_refresh(
     available_candidate_ids: set[str],
     retained_candidate_ids: list[str] | None = None,
 ) -> list[str]:
-    """Keep the user's draft selection while the underlying plan is unchanged."""
+    """Keep valid user selections while refreshing the underlying trip plan."""
     previous_plan = context.get("current_plan") or {}
     same_plan = (
         previous_plan.get("id") == plan_id
@@ -40,8 +61,15 @@ def _selected_candidates_after_trip_refresh(
             if candidate_id in available_candidate_ids
         ]
     else:
+        # A plan version change must not discard pending Advisor selections.
+        # For example, meals can be selected in a draft while the formal plan
+        # version changes because an attraction was saved elsewhere. Keep any
+        # still-available selection and add the new formal stops. Explicit
+        # removals are already reflected in context by the selection snapshot.
         selected = list(dict.fromkeys([
             *plan_candidate_ids,
+            *(candidate_id for candidate_id in context.get("selected_candidate_ids", [])
+              if candidate_id in available_candidate_ids),
             *(candidate_id for candidate_id in retained_candidate_ids or []
               if candidate_id in available_candidate_ids),
         ]))
@@ -161,26 +189,35 @@ async def refresh_trip_snapshot(db: AsyncSession, row: AdvisorSessionModel) -> d
         .order_by(TripPlanNodeModel.day, TripPlanNodeModel.start_time)
     )).all() if latest_plan else []
 
-    existing_candidates = {
-        str(candidate.get("existing_poi_id")): candidate
-        for candidate in row.candidates if candidate.get("existing_poi_id")
-    }
+    existing_candidates: dict[str, list[dict]] = {}
+    for candidate in row.candidates:
+        if candidate.get("existing_poi_id"):
+            existing_candidates.setdefault(str(candidate["existing_poi_id"]), []).append(candidate)
     plan_candidates = []
     stops = []
+    used_plan_assignment_ids: set[str] = set()
     for node, poi in plan_rows:
-        previous = existing_candidates.get(str(poi.id), {})
+        prior_assignments = existing_candidates.get(str(poi.id), [])
+        meal_type = _plan_node_meal_type(node.note)
+        previous = _prior_plan_assignment(prior_assignments, meal_type, used_plan_assignment_ids) or {}
+        assignment_key = f"meal:{meal_type}" if meal_type else None
+        planning_category = (
+            "FOOD" if meal_type else
+            previous.get("planning_category") or _candidate_planning_category(poi.category, poi.name)
+        )
         candidate = {
             **previous,
             "id": previous.get("id") or provider_candidate_id(
                 session_id=row.id,
                 provider=poi.provider or "local",
                 provider_id=poi.provider_id or str(poi.id),
+                assignment_key=assignment_key,
             ),
             "provider": poi.provider or "local", "provider_id": poi.provider_id or str(poi.id),
             "existing_poi_id": str(poi.id), "in_current_plan": True,
             "name": poi.name, "address": poi.address, "category": poi.category,
-            "planning_category": previous.get("planning_category") or _candidate_planning_category(poi.category, poi.name),
-            "meal_type": previous.get("meal_type"),
+            "planning_category": planning_category,
+            "meal_type": meal_type or previous.get("meal_type"),
             "latitude": float(poi.latitude), "longitude": float(poi.longitude),
             "duration_min": poi.suggested_duration_min, "opening_hours": poi.opening_hours,
             "environment_profile": poi.environment_profile,
@@ -191,10 +228,12 @@ async def refresh_trip_snapshot(db: AsyncSession, row: AdvisorSessionModel) -> d
             "confidence": previous.get("confidence", 0.5), "suggestion": previous.get("suggestion"),
         }
         plan_candidates.append(candidate)
+        used_plan_assignment_ids.add(str(candidate["id"]))
         stops.append({
             "candidate_id": candidate["id"], "poi_id": str(poi.id), "name": poi.name,
             "category": poi.category,
-            "planning_category": previous.get("planning_category") or _candidate_planning_category(poi.category, poi.name),
+            "planning_category": planning_category,
+            "meal_type": meal_type or previous.get("meal_type"),
             "day": node.day.isoformat(), "start_time": node.start_time.isoformat(),
             "end_time": node.end_time.isoformat(), "priority": node.priority,
             "status": node.status, "note": node.note,
@@ -289,7 +328,21 @@ def trip_completeness_audit(row: AdvisorSessionModel, context: dict | None = Non
     """Summarize visible trip gaps from saved plan and candidates without guessing provider facts."""
     context = context or row.context or {}
     plan = context.get("current_plan") or {}
-    stops = plan.get("stops", [])
+    formal_stops = plan.get("stops", [])
+    draft = getattr(row, "draft", None)
+    draft_is_current = (
+        isinstance(draft, dict)
+        and draft.get("context_revision") == context.get("revision")
+    )
+    # While a draft is current, its itinerary is the user's active working
+    # plan. Audit that snapshot so completing one part (such as meals) does
+    # not make the checklist claim it is missing when the user continues with
+    # another part (such as lodging).
+    stops = (
+        draft["stops"]
+        if draft_is_current and isinstance(draft.get("stops"), list)
+        else formal_stops
+    )
     audit: list[str] = [] if stops else ["还没有按日期安排游览或用餐地点"]
     days: dict[str, list[dict]] = {}
     for stop in stops:
@@ -353,8 +406,8 @@ def trip_completeness_audit(row: AdvisorSessionModel, context: dict | None = Non
     if not str(planning_inputs.get("origin", "")).strip():
         audit.append("没有出发地信息，无法估算出发地到首个地点的交通时间")
     route_evidence = context.get("agent_route_evidence") or {}
-    if len(stops) > 1:
-        candidate_ids = [str(stop.get("candidate_id", "")) for stop in stops]
+    if len(formal_stops) > 1:
+        candidate_ids = [str(stop.get("candidate_id", "")) for stop in formal_stops]
         reusable = reusable_route_evidence(
             route_evidence,
             candidate_ids,
@@ -362,8 +415,7 @@ def trip_completeness_audit(row: AdvisorSessionModel, context: dict | None = Non
         )
         if reusable is None or reusable.get("status") != "VERIFIED":
             audit.append("地点之间的实际交通路线尚未核验")
-    draft = getattr(row, "draft", None)
-    if isinstance(draft, dict) and draft.get("context_revision") == context.get("revision"):
+    if draft_is_current:
         for impact in (draft.get("weather") or {}).get("plan_impacts", []):
             if isinstance(impact, dict) and isinstance(impact.get("day"), str) and isinstance(impact.get("name"), str):
                 audit.append(f"{impact['day']} 天气提醒：{impact['name']} 可能受降水影响")

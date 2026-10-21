@@ -49,6 +49,55 @@ def test_audit_does_not_flag_meal_when_food_is_explicitly_in_the_plan():
     assert any("尚未明确安排晚餐" in item for item in audit)
 
 
+def test_audit_uses_current_draft_meals_while_user_continues_with_lodging():
+    row = SimpleNamespace(
+        start_date=date(2026, 11, 2), end_date=date(2026, 11, 2), candidates=[],
+        context={
+            "revision": 8,
+            "planning_inputs": {"origin": "成都东站"},
+            "current_plan": {"stops": [{
+                "candidate_id": "park", "name": "城市公园", "planning_category": "ATTRACTION",
+                "day": "2026-11-02", "start_time": "09:00", "end_time": "11:00",
+            }]},
+        },
+        draft={
+            "context_revision": 8,
+            "stops": [
+                {"candidate_id": "park", "name": "城市公园", "planning_category": "ATTRACTION",
+                 "day": "2026-11-02", "start_time": "09:00", "end_time": "11:00"},
+                {"candidate_id": "lunch", "name": "已选午餐店", "planning_category": "FOOD",
+                 "meal_type": "LUNCH", "day": "2026-11-02", "start_time": "12:00", "end_time": "13:00"},
+            ],
+        },
+    )
+
+    audit = trip_completeness_audit(row)
+
+    assert "2026-11-02 尚未明确安排午餐" not in audit
+    assert "2026-11-02 尚未明确安排晚餐" in audit
+
+
+def test_audit_ignores_stale_draft_meals_after_trip_context_changes():
+    row = SimpleNamespace(
+        start_date=date(2026, 11, 2), end_date=date(2026, 11, 2), candidates=[],
+        context={
+            "revision": 9,
+            "planning_inputs": {"origin": "成都东站"},
+            "current_plan": {"stops": [{
+                "candidate_id": "park", "name": "城市公园", "planning_category": "ATTRACTION",
+                "day": "2026-11-02", "start_time": "09:00", "end_time": "11:00",
+            }]},
+        },
+        draft={
+            "context_revision": 8,
+            "stops": [{"candidate_id": "lunch", "name": "已选午餐店", "planning_category": "FOOD",
+                       "day": "2026-11-02", "start_time": "12:00", "end_time": "13:00"}],
+        },
+    )
+
+    assert "2026-11-02 尚未明确安排午餐" in trip_completeness_audit(row)
+
+
 def test_meal_completeness_uses_time_window_overlap_not_only_start_time():
     row = SimpleNamespace(
         start_date=date(2026, 11, 2), end_date=date(2026, 11, 2), candidates=[],
