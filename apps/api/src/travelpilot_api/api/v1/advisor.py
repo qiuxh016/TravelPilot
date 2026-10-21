@@ -27,6 +27,7 @@ from travelpilot_api.advisor.context import (
     planning_state,
     refresh_trip_snapshot,
     sync_personal_memory_snapshot,
+    trip_action_items,
 )
 from travelpilot_api.advisor.destination_discovery import run_destination_discovery
 from travelpilot_api.advisor.destination_service import (
@@ -415,6 +416,7 @@ async def update_session_context(
         payload={
             "event": "CONTEXT_UPDATED",
             "planning_state": context["planning_state"],
+            "trip_action_items": trip_action_items(row, context),
             "invalidated_pending_task": pending_invalidated,
         },
     ))

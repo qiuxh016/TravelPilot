@@ -191,6 +191,12 @@ async def propose_existing_trip_schedule(
         str(candidate_id)
         for candidate_id in context.get("selected_candidate_ids", [])
     }
+    selected_lodging_ids = [
+        str(candidate.get("id"))
+        for candidate in candidates
+        if str(candidate.get("id")) in selected_candidate_ids
+        and candidate.get("planning_category") == "LODGING"
+    ]
     schedule_candidates = [
         candidate for candidate in candidates
         if (
@@ -394,9 +400,15 @@ async def propose_existing_trip_schedule(
             "day": visit.day.isoformat(),
             "start_time": visit.start_time.strftime("%H:%M"),
         } for visit in anchored_visits]
-        result.selected_candidate_ids = selected_plan_ids
-        if set(context.get("selected_candidate_ids", [])) != set(selected_plan_ids):
-            context["selected_candidate_ids"] = selected_plan_ids
+        # Lodging is not a timed itinerary stop, but it is still part of the
+        # user's selection. Preserve it when a full schedule proposal replaces
+        # the selected sightseeing/meal set.
+        proposal_selection_ids = list(dict.fromkeys([
+            *selected_plan_ids, *selected_lodging_ids,
+        ]))
+        result.selected_candidate_ids = proposal_selection_ids
+        if set(context.get("selected_candidate_ids", [])) != set(proposal_selection_ids):
+            context["selected_candidate_ids"] = proposal_selection_ids
             context["revision"] = int(context.get("revision", 0)) + 1
         if matrix is not None and route_result.evidence_retrieved_at:
             context["agent_route_evidence"] = {

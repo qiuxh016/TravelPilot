@@ -442,9 +442,12 @@ function checklistItemKey(item: { kind: string; day: string; meal_type?: string;
 
 function schedulesForSession(session: AdvisorSession) {
   const schedules: Record<string, { day: string; start_time: string }> = {};
-  for (const [candidateId, value] of Object.entries(session.context.candidate_schedules ?? {})) {
-    if (!value || typeof value !== "object") continue;
-    schedules[candidateId] = { day: value.day ?? "", start_time: value.start_time ?? "" };
+  // Rehydrate older draft/current-plan values first. The persisted live
+  // selection snapshot is the latest user input and must win after reload.
+  if (!session.draft_stale) {
+    for (const stop of session.draft?.stops ?? []) {
+      schedules[stop.candidate_id] = { day: stop.day, start_time: stop.start_time.slice(0, 5) };
+    }
   }
   for (const stop of session.context.current_plan?.stops ?? []) {
     schedules[stop.candidate_id] = { day: stop.day, start_time: stop.start_time.slice(0, 5) };
@@ -457,8 +460,11 @@ function schedulesForSession(session: AdvisorSession) {
       start_time: candidate.explicit_start_time ?? current.start_time,
     };
   }
-  for (const stop of session.draft?.stops ?? []) {
-    schedules[stop.candidate_id] = { day: stop.day, start_time: stop.start_time.slice(0, 5) };
+  // A newer selection can invalidate a draft. Never let stale draft values
+  // replace the latest persisted dates and times when restoring a session.
+  for (const [candidateId, value] of Object.entries(session.context.candidate_schedules ?? {})) {
+    if (!value || typeof value !== "object") continue;
+    schedules[candidateId] = { day: value.day ?? "", start_time: value.start_time ?? "" };
   }
   return schedules;
 }
@@ -532,6 +538,8 @@ export default function AdvisorPage() {
     sessionId: string; fingerprint: string; idempotencyKey: string;
   } | null>(null);
   const pendingDraftRequestRef = useRef<{ fingerprint: string; key: string } | null>(null);
+  const autoPreviewTimerRef = useRef<number | null>(null);
+  const userMessagePendingRef = useRef(false);
   const selectionSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [selectionSyncStatus, setSelectionSyncStatus] = useState<"SAVED" | "SAVING" | "FAILED">("SAVED");
   const progressAbortRef = useRef<AbortController | null>(null);
@@ -851,7 +859,17 @@ export default function AdvisorPage() {
       candidate.planning_category === "LODGING" && selected.includes(candidate.id),
     ),
   );
+  const savedOrigin = active?.context?.planning_inputs?.origin?.trim() ?? "";
   const uniqueTripActionItems = tripActionItems.flatMap((item) => {
+    // Older assistant messages can carry a stale missing-origin finding. The
+    // persisted session context is authoritative after a context save.
+    if (item.key === "ORIGIN" && savedOrigin) return [];
+    if (item.key === "ORIGIN" && origin.trim()) return [{
+      ...item,
+      title: "出发地已填写，尚未保存",
+      detail: "点击“保存旅行条件”后，出发地才会参与路线估算。",
+      action_label: "去保存条件",
+    }];
     if (item.key === "LODGING" && lodgingSelectedInCurrentWork) return [];
     const meal = item.key === "MEAL:午餐" ? "午餐" : item.key === "MEAL:晚餐" ? "晚餐" : null;
     if (!meal) return [item];
@@ -988,7 +1006,19 @@ export default function AdvisorPage() {
       await confirmDraft();
       return true;
     }
-    const fingerprint = await advisorMessageFingerprint(content);
+    userMessagePendingRef.current = true;
+    if (autoPreviewTimerRef.current !== null) {
+      window.clearTimeout(autoPreviewTimerRef.current);
+      autoPreviewTimerRef.current = null;
+    }
+    setAutoPreviewPending(false);
+    let fingerprint: string | null;
+    try {
+      fingerprint = await advisorMessageFingerprint(content);
+    } catch (reason) {
+      userMessagePendingRef.current = false;
+      throw reason;
+    }
     let storedRequest: { idempotencyKey?: string; fingerprint?: string } | null = null;
     try {
       const value = sessionStorage.getItem(pendingMessageStorageKey(active.id));
@@ -1072,11 +1102,10 @@ export default function AdvisorPage() {
         const retainedIds = selectionBeforeTurn.filter((id) => {
           const candidate = updated.candidates.find((item) => item.id === id);
           if (!candidate) return false;
-          if (candidate.planning_category === "LODGING") return true;
-          // A later recommendation may propose times only for the newly
-          // discussed category. Keep already scheduled choices (especially
-          // meals) and let fresh suggestions override their old times.
-          return Boolean(schedules[id]?.day && schedules[id]?.start_time);
+          // Keep every existing choice, even if its local time is incomplete.
+          // The completeness check below will ask the user to fill missing
+          // times instead of silently dropping an attraction or meal.
+          return true;
         });
         const proposedIds = [...new Set([...scheduledIds, ...retainedIds])];
         const proposedSchedules: Record<string, { day: string; start_time: string }> = {
@@ -1144,6 +1173,7 @@ export default function AdvisorPage() {
     finally {
       progressAbort.abort();
       if (progressAbortRef.current === progressAbort) progressAbortRef.current = null;
+      userMessagePendingRef.current = false;
       setBusy(false); setAgentActivity("");
     }
   }
@@ -1181,6 +1211,44 @@ export default function AdvisorPage() {
       if (!handleDraftMemoryConflict(reason)) setError((reason as Error).message);
     }
     finally { setBusy(false); if (automatic) setAutoPreviewPending(false); }
+  }
+
+  async function findConflictOptions() {
+    if (!active?.draft || active.draft_stale || draftIsStale || negotiationBusy) return;
+    setNegotiationBusy(true); setError(""); setNegotiation(null);
+    try {
+      const result = await negotiateAdvisorDraft(active.id, active.draft.version);
+      setNegotiation({ sessionId: active.id, draftVersion: active.draft.version, result });
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally { setNegotiationBusy(false); }
+  }
+
+  async function applyNegotiationOption(option: AdvisorNegotiation["alternatives"][number]) {
+    if (!active?.draft || draftIsStale || active.status !== "ACTIVE") return;
+    const removed = new Set(option.changes.filter((change) => change.operation === "REMOVE").map((change) => change.candidate_id));
+    const moved = new Map(option.changes.filter((change) => change.operation === "MOVE").map((change) => [change.candidate_id, change]));
+    const candidateIds = active.draft.selected_candidate_ids.filter((id) => !removed.has(id));
+    const draftSchedules = active.draft.stops.filter((stop) => !removed.has(stop.candidate_id)).map((stop) => {
+      const change = moved.get(stop.candidate_id);
+      return {
+        candidate_id: stop.candidate_id,
+        day: change?.day ?? stop.day,
+        start_time: change?.start_time?.slice(0, 5) ?? stop.start_time.slice(0, 5),
+      };
+    });
+    setBusy(true); setError(""); setNegotiation(null);
+    try {
+      const updated = await createAdvisorDraft(active.id, candidateIds, draftSchedules, false, crypto.randomUUID());
+      setActive(updated);
+      setSelected(updated.draft?.selected_candidate_ids ?? candidateIds);
+      setSchedules(Object.fromEntries(draftSchedules.map((item) => [item.candidate_id, { day: item.day, start_time: item.start_time }])));
+      setMapDay(updated.draft?.stops[0]?.day ?? "");
+      setSessions((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
+      setNotice("已按你选的冲突调整方案重新核验。检查更新后的安排后，可确认写入正式行程。");
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally { setBusy(false); }
   }
 
   async function saveAttentionDecision(itemKey: string, decision: "LATER" | "NOT_NEEDED" | "RESET"): Promise<boolean> {
@@ -1258,29 +1326,55 @@ export default function AdvisorPage() {
   }
 
   async function confirmDraft(session: AdvisorSession | null = active) {
-    if (!session?.draft) return;
+    if (!session) return;
+    if (!selected.length) {
+      setError("还没有选择要加入行程的地点或安排。");
+      return;
+    }
+    if (!schedulesComplete) {
+      setError("请先为已选地点补齐日期和开始时间；确认后会直接写入行程。");
+      return;
+    }
+    const missingRequired = session.context?.planning_state?.missing_required ?? [];
+    if (missingRequired.length) {
+      setError(`还需要补充旅行信息：${missingRequired.join("、")}。保存后即可直接加入行程。`);
+      return;
+    }
     setBusy(true); setError("");
     try {
-      const result = await confirmAdvisorDraft(session.id, session.draft.version);
+      await persistSelectionSnapshot(session, selected, schedules);
+      let sessionToConfirm = session;
+      const mustRefreshDraft = !session.draft || (session.id === active?.id && draftIsStale);
+      if (mustRefreshDraft) {
+        const draftSchedules = scheduleRequiredIds.map((candidate_id) => ({ candidate_id, ...schedules[candidate_id] }));
+        const draftKey = draftRequestKey(session.id, selected, draftSchedules, false);
+        sessionToConfirm = await createAdvisorDraft(session.id, selected, draftSchedules, false, draftKey);
+        finishDraftRequest(draftKey);
+        if (!sessionToConfirm.draft || sessionToConfirm.draft_stale) {
+          throw new Error("当前安排还不能直接写入，请检查地点、日期和时间后重试。");
+        }
+        setActive(sessionToConfirm);
+        setSelected(sessionToConfirm.draft.selected_candidate_ids);
+        setSessions((current) => [sessionToConfirm, ...current.filter((item) => item.id !== sessionToConfirm.id)]);
+      }
+      const draft = sessionToConfirm.draft;
+      if (!draft) throw new Error("没有可写入的行程安排，请重新选择地点和时间。");
+      const result = await confirmAdvisorDraft(sessionToConfirm.id, draft.version);
       const confirmedAt = new Date().toISOString();
-      setActive((current) => current?.id === session.id ? {
-        ...current,
+      const confirmedSession: AdvisorSession = {
+        ...sessionToConfirm,
         status: "CONFIRMED",
         trip_id: result.trip_id,
         confirmed_trip_id: result.trip_id,
         confirmed_plan_id: result.plan_id,
         updated_at: confirmedAt,
-      } : current);
-      setSessions((current) => current.map((item) => item.id === session.id ? {
-        ...item,
-        status: "CONFIRMED",
-        trip_id: result.trip_id,
-        confirmed_trip_id: result.trip_id,
-        confirmed_plan_id: result.plan_id,
-        updated_at: confirmedAt,
-      } : session));
+      } satisfies AdvisorSession;
+      setActive(confirmedSession);
+      setSessions((current) => [confirmedSession, ...current.filter((item) => item.id !== sessionToConfirm.id)]);
       router.push(`/trips/${result.trip_id}/plan`);
-    } catch (reason) { setError((reason as Error).message); }
+    } catch (reason) {
+      if (!handleDraftMemoryConflict(reason)) setError((reason as Error).message);
+    }
     finally { setBusy(false); }
   }
 
@@ -1398,6 +1492,10 @@ export default function AdvisorPage() {
   });
   useEffect(() => {
     if (autoPreviewRevision === 0) return;
+    if (userMessagePendingRef.current) {
+      setAutoPreviewPending(false);
+      return;
+    }
     if (busy) return;
     const hasMissingPlanningContext = Boolean(active?.context?.planning_state?.missing_required?.length);
     if (!active || active.status !== "ACTIVE" || !selected.length || !schedulesComplete
@@ -1407,11 +1505,17 @@ export default function AdvisorPage() {
     }
     if (lastAutoPreviewFingerprint.current === selectedScheduleFingerprint) return;
     const timer = window.setTimeout(() => {
+      autoPreviewTimerRef.current = null;
+      if (userMessagePendingRef.current) return;
       lastAutoPreviewFingerprint.current = selectedScheduleFingerprint;
       setAutoPreviewPending(true);
       void generateDraft(false, true);
     }, 600);
-    return () => window.clearTimeout(timer);
+    autoPreviewTimerRef.current = timer;
+    return () => {
+      window.clearTimeout(timer);
+      if (autoPreviewTimerRef.current === timer) autoPreviewTimerRef.current = null;
+    };
   }, [active, autoPreviewRevision, busy, draftIsStale, schedulesComplete, selected, selectedScheduleFingerprint]);
   const travelDays = (() => {
     if (!active?.start_date || !active.end_date) return [];
@@ -2179,10 +2283,10 @@ export default function AdvisorPage() {
 
       </>}
 
-      {(active?.draft || active?.confirmed_trip_id) && <footer className="advisor-confirm-bar">
-        <div><strong>{active?.status === "CONFIRMED" ? "行程已更新" : "确认后直接更新正式行程"}</strong><p>请先检查地点、时间和变更摘要；确认后会创建或更新正式计划。</p></div>
-        {active?.draft && draftIsStale && <span role="status" className="advisor-live-error">旅行条件或正式行程已变化，请重新检查这份调整预览</span>}
-        {active?.status === "CONFIRMED" && active.confirmed_trip_id ? <Link className="primary" href={`/trips/${active.confirmed_trip_id}/plan`}>查看已更新行程</Link> : <button type="button" className="primary" onClick={() => void confirmDraft()} disabled={!active?.draft || draftIsStale || busy}>{busy ? "正在更新行程…" : "确认并应用到行程"}</button>}
+      {(active?.draft || active?.confirmed_trip_id || (active?.status === "ACTIVE" && selected.length > 0)) && <footer className="advisor-confirm-bar">
+        <div><strong>{active?.status === "CONFIRMED" ? "行程已更新" : "确认后直接加入正式行程"}</strong><p>点击后会按当前选择和时间核验并写入；无需单独生成预览。</p></div>
+        {active?.draft && draftIsStale && <span role="status" className="advisor-live-error">预览已过期；点击确认后会按当前安排重新核验并写入</span>}
+        {active?.status === "CONFIRMED" && active.confirmed_trip_id ? <Link className="primary" href={`/trips/${active.confirmed_trip_id}/plan`}>查看已更新行程</Link> : <button type="button" className="primary" onClick={() => void confirmDraft()} disabled={busy}>{busy ? "正在核验并写入…" : "确认并加入行程"}</button>}
       </footer>}
       {importOpen && active?.trip_id && <TripImportTool tripId={active.trip_id} onClose={closeAdvisorImport} onImported={() => { setImportOpen(false); void refreshAfterGuideImport(); }} />}
       {whatIf && <AdvisorWhatIf tripId={whatIf.tripId} initialEventType={whatIf.eventType} prefill={whatIf.prefill} onClose={() => setWhatIf(null)} onApplied={() => void refreshAfterWhatIfApplied()} />}

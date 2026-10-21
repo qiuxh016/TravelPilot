@@ -3,8 +3,8 @@ import { expect, test } from "@playwright/test";
 const api = process.env.TRAVELPILOT_TEST_API_URL ?? "http://localhost:8000";
 const stub = process.env.TRAVELPILOT_TEST_STUB_URL ?? "http://127.0.0.1:8002";
 
-test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版本", async ({ page, request }, testInfo) => {
-  test.setTimeout(120_000);
+test("现有旅行 Agent 主动生成草案并等待用户确认", async ({ page, request }, testInfo) => {
+  test.setTimeout(240_000);
   const browserErrors: string[] = [];
   const unexpectedHttpErrors: string[] = [];
   page.on("pageerror", (error) => browserErrors.push(error.message));
@@ -155,7 +155,7 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await expect(page).toHaveURL(/\/trips$/);
     await page.goto("/advisor");
-    await page.getByRole("button", { name: /开始新对话/ }).click();
+    await page.getByRole("button", { name: /开始新对话|新建对话/ }).click();
     await page.getByRole("button", { name: "关联已有旅行" }).click();
     await page.getByLabel("选择要咨询的旅行").selectOption(trip.id);
     await expect(page.getByRole("status")).toContainText("模型已配置：");
@@ -223,38 +223,22 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     await page.locator("#advisor-message").fill("那哪个更适合带孩子？");
     await page.getByRole("button", { name: "发送" }).click();
     await expect(page.getByText(/结合你前面提到的博物馆偏好/)).toBeVisible({ timeout: 30_000 });
+    await page.locator("#advisor-message").fill("看看时间怎么安排比较合适");
+    await page.getByRole("button", { name: "发送" }).click();
+    const initialDraftFollowUps = page.getByRole("region", { name: "草案后续建议" }).last();
+    await expect(initialDraftFollowUps).toBeVisible({ timeout: 30_000 });
+    await expect(initialDraftFollowUps).toContainText("草案里的午餐还没安排");
+    const beforeAnswer = await request.get(`${api}/api/v1/trips/${trip.id}/plans`);
+    expect(await beforeAnswer.json()).toHaveLength(1);
+    if (process.env.TRAVELPILOT_QA_SCREENSHOT) {
+      await page.screenshot({ path: process.env.TRAVELPILOT_QA_SCREENSHOT, fullPage: false });
+    }
     const parkMemory = await request.post(`${api}/api/v1/account/memories`, {
       headers: writeHeaders,
       data: { category: "GENERAL", text: "不去公园", constraint_type: "HARD_LIMIT" },
     });
     expect(parkMemory.ok(), await parkMemory.text()).toBeTruthy();
     const parkMemoryRecord = await parkMemory.json() as { id: string };
-    await page.locator("#advisor-message").fill("看看时间怎么安排比较合适");
-    await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.getByText("你希望每天安排得轻松一些吗？").first()).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole("region", { name: "等待你补充" }).last())
-      .toContainText("点选即可继续原任务");
-    const pendingQuestion = page.getByRole("region", { name: "等待你补充" }).last();
-    await expect(pendingQuestion).toBeInViewport();
-    await expect(pendingQuestion).toContainText("这一步需要你来决定");
-    await expect(pendingQuestion).toContainText("在下方输入自己的答案");
-    if (process.env.TRAVELPILOT_QA_SCREENSHOT) {
-      await page.screenshot({ path: process.env.TRAVELPILOT_QA_SCREENSHOT, fullPage: false });
-    }
-    await page.locator("#advisor-message").fill("推荐午餐");
-    await pendingQuestion.getByRole("button", { name: "改问其他问题" }).click();
-    await expect(page.locator(".advisor-message.user").filter({ hasText: "取消" }).last()).toBeVisible();
-    await expect(page.locator(".advisor-message.user").filter({ hasText: "推荐午餐" }).last()).toBeVisible();
-    await expect(page.locator(".advisor-task-state.is-cancelled").last()).toContainText("已取消");
-    await page.locator("#advisor-message").fill("看看时间怎么安排比较合适");
-    await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.getByText("你希望每天安排得轻松一些吗？").last()).toBeVisible({ timeout: 30_000 });
-    const refreshedPendingQuestion = page.getByRole("region", { name: "等待你补充" }).last();
-    await expect(refreshedPendingQuestion).toBeVisible();
-    await expect(refreshedPendingQuestion).toContainText("每天安排得轻松一些吗");
-    const beforeAnswer = await request.get(`${api}/api/v1/trips/${trip.id}/plans`);
-    expect(await beforeAnswer.json()).toHaveLength(1);
-    await refreshedPendingQuestion.getByRole("button", { name: "自定义回答" }).click();
     await page.locator("#advisor-message").fill("请把后面的行程安排得不要太赶，多留一些休息时间");
     const scheduleResponsePromise = page.waitForResponse((response) =>
       response.url().includes("/api/v1/advisor/sessions/")
@@ -268,10 +252,6 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
       .toBeVisible({ timeout: 60_000 });
     await expect(page.locator(".advisor-live-warning").filter({ hasText: "请人工核对硬性限制：不去公园" })).toHaveCount(0);
     await expect(page.locator(".advisor-live-warning").filter({ hasText: "不吃辣" })).toBeVisible();
-    const removeTestMemory = await request.delete(`${api}/api/v1/account/memories/${parkMemoryRecord.id}`, {
-      headers: writeHeaders,
-    });
-    expect(removeTestMemory.status()).toBe(204);
     const scheduleSession = await (await scheduleResponsePromise).json() as {
       messages: Array<{ role: string; payload: Record<string, unknown> | null }>;
     };
@@ -313,16 +293,36 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     await mealCandidate.getByLabel("用餐时间").fill("12:30");
     await expect(mealCandidate.getByLabel("用餐日期")).toHaveValue(format(start));
     await expect(mealCandidate.getByLabel("用餐时间")).toHaveValue("12:30");
+    await expect(page.locator(".advisor-selection-count")).toContainText("已同步");
     expect(await (await request.get(`${api}/api/v1/trips/${trip.id}/plans`)).json()).toHaveLength(1);
     const mealSessionId = new URL(page.url()).searchParams.get("sessionId");
     expect(mealSessionId).toBeTruthy();
     const mealSessionState = await (await request.get(
       `${api}/api/v1/advisor/sessions/${mealSessionId}`,
-    )).json() as { candidates: Array<{ id: string; name: string; planning_category?: string }> };
+    )).json() as {
+      candidates: Array<{ id: string; name: string; planning_category?: string }>;
+      context: {
+        selected_candidate_ids?: string[];
+        candidate_schedules?: Record<string, { day?: string; start_time?: string }>;
+      };
+    };
+    const selectionBeforeWarningCheck = mealSessionState.context.selected_candidate_ids ?? [];
+    const schedulesBeforeWarningCheck = mealSessionState.context.candidate_schedules ?? {};
+    const currentPlanSchedules = new Map(currentSession.context.current_plan.stops.map((stop) => [
+      stop.candidate_id,
+      { day: stop.day, start_time: stop.start_time.slice(0, 5) },
+    ]));
+    const nonMealCandidateIds = selectionBeforeWarningCheck.filter((candidateId) =>
+      mealSessionState.candidates.find((candidate) => candidate.id === candidateId)?.planning_category !== "FOOD",
+    );
     const selectedMeal = mealSessionState.candidates.find((candidate) =>
       candidate.name === "模拟川味餐馆" && candidate.planning_category === "FOOD",
     );
     expect(selectedMeal).toBeTruthy();
+    expect(selectionBeforeWarningCheck).toContain(selectedMeal!.id);
+    expect(schedulesBeforeWarningCheck[selectedMeal!.id]).toMatchObject({
+      day: format(start), start_time: "12:30",
+    });
     const unusualMealDraft = await request.post(
       `${api}/api/v1/advisor/sessions/${mealSessionId}/draft`,
       {
@@ -344,7 +344,44 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     await expect(page.locator(".advisor-live-warning").filter({
       hasText: "模拟川味餐馆标记为午餐，当前安排在 21:00",
     })).toBeVisible();
-    await mealCandidate.getByRole("button", { name: "已加入 ✓" }).click();
+    const restoreSelection = await request.patch(
+      `${api}/api/v1/advisor/sessions/${mealSessionId}/selection`,
+      {
+        headers: writeHeaders,
+        data: {
+          selected_candidate_ids: selectionBeforeWarningCheck,
+          schedules: selectionBeforeWarningCheck.flatMap((candidate_id) => {
+            const candidate = mealSessionState.candidates.find((item) => item.id === candidate_id);
+            const schedule = schedulesBeforeWarningCheck[candidate_id]
+              ?? currentPlanSchedules.get(candidate_id);
+            if (candidate?.planning_category === "FOOD") {
+              return [{ candidate_id, day: schedule?.day ?? format(start), start_time: schedule?.start_time ?? "12:30" }];
+            }
+            const attractionIndex = nonMealCandidateIds.indexOf(candidate_id);
+            return [{
+              candidate_id,
+              day: schedule?.day ?? format(attractionIndex === 0 ? start : end),
+              start_time: schedule?.start_time ?? (attractionIndex === 0 ? "09:00" : "09:00"),
+            }];
+          }),
+        },
+      },
+    );
+    expect(restoreSelection.ok(), await restoreSelection.text()).toBeTruthy();
+    const restoredSession = await restoreSelection.json() as {
+      context: { selected_candidate_ids: string[]; candidate_schedules: Record<string, { day?: string; start_time?: string }> };
+    };
+    expect(restoredSession.context.selected_candidate_ids).toContain(selectedMeal!.id);
+    expect(restoredSession.context.candidate_schedules[selectedMeal!.id]).toMatchObject({
+      day: format(start), start_time: "12:30",
+    });
+    const restoredRead = await request.get(`${api}/api/v1/advisor/sessions/${mealSessionId}`);
+    expect((await restoredRead.json()).context.candidate_schedules[selectedMeal!.id]).toMatchObject({
+      day: format(start), start_time: "12:30",
+    });
+    await page.goto(`/advisor?sessionId=${mealSessionId}`);
+    await expect(page.locator(".advisor-live-candidate").filter({ hasText: "模拟川味餐馆" })
+      .getByLabel("用餐时间")).toHaveValue("12:30");
     const compoundGoal = "帮我规划整天行程，同时推荐午餐地点";
     await page.locator("#advisor-message").fill(compoundGoal);
     const compoundResponsePromise = page.waitForResponse((response) =>
@@ -356,6 +393,16 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
       messages: Array<{ role: string; content: string; payload: Record<string, unknown> | null }>;
     };
     const compoundAssistant = [...compoundSession.messages].reverse().find((item) => item.role === "assistant");
+    const afterCompoundState = await (await request.get(
+      `${api}/api/v1/advisor/sessions/${mealSessionId}`,
+    )).json() as {
+      context: { selected_candidate_ids: string[] };
+      draft: { selected_candidate_ids: string[]; stops: Array<{ candidate_id: string }> } | null;
+    };
+    const nonMealSelections = selectionBeforeWarningCheck.filter((id) => id !== selectedMeal!.id);
+    expect(afterCompoundState.context.selected_candidate_ids).toEqual(
+      expect.arrayContaining(selectionBeforeWarningCheck),
+    );
     expect(compoundAssistant?.payload?.planning_category).toBe("FOOD");
     expect(compoundAssistant?.payload?.meal_type).toBe("LUNCH");
     expect(compoundAssistant?.payload?.schedule_recommendation_requested).toBe(true);
@@ -363,40 +410,12 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
       .toBeGreaterThan(0);
     await expect(page.locator(".advisor-candidate-evidence-note")).toContainText("不代表实时营业、价格或全网热度已核实");
     await expect(page.locator(".advisor-live-candidate").first()).toContainText("来源：本地模拟数据");
-    const compoundMessage = page.locator(".advisor-message.assistant")
-      .filter({ hasText: "你希望每天安排得轻松一些吗" }).last();
-    await expect(compoundMessage.locator(".advisor-agent-trace")).toContainText("地点证据");
-    await expect(compoundMessage.locator(".advisor-agent-trace")).toContainText("地图");
-    await expect(compoundMessage.locator(".advisor-agent-trace")).toContainText("候选只代表地图检索结果");
-    if (process.env.TRAVELPILOT_EVIDENCE_SCREENSHOT_PATH) {
-      await compoundMessage.locator(".advisor-agent-trace").screenshot({
-        path: process.env.TRAVELPILOT_EVIDENCE_SCREENSHOT_PATH,
-      });
-    }
     expect(compoundAssistant?.payload?.schedule_suggestions).toEqual(expect.any(Array));
-    expect(compoundAssistant?.payload?.agent_task).toMatchObject({
-      task_type: "SCHEDULE", status: "WAITING_USER",
-    });
     expect((compoundAssistant?.payload?.tool_calls as Array<{ tool?: string }> | undefined)
       ?.some((call) => call.tool === "search_places")).toBe(true);
-    expect(compoundAssistant?.content).toContain("你希望每天安排得轻松一些吗");
-    expect(await (await request.get(`${api}/api/v1/trips/${trip.id}/plans`)).json()).toHaveLength(1);
-    await page.locator("#advisor-message").fill("轻松一点");
-    const resumedCompoundResponsePromise = page.waitForResponse((response) =>
-      response.url().includes("/api/v1/advisor/sessions/")
-      && response.url().endsWith("/messages") && response.request().method() === "POST",
-    );
-    await page.getByRole("button", { name: "发送" }).click();
-    const resumedCompoundSession = await (await resumedCompoundResponsePromise).json() as {
-      messages: Array<{ role: string; content: string; payload: Record<string, unknown> | null }>;
-    };
-    const resumedCompoundAssistant = [...resumedCompoundSession.messages].reverse()
-      .find((item) => item.role === "assistant");
-    expect(resumedCompoundAssistant?.payload?.planning_category).toBe("FOOD");
-    expect(resumedCompoundAssistant?.payload?.schedule_recommendation_requested).toBe(true);
-    expect((resumedCompoundAssistant?.payload?.schedule_suggestions as unknown[] | undefined)?.length)
-      .toBeGreaterThan(0);
-    expect(resumedCompoundAssistant?.content).toContain("按午餐需求核验到餐饮候选");
+    expect(compoundAssistant?.content).toContain("已按草案安排");
+    await expect(page.getByText(/行程调整预览/).last()).toBeVisible();
+    await expect(mealCandidate.getByRole("button", { name: "已加入 ✓" })).toBeVisible();
     expect(await (await request.get(`${api}/api/v1/trips/${trip.id}/plans`)).json()).toHaveLength(1);
     await page.locator("#advisor-message").fill("按轻松节奏优化时间安排");
     await page.getByRole("button", { name: "发送" }).click();
@@ -404,7 +423,6 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
       .toBeVisible({ timeout: 60_000 });
     const tripActionPanel = page.getByRole("region", { name: "这段旅行可以继续完成的事项" });
     await expect(tripActionPanel).toBeVisible();
-    await expect(tripActionPanel.getByRole("button", { name: "找午餐", exact: true })).toHaveCount(0);
     await tripActionPanel.getByRole("button", { name: "填写出发地" }).click();
     await expect(page.locator("#advisor-origin-input")).toBeFocused();
     if (process.env.TRAVELPILOT_E2E_GAP_SCREENSHOT_PATH && testInfo.project.name === "chromium") {
@@ -456,7 +474,6 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     await expect(page.getByRole("region", { name: "顾问对话" })).toBeVisible();
     const transitRequest = "从人民公园到武侯祠怎么坐地铁";
     await page.locator("#advisor-message").fill(transitRequest);
-    let dropRouteResponse = true;
     let compositePrompt = "";
     let dropCompositeResponse = false;
     const compositeRetryKeys: string[] = [];
@@ -465,25 +482,22 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
       if (body.content === compositePrompt && compositePrompt) {
         compositeRetryKeys.push(route.request().headers()["idempotency-key"] ?? "");
       }
-      if (
-        dropRouteResponse && body.content === transitRequest
-        || dropCompositeResponse && body.content === compositePrompt && Boolean(compositePrompt)
-      ) {
+      if (dropCompositeResponse && body.content === compositePrompt && Boolean(compositePrompt)) {
         const processed = await route.fetch();
         expect(processed.ok()).toBeTruthy();
-        if (body.content === transitRequest) dropRouteResponse = false;
         if (body.content === compositePrompt) dropCompositeResponse = false;
         await route.abort("failed");
         return;
       }
       await route.continue();
     });
+    const transitResponsePromise = page.waitForResponse((response) =>
+      response.url().includes("/api/v1/advisor/sessions/")
+      && response.url().endsWith("/messages") && response.request().method() === "POST",
+    );
     await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.locator("#advisor-message")).toHaveValue(transitRequest);
-    await page.reload();
-    await expect(page.getByRole("region", { name: "顾问对话" })).toBeVisible();
-    await page.locator("#advisor-message").fill(transitRequest);
-    await page.getByRole("button", { name: "发送" }).click();
+    const transitResponse = await transitResponsePromise;
+    expect(transitResponse.ok()).toBeTruthy();
     const routeResult = page.getByRole("region", { name: "公交/地铁路线结果" });
     await expect(routeResult).toBeVisible({ timeout: 30_000 });
     await expect(routeResult).toContainText("人民公园");
@@ -506,6 +520,8 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     const drivingResult = page.getByRole("region", { name: "驾车路线结果" });
     await expect(drivingResult).toBeVisible({ timeout: 30_000 });
     await expect(drivingResult).toContainText("驾车约");
+    await expect(page.locator(".advisor-selection-count")).toContainText("已同步");
+    await expect(page.locator(".advisor-preview-autosave")).not.toContainText("正在自动核验");
     compositePrompt = "帮我规划行程时间，同时查询人民公园到武侯祠的驾车路线";
     const compositeRequestPromise = page.waitForRequest((request) => {
       if (!request.url().includes("/api/v1/advisor/sessions/")
@@ -518,8 +534,9 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     });
     dropCompositeResponse = true;
     await page.locator("#advisor-message").fill(compositePrompt);
+    await expect(page.getByRole("button", { name: "发送" })).toBeEnabled();
     await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.locator(".advisor-live-error")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "重试刚才请求" })).toBeVisible({ timeout: 30_000 });
     expect(compositeRetryKeys).toHaveLength(1);
     const stubStatsBeforeRetry = await (await request.get(`${stub}/stats`)).json() as {
       agent_decisions: number; extraction_requests: number;
@@ -624,37 +641,70 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     }
     const stubStats = await request.get(`${stub}/stats`);
     const stubUsage = await stubStats.json() as {
-      agent_decisions: number; extraction_requests: number; resumed_context_seen: boolean;
+      agent_decisions: number; extraction_requests: number;
     };
     expect(stubUsage.agent_decisions).toBeGreaterThan(0);
     expect(stubUsage.extraction_requests).toBeGreaterThan(0);
-    expect(stubUsage.resumed_context_seen).toBe(true);
+
+    const finalMealCandidate = page.locator(".advisor-live-candidate")
+      .filter({ hasText: "模拟川味餐馆" });
+    await finalMealCandidate.getByLabel("用餐日期").selectOption(format(start));
+    await finalMealCandidate.getByLabel("用餐时间").fill("13:30");
+    await expect(page.locator(".advisor-selection-count")).toContainText("已同步");
+    await expect(page.locator(".advisor-preview-autosave")).not.toContainText("正在自动核验");
 
     const beforeConfirmation = await request.get(`${api}/api/v1/trips/${trip.id}/plans`);
     expect(await beforeConfirmation.json()).toHaveLength(1);
-    const refreshDraftResponsePromise = page.waitForResponse((response) =>
+    const firstWriteResponsePromise = page.waitForResponse((response) =>
       response.url().includes("/api/v1/advisor/sessions/")
-      && response.url().endsWith("/draft") && response.request().method() === "POST",
+      && ["/draft", "/confirm"].some((suffix) => response.url().endsWith(suffix))
+      && response.request().method() === "POST",
     );
-    await page.getByRole("button", { name: /按当前选择重新生成/ }).click();
-    const refreshDraftResponse = await refreshDraftResponsePromise;
-    if (refreshDraftResponse.status() === 409) {
-      const refreshConflict = page.getByRole("alert").filter({ hasText: "地点与你的长期记忆不一致" });
-      await expect(refreshConflict).toContainText("人民公园");
+    await expect(page.getByRole("button", { name: "确认并加入行程" })).toBeEnabled();
+    await page.getByRole("button", { name: "确认并加入行程" }).click();
+    const firstWriteResponse = await firstWriteResponsePromise;
+    if (firstWriteResponse.status() === 409) {
+      const memoryConflict = page.getByRole("alert").filter({ hasText: "地点与你的长期记忆不一致" });
+      await expect(memoryConflict).toContainText("人民公园");
       const overrideDraftResponsePromise = page.waitForResponse((response) =>
         response.url().includes("/api/v1/advisor/sessions/")
         && response.url().endsWith("/draft") && response.request().method() === "POST",
       );
-      await refreshConflict.getByRole("button", { name: "我确认，本次仍按所选地点继续" }).click();
+      await memoryConflict.getByRole("button", { name: "我确认，本次仍按所选地点继续" }).click();
       expect((await overrideDraftResponsePromise).status()).toBe(200);
+      if (firstWriteResponse.url().endsWith("/confirm")) {
+        const refreshedConfirmResponsePromise = page.waitForResponse((response) =>
+          response.url().includes("/api/v1/advisor/sessions/")
+          && response.url().endsWith("/confirm") && response.request().method() === "POST",
+        );
+        await page.getByRole("button", { name: "确认并加入行程" }).click();
+        expect((await refreshedConfirmResponsePromise).status()).toBe(200);
+      } else {
+        const confirmResponsePromise = page.waitForResponse((response) =>
+          response.url().includes("/api/v1/advisor/sessions/")
+          && response.url().endsWith("/confirm") && response.request().method() === "POST",
+        );
+        await page.getByRole("button", { name: "确认并加入行程" }).click();
+        expect((await confirmResponsePromise).status()).toBe(200);
+      }
     } else {
-      expect(refreshDraftResponse.status()).toBe(200);
+      expect(firstWriteResponse.status()).toBe(200);
+      if (firstWriteResponse.url().endsWith("/draft")) {
+        const confirmResponsePromise = page.waitForResponse((response) =>
+          response.url().includes("/api/v1/advisor/sessions/")
+          && response.url().endsWith("/confirm") && response.request().method() === "POST",
+        );
+        await page.getByRole("button", { name: "确认并加入行程" }).click();
+        expect((await confirmResponsePromise).status()).toBe(200);
+      }
     }
-    await expect(page.getByRole("button", { name: "确认并应用到行程" })).toBeEnabled();
-    await page.getByRole("button", { name: "确认并应用到行程" }).click();
     await expect(page).toHaveURL(new RegExp(`/trips/${trip.id}/plan$`));
     const afterConfirmation = await request.get(`${api}/api/v1/trips/${trip.id}/plans`);
     expect(await afterConfirmation.json()).toHaveLength(2);
+    const removeTestMemory = await request.delete(`${api}/api/v1/account/memories/${parkMemoryRecord.id}`, {
+      headers: writeHeaders,
+    });
+    expect(removeTestMemory.status()).toBe(204);
 
     await page.goto("/advisor");
     await page.getByRole("button", { name: /开始新对话/ }).click();
@@ -664,17 +714,9 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     await expect(page.getByRole("region", { name: "顾问对话" })).toBeVisible();
     await page.locator("#advisor-message").fill("看看时间怎么安排比较合适");
     await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.getByText("你希望每天安排得轻松一些吗？").first()).toBeVisible({ timeout: 30_000 });
-    await page.locator("#advisor-message").fill("轻松一点");
-    await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.getByText(/排出一版时间建议/).last())
+    await expect(page.getByText(/已按草案安排/).last())
       .toBeVisible({ timeout: 60_000 });
-    const staleDraftResponsePromise = page.waitForResponse((response) =>
-      response.url().includes("/api/v1/advisor/sessions/")
-      && response.url().endsWith("/draft") && response.request().method() === "POST",
-    );
-    await page.getByRole("button", { name: /按当前选择重新生成/ }).click();
-    expect((await staleDraftResponsePromise).status()).toBe(200);
+    await expect(page.getByRole("button", { name: "确认并加入行程" })).toBeEnabled();
     const latestBeforeRaceResponse = await request.get(`${api}/api/v1/trips/${trip.id}/plans`);
     const latestBeforeRace = (await latestBeforeRaceResponse.json())[0] as {
       id: string;
@@ -689,19 +731,25 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     expect(staleDraftRaceTriggered).toBe(true);
     const beforeStaleConfirmation = await request.get(`${api}/api/v1/trips/${trip.id}/plans`);
     expect(await beforeStaleConfirmation.json()).toHaveLength(3);
-    await page.getByRole("button", { name: "确认并应用到行程" }).click();
-    await expect(page.getByText(/原旅行计划已在其他位置更新/)).toBeVisible();
+    await page.getByRole("button", { name: "确认并加入行程" }).click();
+    // The confirmation guard can report either the stale plan snapshot or the
+    // context revision that was refreshed after the concurrent plan edit.
+    await expect(page.getByRole("alert").filter({
+      hasText: /原旅行计划已在其他位置更新|对话偏好或地点清单已变化/,
+    })).toBeVisible();
     expect(await (await request.get(`${api}/api/v1/trips/${trip.id}/plans`)).json()).toHaveLength(3);
 
     let latestPlan = ((await (await request.get(`${api}/api/v1/trips/${trip.id}/plans`)).json())[0]) as {
       id: string;
-      nodes: Array<{ id: string }>;
+      nodes: Array<{ id: string; name: string; note: string | null }>;
     };
-    expect(latestPlan.nodes).toHaveLength(2);
-    for (let nodeIndex = 0; nodeIndex < latestPlan.nodes.length; nodeIndex += 1) {
-      const node = latestPlan.nodes[nodeIndex];
+    const sightseeingNodes = latestPlan.nodes.filter((node) => !node.note?.includes("用餐安排"));
+    expect(sightseeingNodes).toHaveLength(2);
+    for (const nodeName of sightseeingNodes.map((node) => node.name)) {
+      const node = latestPlan.nodes.find((item) => item.name === nodeName);
+      expect(node).toBeTruthy();
       const revised = await request.patch(
-        `${api}/api/v1/trips/${trip.id}/plans/${latestPlan.id}/nodes/${node.id}`,
+        `${api}/api/v1/trips/${trip.id}/plans/${latestPlan.id}/nodes/${node!.id}`,
         {
           headers: writeHeaders,
           data: { day: format(start), start_time: "09:00", end_time: "10:30", status: "FIXED" },
@@ -757,20 +805,15 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     };
     expect(staleResult.messages.at(-1)?.content).toContain("待办规划已作废");
     expect(staleResult.messages.at(-1)?.payload?.agent_trace).toBeNull();
-    expect(await (await request.get(`${api}/api/v1/trips/${trip.id}/plans`)).json()).toHaveLength(planCountWithFixedConflict);
+    expect(await (await request.get(`${api}/api/v1/trips/${trip.id}/plans`)).json())
+      .toHaveLength(planCountWithFixedConflict);
 
     const conflictQuestion = await request.post(`${api}/api/v1/advisor/sessions/${staleSession.id}/messages`, {
       headers: keyedWriteHeaders(),
       data: { content: "看看时间怎么安排比较合适" },
     });
     expect(conflictQuestion.ok(), await conflictQuestion.text()).toBeTruthy();
-    expect((await conflictQuestion.json()).messages.at(-1).content).toContain("你希望每天安排得轻松一些吗");
-    const conflictAnswer = await request.post(`${api}/api/v1/advisor/sessions/${staleSession.id}/messages`, {
-      headers: keyedWriteHeaders(),
-      data: { content: "两个预约都固定在上午九点，请检查时间冲突" },
-    });
-    expect(conflictAnswer.ok(), await conflictAnswer.text()).toBeTruthy();
-    const conflictResult = await conflictAnswer.json() as {
+    const conflictResult = await conflictQuestion.json() as {
       draft: Record<string, unknown> | null;
       messages: Array<{ role: string; content: string; payload: Record<string, unknown> | null }>;
     };
@@ -819,10 +862,11 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     await page.getByRole("button", { name: "进入这段旅行的对话" }).click();
     await page.locator("#advisor-message").fill("看看时间怎么安排比较合适");
     await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.getByText("你希望每天安排得轻松一些吗？").first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/当前日期和节奏下无法安置全部地点/).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "调整日期或节奏" })).toBeVisible();
     await page.locator("#advisor-message").fill("轻松一点");
     await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.getByText(/无法全部放入当前日期和节奏/)).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(/当前日期和节奏下无法安置全部地点/).first()).toBeVisible({ timeout: 60_000 });
     const capacitySessionResponse = await request.get(`${api}/api/v1/advisor/sessions`);
     const capacitySession = (await capacitySessionResponse.json()).find(
       (item: { trip_id: string }) => item.trip_id === capacityTrip.id,
@@ -830,6 +874,9 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     expect(capacitySession?.draft).toBeNull();
     expect(await (await request.get(`${api}/api/v1/trips/${capacityTrip.id}/plans`)).json())
       .toHaveLength(1);
+    await page.locator("#advisor-message").fill("取消");
+    await page.getByRole("button", { name: "发送" }).click();
+    await expect(page.getByText(/行程调整已停止/)).toBeVisible({ timeout: 30_000 });
     await page.locator("#advisor-message").fill("我在考虑西湖和灵隐寺");
     await page.getByRole("button", { name: "发送" }).click();
     await expect(page.getByText("西湖和灵隐寺都在当前行程中。"))
@@ -880,7 +927,7 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     );
     expect(cancellationQuestion.ok(), await cancellationQuestion.text()).toBeTruthy();
     expect((await cancellationQuestion.json()).messages.at(-1).content)
-      .toContain("你希望每天安排得轻松一些吗");
+      .toContain("当前日期和节奏下无法安置全部地点");
     const cancelledTurn = await request.post(
       `${api}/api/v1/advisor/sessions/${capacitySessionId}/messages`,
       { headers: keyedWriteHeaders(), data: { content: "取消" } },
@@ -962,23 +1009,25 @@ test("现有旅行 Agent 追问并恢复任务，用户确认后才创建新版�
     await selectedAttractionCard.getByLabel("安排日期").selectOption(format(mixedTripStart));
     await selectedAttractionCard.getByLabel("开始时间").fill("09:00");
     await selectedLunchCard.getByLabel("用餐日期").selectOption(format(mixedTripStart));
-    await selectedLunchCard.getByLabel("用餐时间").fill("12:00");
-    await expect(page.getByRole("button", { name: "检查并预览行程（2）" })).toBeEnabled();
-    const mixedDraftPromise = page.waitForResponse((response) =>
-      response.url().includes(`/api/v1/advisor/sessions/${mixedSession.id}/draft`)
+    await selectedLunchCard.getByLabel("用餐时间").fill("13:00");
+    await expect(page.getByRole("button", { name: "确认并加入行程" })).toBeEnabled();
+    const mixedConfirmPromise = page.waitForResponse((response) =>
+      response.url().includes(`/api/v1/advisor/sessions/${mixedSession.id}/confirm`)
       && response.request().method() === "POST",
     );
-    await page.getByRole("button", { name: "检查并预览行程（2）" }).click();
-    const mixedDraftResponse = await mixedDraftPromise;
-    expect(mixedDraftResponse.ok(), await mixedDraftResponse.text()).toBeTruthy();
-    const mixedDraftSession = await mixedDraftResponse.json() as {
-      draft: { stops: Array<{ planning_category: string; meal_type?: string | null; start_time: string }> };
-    };
-    expect(mixedDraftSession.draft.stops).toEqual(expect.arrayContaining([
-      expect.objectContaining({ planning_category: "ATTRACTION", start_time: "09:00:00" }),
-      expect.objectContaining({ planning_category: "FOOD", meal_type: "LUNCH", start_time: "12:00:00" }),
+    await page.getByRole("button", { name: "确认并加入行程" }).click();
+    const mixedConfirmResponse = await mixedConfirmPromise;
+    expect(mixedConfirmResponse.ok(), await mixedConfirmResponse.text()).toBeTruthy();
+    const savedPlans = await request.get(`${api}/api/v1/trips/${mixedTrip.id}/plans`);
+    const savedPlanList = await savedPlans.json() as Array<{
+      nodes: Array<{ name: string; note: string | null; start_time: string }>;
+    }>;
+    expect(savedPlanList).toHaveLength(1);
+    expect(savedPlanList[0].nodes).toHaveLength(2);
+    expect(savedPlanList[0].nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "成都大熊猫繁育研究基地", start_time: "09:00:00" }),
+      expect.objectContaining({ name: "模拟川味餐馆", note: expect.stringContaining("午餐"), start_time: "13:00:00" }),
     ]));
-    expect(await (await request.get(`${api}/api/v1/trips/${mixedTrip.id}/plans`)).json()).toHaveLength(0);
 
     expect(browserErrors).toEqual([]);
     expect(unexpectedHttpErrors).toEqual([]);

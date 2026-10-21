@@ -60,6 +60,28 @@ def test_meal_preference_is_not_asked_when_user_already_specified_it(message):
     assert turn_service._missing_meal_preference_question(message, 3) is None
 
 
+@pytest.mark.parametrize(
+    ("event_handoff", "schedule_intent", "task_type", "expected"),
+    [
+        (False, True, None, True),
+        (False, False, "SCHEDULE", True),
+        (False, False, None, False),
+        (True, True, "SCHEDULE", False),
+    ],
+)
+def test_schedule_intent_gates_natural_pace_changes_without_affecting_general_preferences(
+    event_handoff, schedule_intent, task_type, expected,
+):
+    continuing_task = SimpleNamespace(task_type=task_type) if task_type else None
+
+    assert turn_service._should_apply_pace_adjustment(
+        event_replan_handoff=event_handoff,
+        schedule_intent_requested=schedule_intent,
+        turn_goal="请把后面的行程安排得不要太赶，多留一些休息时间",
+        continuing_task=continuing_task,
+    ) is expected
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("selected_order", "expected_calls", "failed_stage", "unsupported_route_mode"),

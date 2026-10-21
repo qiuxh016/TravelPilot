@@ -225,6 +225,19 @@ def _missing_meal_preference_question(content: str, candidate_count: int) -> str
         return None
     return "行程排程前还想确认用餐空档：需要每天预留约 1 小时午餐吗？也可以指定某一天，或先不安排用餐。"
 
+
+def _should_apply_pace_adjustment(
+    *,
+    event_replan_handoff: bool,
+    schedule_intent_requested: bool,
+    turn_goal: str,
+    continuing_task: object | None,
+) -> bool:
+    return not event_replan_handoff and (
+        schedule_intent_requested
+        or _is_schedule_recommendation_request(turn_goal)
+        or bool(continuing_task and getattr(continuing_task, "task_type", None) == "SCHEDULE")
+    )
 async def execute_advisor_turn(
     db: AsyncSession,
     row: AdvisorSessionModel,
@@ -526,10 +539,11 @@ async def execute_advisor_turn(
             # trip's pace setting. Apply a pace change only inside an explicit
             # schedule task or while answering its clarification question.
             allow_pace_adjustment=(
-                not event_replan_handoff
-                and (
-                    _is_schedule_recommendation_request(turn_goal)
-                    or bool(continuing_task and continuing_task.task_type == "SCHEDULE")
+                _should_apply_pace_adjustment(
+                    event_replan_handoff=event_replan_handoff,
+                    schedule_intent_requested=schedule_intent_requested,
+                    turn_goal=turn_goal,
+                    continuing_task=continuing_task,
                 )
             ),
         )
