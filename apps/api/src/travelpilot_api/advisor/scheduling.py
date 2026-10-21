@@ -270,7 +270,9 @@ async def propose_existing_trip_schedule(
             return {
                 "feasible": feasible,
                 "reason": None if feasible else (
-                    "现有地点无法全部放入当前日期和节奏；请增加旅行天数或调整节奏。"
+                    "当前日期和节奏下无法安置全部地点；"
+                    + "；".join(warnings[:3])
+                    + "。你希望调整旅行日期或节奏、选择减少地点，还是暂不调整？"
                 ),
                 "candidate_ids": [str(candidate.poi_id) for candidate in planner_candidates],
                 "schedules": [{
@@ -342,6 +344,7 @@ async def propose_existing_trip_schedule(
             return result
         if not proposal.get("feasible"):
             result.error = str(proposal.get("reason") or "当前条件下无法完整安排所有地点。")
+            result.trace["status"] = "NEEDS_USER_INPUT"
             return result
 
         result.reserved_breaks = list(proposal.get("reserved_breaks", []))
@@ -379,7 +382,11 @@ async def propose_existing_trip_schedule(
         anchored_visits.sort(key=lambda visit: (visit.day, visit.start_time))
         conflicts = _schedule_conflicts(anchored_visits, selected_plan_ids, matrix)
         if conflicts:
-            result.error = "固定预约与其他地点的游览或交通时间冲突，未生成排程草案：" + "；".join(conflicts[:4])
+            result.error = (
+                "固定预约与其他地点的游览或交通时间冲突，未生成排程草案："
+                + "；".join(conflicts[:4])
+                + "。你希望保留预约并先选择可调整的地点、修改预约时间后重试，还是暂不调整？"
+            )
             result.trace["status"] = "NEEDS_USER_INPUT"
             return result
         result.suggestions = [{

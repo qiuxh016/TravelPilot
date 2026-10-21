@@ -369,6 +369,34 @@ def test_natural_confirmation_of_bundle_action_continues_without_granting_commit
     assert "仍须在写入旅行数据前请求用户确认" in result.turn_goal
 
 
+def test_constraint_resolution_choice_resumes_the_same_schedule_task():
+    context = {
+        "revision": 4,
+        "pending_agent_question": {
+            "task": "安排成都两日行程并保留预约",
+            "question": (
+                "固定预约与其他地点时间冲突。你希望保留预约并选择可调整的地点、"
+                "修改预约时间后重试，还是暂不调整？"
+            ),
+            "context_revision": 4,
+            "task_type": "SCHEDULE",
+            "answers": [],
+            "turn_number": 1,
+        },
+    }
+
+    result = resolve_pending_turn(
+        context=context,
+        previous_payload=None,
+        content="保留固定预约，我想先选择可调整的地点",
+    )
+
+    assert result.continuing_task.task == "安排成都两日行程并保留预约"
+    assert result.pending_question.answers == ("保留固定预约，我想先选择可调整的地点",)
+    assert "保留预约" in result.turn_goal
+    assert not result.invalidated
+
+
 def test_affirmative_with_hesitation_does_not_authorize_pending_action():
     question = "要不要我现在补齐两天的午餐和晚餐？"
     assert not affirms_pending_action(question, "好的，我再想想")

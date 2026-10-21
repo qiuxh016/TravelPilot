@@ -70,6 +70,32 @@ def confirmation_options_for(question: str) -> list[AdvisorConfirmationOption]:
             AdvisorConfirmationOption(label="暂时不需要", answer="暂时不需要处理这部分"),
         ]
 
+    if "固定预约" in normalized and any(word in normalized for word in ("冲突", "时间不足")):
+        return [
+            AdvisorConfirmationOption(
+                label="保留预约，选可调整地点",
+                answer="保留固定预约，我想先选择可调整的地点",
+            ),
+            AdvisorConfirmationOption(
+                label="修改预约时间",
+                answer="我会修改固定预约时间后再继续规划",
+            ),
+            AdvisorConfirmationOption(label="暂不调整", answer="暂不调整，保留当前行程"),
+        ]
+
+    if any(word in normalized for word in ("无法安置", "无法容纳", "超出营业时间", "缓冲不足")):
+        return [
+            AdvisorConfirmationOption(
+                label="调整日期或节奏",
+                answer="我想调整旅行日期或游览节奏后再排",
+            ),
+            AdvisorConfirmationOption(
+                label="选择减少地点",
+                answer="我想选择可调整的地点后再排",
+            ),
+            AdvisorConfirmationOption(label="暂不调整", answer="暂不调整，保留当前行程"),
+        ]
+
     asks_for_confirmation = bool(re.search(
         r"(?:需要我|要我|要不要(?:我|把|将)?|要把|是否(?:要|需要|可以)?(?:我|把|将)?|"
         r"(?:可不可以|可以|能否|可否)(?:把|将)?|是否需要我|"

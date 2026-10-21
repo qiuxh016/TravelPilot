@@ -83,6 +83,50 @@ def test_date_reschedule_question_becomes_clickable_choices():
     ]
 
 
+def test_fixed_appointment_conflict_offers_constraint_resolution_actions():
+    snapshot = AdvisorTaskSnapshot(
+        task_id="fixed-conflict-task",
+        task_type="SCHEDULE",
+        status="WAITING_USER",
+        goal="安排当前行程",
+        context_revision=4,
+        turn_number=2,
+        question=(
+            "固定预约与其他地点的游览或交通时间冲突，未生成排程草案："
+            "预约活动至后续地点时间不足。你希望保留预约并先选择可调整的地点、"
+            "修改预约时间后重试，还是暂不调整？"
+        ),
+        action_summary="解释固定预约冲突并等待用户决定",
+    )
+
+    assert [(option.label, option.answer) for option in snapshot.confirmation_options] == [
+        ("保留预约，选可调整地点", "保留固定预约，我想先选择可调整的地点"),
+        ("修改预约时间", "我会修改固定预约时间后再继续规划"),
+        ("暂不调整", "暂不调整，保留当前行程"),
+    ]
+
+
+def test_infeasible_schedule_offers_next_step_choices_without_claiming_a_valid_plan():
+    snapshot = AdvisorTaskSnapshot(
+        task_id="capacity-conflict-task",
+        task_type="SCHEDULE",
+        status="WAITING_USER",
+        goal="安排这趟旅行",
+        context_revision=1,
+        turn_number=1,
+        question=(
+            "当前日期和节奏下无法安置全部地点；某地点超出营业时间。"
+            "你希望调整旅行日期或节奏、选择减少地点，还是暂不调整？"
+        ),
+        action_summary="说明排程限制并询问下一步",
+    )
+
+    assert [option.label for option in snapshot.confirmation_options] == [
+        "调整日期或节奏", "选择减少地点", "暂不调整",
+    ]
+    assert all("已安排" not in option.answer for option in snapshot.confirmation_options)
+
+
 def test_action_confirmation_offers_continue_without_granting_commit_consent():
     snapshot = AdvisorTaskSnapshot(
         task_id="schedule-task",

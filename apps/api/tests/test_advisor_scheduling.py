@@ -148,7 +148,10 @@ async def test_capacity_infeasibility_returns_explanation_without_schedule_draft
     )
 
     assert result.suggestions == []
-    assert result.error == "现有地点无法全部放入当前日期和节奏；请增加旅行天数或调整节奏。"
+    assert result.error and "无法安置全部地点" in result.error
+    assert "每日 3 个地点" in result.error
+    assert result.error.endswith("还是暂不调整？")
+    assert result.trace["status"] == "NEEDS_USER_INPUT"
 
 
 @pytest.mark.asyncio
@@ -473,5 +476,6 @@ async def test_overlapping_fixed_appointments_block_schedule_proposal():
 
     assert result.suggestions == []
     assert result.error and "固定预约" in result.error and "冲突" in result.error
+    assert result.error.endswith("还是暂不调整？")
     assert result.trace["status"] == "NEEDS_USER_INPUT"
     assert "confirmed_plan_id" not in context
