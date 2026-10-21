@@ -24,6 +24,8 @@ The completed roadmap above remains closed for its local-scope acceptance criter
 
 **Exit gate:** reproducible matched B1/B2/B3 results on the newly frozen cases, with no hard-invariant violation or unconfirmed formal write in B2/B3; every failure categorized and linked to evidence. Human ratings and small-sample limitations must be disclosed. A favorable score is not by itself a claim of arbitrary-task competence.
 
+**Execution record (2026-10-21):** The 20-case unseen pilot is frozen and scored. B2/B3 used the real `deepseek-flash` action selector with production `AgentRuntime` and synthetic read-only tools; the B1 result is a scripted offline diagnostic, not the existing production fixed workflow. The pilot report records this mismatch and the limitations. W2 has begun with explicit action-choice prompting, JSON-serialized model context, and safe parse-failure categories. P0 remains in progress: a matched production B1 and product-response quality evaluation require a fresh, unexposed case set and separately authorized model budget; the scored v3 cases must not be described as blind on a rerun.
+
 ### P1 — Itinerary constraint negotiation
 
 1. Represent hard constraints (fixed booking, trip dates, explicit “must” requirements) separately from adjustable preferences (pace, optional stops, preferred return time). The agent must never relax a hard constraint on its own.
