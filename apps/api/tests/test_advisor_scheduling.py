@@ -15,6 +15,7 @@ from travelpilot_api.advisor.tools import distance_tool_runtime
 from travelpilot_core.agents.loop import AgentAction
 from travelpilot_core.engines.optimizer.itinerary import Candidate, Visit
 from travelpilot_infra.providers.maps.fake import FakeMapsProvider
+from travelpilot_infra.providers.maps.errors import MapsProviderError
 
 
 def _visits(second_start: time) -> tuple[list[Visit], list[str]]:
@@ -31,6 +32,31 @@ def _visits(second_start: time) -> tuple[list[Visit], list[str]]:
         ),
     ]
     return visits, [str(first_id), str(second_id)]
+
+
+def _schedule_candidates(*, fixed_schedule=None):
+    poi_ids = [str(uuid4()), str(uuid4())]
+    candidates = [
+        {
+            "id": str(uuid4()), "existing_poi_id": poi_id,
+            "in_current_plan": True, "name": f"地点 {index + 1}",
+            "latitude": 30.66 + index / 100, "longitude": 104.06 + index / 100,
+            "duration_min": 60, "confidence": 0.8, "category": "ATTRACTION",
+            "planning_category": "ATTRACTION",
+        }
+        for index, poi_id in enumerate(poi_ids)
+    ]
+    if fixed_schedule:
+        for candidate in candidates:
+            candidate["fixed_schedule"] = fixed_schedule
+    context = {
+        "revision": 1,
+        "current_plan": {
+            "stops": [{"poi_id": poi_id, "status": "FIXED" if fixed_schedule else "PLANNED"}
+                      for poi_id in poi_ids],
+        },
+    }
+    return candidates, context
 
 
 def test_fixed_visit_followed_by_insufficient_route_time_is_reported():
@@ -373,3 +399,79 @@ async def test_model_cannot_skip_multi_place_route_check_before_schedule_draft(m
     assert [item["tool"] for item in result.loop.transitions] == [
         "get_distance_matrix", "build_schedule_draft",
     ]
+
+
+@pytest.mark.asyncio
+async def test_vertical_slice_builds_a_non_persistent_draft_after_route_verification():
+    candidates, context = _schedule_candidates()
+
+    result = await propose_existing_trip_schedule(
+        context=context, candidates=candidates, user_goal="合理安排已收藏地点",
+        destination="成都", start_date=date(2026, 11, 2), end_date=date(2026, 11, 2),
+        pace_level=3, maps=FakeMapsProvider(), api_key="", model="", base_url="",
+        token_budget=128,
+    )
+
+    assert result.error is None
+    assert len(result.suggestions) == 2
+    assert result.trace["route_evidence"] == "SIMULATED"
+    assert result.trace["status"] == "SUCCEEDED"
+    assert "confirmed_plan_id" not in context
+
+
+@pytest.mark.asyncio
+async def test_missing_trip_dates_stops_before_map_or_draft_work():
+    class MapsMustNotRun(FakeMapsProvider):
+        async def get_distance_matrix(self, _points):
+            raise AssertionError("maps should not run when dates are missing")
+
+    candidates, context = _schedule_candidates()
+    result = await propose_existing_trip_schedule(
+        context=context, candidates=candidates, user_goal="安排地点",
+        destination="成都", start_date=None, end_date=None,
+        pace_level=3, maps=MapsMustNotRun(), api_key="", model="", base_url="",
+        token_budget=128,
+    )
+
+    assert result.suggestions == []
+    assert result.error and "缺少日期" in result.error
+    assert result.runtime is None
+
+
+@pytest.mark.asyncio
+async def test_route_provider_failure_returns_warning_draft_without_formal_write():
+    class MapsUnavailable(FakeMapsProvider):
+        async def get_distance_matrix(self, _points):
+            raise MapsProviderError("fixture outage")
+
+    candidates, context = _schedule_candidates()
+    result = await propose_existing_trip_schedule(
+        context=context, candidates=candidates, user_goal="安排两个地点",
+        destination="成都", start_date=date(2026, 11, 2), end_date=date(2026, 11, 2),
+        pace_level=3, maps=MapsUnavailable(), api_key="", model="", base_url="",
+        token_budget=128,
+    )
+
+    assert result.error is None
+    assert len(result.suggestions) == 2
+    assert result.warning and "尚未由地图核验" in result.warning
+    assert result.trace["route_evidence"] == "UNAVAILABLE"
+    assert "confirmed_plan_id" not in context
+
+
+@pytest.mark.asyncio
+async def test_overlapping_fixed_appointments_block_schedule_proposal():
+    fixed = {"day": "2026-11-02", "start_time": "09:00"}
+    candidates, context = _schedule_candidates(fixed_schedule=fixed)
+
+    result = await propose_existing_trip_schedule(
+        context=context, candidates=candidates, user_goal="安排地点",
+        destination="成都", start_date=date(2026, 11, 2), end_date=date(2026, 11, 2),
+        pace_level=3, maps=FakeMapsProvider(), api_key="", model="", base_url="",
+        token_budget=128,
+    )
+
+    assert result.suggestions == []
+    assert result.error and "固定预约" in result.error and "冲突" in result.error
+    assert result.trace["status"] == "NEEDS_USER_INPUT"
+    assert "confirmed_plan_id" not in context
