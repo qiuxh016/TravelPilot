@@ -195,7 +195,8 @@ def affirms_pending_action(question: str, answer: str) -> bool:
     ))
     proposes_action = any(token in question for token in (
         "安排", "推荐", "查询", "搜索", "查找", "排出来", "生成", "继续",
-        "加入", "添加", "补", "完善", "调整", "核对", "确认",
+        "加入", "添加", "写入", "保存", "提交", "应用到行程",
+        "补", "完善", "调整", "核对", "确认",
     ))
     return asks_a_question and proposes_action
 

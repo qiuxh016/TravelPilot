@@ -9,7 +9,10 @@ from travelpilot_api.advisor.state import (
     pending_question_matches_context,
     resume_pending_task,
 )
-from travelpilot_api.advisor.turn_lifecycle import resolve_pending_turn
+from travelpilot_api.advisor.turn_lifecycle import (
+    is_repeated_affirmative_question,
+    resolve_pending_turn,
+)
 
 
 def test_pending_agent_question_is_recovered_only_from_an_open_schedule_turn():
@@ -345,6 +348,29 @@ def test_natural_action_confirmation_variants_resume_one_pending_task(answer):
 def test_short_affirmative_does_not_match_information_question():
     assert not affirms_pending_action("你更喜欢自然还是历史文化？", "好的")
     assert not affirms_pending_action("要我现在按日期排出游览顺序吗？", "不用，谢谢")
+
+
+def test_repeated_question_after_affirmative_is_closed_instead_of_looped():
+    question = "现在要确认把这两天的午餐12:00写入行程吗？"
+
+    assert is_repeated_affirmative_question(
+        previous_question=question,
+        current_question=question,
+        answer="确认写入",
+        answer_count=1,
+    )
+    assert not is_repeated_affirmative_question(
+        previous_question=question,
+        current_question="需要我推荐午餐地点吗？",
+        answer="确认写入",
+        answer_count=1,
+    )
+    assert not is_repeated_affirmative_question(
+        previous_question=question,
+        current_question=question,
+        answer="先不写入",
+        answer_count=1,
+    )
 
 
 def test_natural_confirmation_of_bundle_action_continues_without_granting_commit_permission():

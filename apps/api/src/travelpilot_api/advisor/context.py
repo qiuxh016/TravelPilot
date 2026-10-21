@@ -26,6 +26,7 @@ def _selected_candidates_after_trip_refresh(
     plan_version: int | None,
     plan_candidate_ids: list[str],
     available_candidate_ids: set[str],
+    retained_candidate_ids: list[str] | None = None,
 ) -> list[str]:
     """Keep the user's draft selection while the underlying plan is unchanged."""
     previous_plan = context.get("current_plan") or {}
@@ -39,7 +40,11 @@ def _selected_candidates_after_trip_refresh(
             if candidate_id in available_candidate_ids
         ]
     else:
-        selected = plan_candidate_ids
+        selected = list(dict.fromkeys([
+            *plan_candidate_ids,
+            *(candidate_id for candidate_id in retained_candidate_ids or []
+              if candidate_id in available_candidate_ids),
+        ]))
     if set(context.get("selected_candidate_ids", [])) != set(selected):
         context["selected_candidate_ids"] = selected
         context["revision"] = int(context.get("revision", 0)) + 1
@@ -233,6 +238,12 @@ async def refresh_trip_snapshot(db: AsyncSession, row: AdvisorSessionModel) -> d
             "environment_profile": item.environment_profile or poi.environment_profile,
             "confidence": float(item.interest_score or 0.5), "suggestion": item.notes,
         }
+    previous_selected = set(context.get("selected_candidate_ids", []))
+    retained_lodging_ids = [
+        str(candidate.get("id")) for candidate in row.candidates
+        if candidate.get("id") in previous_selected
+        and candidate.get("planning_category") == "LODGING"
+    ]
     row.candidates = [*wishlist_candidates_by_poi.values(), *plan_candidates]
     selected_ids = [candidate["id"] for candidate in plan_candidates]
     previous_plan = context.get("current_plan") or {}
@@ -244,6 +255,7 @@ async def refresh_trip_snapshot(db: AsyncSession, row: AdvisorSessionModel) -> d
         plan_version=latest_plan.version if latest_plan else None,
         plan_candidate_ids=selected_ids,
         available_candidate_ids={candidate["id"] for candidate in row.candidates},
+        retained_candidate_ids=retained_lodging_ids,
     )
     context["current_plan"] = {
         "id": str(latest_plan.id), "version": latest_plan.version,

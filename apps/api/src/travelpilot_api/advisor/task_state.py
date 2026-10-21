@@ -59,6 +59,12 @@ def confirmation_options_for(question: str) -> list[AdvisorConfirmationOption]:
     ):
         return []
 
+    if re.search(r"(?:写入行程|保存到行程|提交到行程|应用到(?:正式)?行程)", normalized):
+        return [
+            AdvisorConfirmationOption(label="确认写入", answer="确认写入当前安排"),
+            AdvisorConfirmationOption(label="先不写入", answer="先不写入，暂不处理这项安排"),
+        ]
+
     asks_to_fill_gaps = bool(re.search(
         r"(?:要|需要|是否要|需不需要).{0,16}(?:现在|一起|补|完善).{0,20}(?:吗)?$",
         normalized,

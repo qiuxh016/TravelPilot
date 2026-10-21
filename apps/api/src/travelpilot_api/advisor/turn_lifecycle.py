@@ -25,6 +25,21 @@ class PendingTurnResolution:
     cancelled_task_type: str | None
 
 
+def is_repeated_affirmative_question(
+    *, previous_question: str | None, current_question: str | None,
+    answer: str, answer_count: int,
+) -> bool:
+    """Detect a model echo after an affirmative answer so it cannot loop."""
+    return bool(
+        previous_question
+        and current_question
+        and previous_question.strip().rstrip("？?")
+        == current_question.strip().rstrip("？?")
+        and answer_count > 0
+        and affirms_pending_action(previous_question, answer)
+    )
+
+
 def resolve_pending_turn(
     *,
     context: dict[str, Any],

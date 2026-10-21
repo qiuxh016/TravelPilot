@@ -26,7 +26,7 @@ from travelpilot_api.advisor.confirmation import (
     validate_profile_memory_snapshot,
     validate_trip_snapshot,
 )
-from travelpilot_api.advisor.context import profile_memory_fingerprint
+from travelpilot_api.advisor.context import profile_memory_fingerprint, refresh_trip_snapshot
 from travelpilot_api.advisor.interpretation import _active_personal_memories
 from travelpilot_api.schemas.advisor import AdvisorConfirm, AdvisorConfirmRead
 
@@ -251,5 +251,12 @@ async def confirm_advisor_draft(
             payload={"trip_id": str(trip.id), "plan_id": str(plan.id)},
         )
     )
+    await db.flush()
+    refreshed_context = await refresh_trip_snapshot(db, row)
+    if row.draft:
+        row.draft = {
+            **row.draft,
+            "context_revision": int(refreshed_context.get("revision", 0)),
+        }
     await db.commit()
     return AdvisorConfirmRead(trip_id=trip.id, plan_id=plan.id, plan_version=version)

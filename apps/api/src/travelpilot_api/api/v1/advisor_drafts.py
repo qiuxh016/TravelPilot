@@ -439,7 +439,7 @@ async def create_draft(
         )
     context = dict(row.context or {})
     selected_ids = [item["id"] for item in selected]
-    if row.trip_id and set(context.get("selected_candidate_ids", [])) != set(selected_ids):
+    if set(context.get("selected_candidate_ids", [])) != set(selected_ids):
         context["selected_candidate_ids"] = selected_ids
         context["revision"] = int(context.get("revision", 0)) + 1
     row.context = context

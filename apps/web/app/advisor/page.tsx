@@ -238,6 +238,16 @@ function candidateIdsForTaskConfirmation(
   return matches.length === 1 ? matches.map((candidate) => candidate.id) : null;
 }
 
+function isAffirmativeWriteConfirmation(
+  task: AdvisorTaskSnapshot,
+  option: { label: string; answer: string },
+): boolean {
+  const wording = `${task.question ?? ""} ${option.label} ${option.answer}`;
+  if (!/(?:写入行程|保存到行程|提交到行程|应用到(?:正式)?行程)/.test(wording)) return false;
+  if (/(?:先不|暂不|不写入|不保存|稍后|返回调整|取消|不用)/.test(`${option.label} ${option.answer}`)) return false;
+  return /(?:确认|写入|保存|提交|应用|可以|同意)/.test(`${option.label} ${option.answer}`);
+}
+
 function candidateIdsForExplicitSelection(content: string, candidates: AdvisorCandidate[]): string[] {
   const match = content.match(/(?:我\s*)?(?:选择|选中|选|就用|就选|加入|添加|纳入)\s*([^，,。；;！？!?]{2,80})/);
   if (!match) return [];
@@ -1165,13 +1175,13 @@ export default function AdvisorPage() {
     finally { setBusy(false); }
   }
 
-  async function confirmDraft() {
-    if (!active?.draft) return;
+  async function confirmDraft(session: AdvisorSession | null = active) {
+    if (!session?.draft) return;
     setBusy(true); setError("");
     try {
-      const result = await confirmAdvisorDraft(active.id, active.draft.version);
+      const result = await confirmAdvisorDraft(session.id, session.draft.version);
       const confirmedAt = new Date().toISOString();
-      setActive((current) => current?.id === active.id ? {
+      setActive((current) => current?.id === session.id ? {
         ...current,
         status: "CONFIRMED",
         trip_id: result.trip_id,
@@ -1179,8 +1189,8 @@ export default function AdvisorPage() {
         confirmed_plan_id: result.plan_id,
         updated_at: confirmedAt,
       } : current);
-      setSessions((current) => current.map((session) => session.id === active.id ? {
-        ...session,
+      setSessions((current) => current.map((item) => item.id === session.id ? {
+        ...item,
         status: "CONFIRMED",
         trip_id: result.trip_id,
         confirmed_trip_id: result.trip_id,
@@ -1190,6 +1200,83 @@ export default function AdvisorPage() {
       router.push(`/trips/${result.trip_id}/plan`);
     } catch (reason) { setError((reason as Error).message); }
     finally { setBusy(false); }
+  }
+
+  async function confirmTaskWrite(task: AdvisorTaskSnapshot) {
+    if (!active) return;
+    if (active.draft) {
+      if (draftIsStale) {
+        setError("当前预览已过期，请先更新预览，再确认写入；不会重复向你询问同一问题。");
+        return;
+      }
+      await confirmDraft(active);
+      return;
+    }
+    if (!selected.length) {
+      setError("还没有选中要写入的地点。请先在右侧选择地点，再确认日期和时间。");
+      return;
+    }
+    if (!schedulesComplete) {
+      setError("当前选择还缺少日期或开始时间。请先为每个地点补齐安排，顾问不会用重复提问代替写入。");
+      return;
+    }
+
+    const question = `${task.goal} ${task.question ?? ""}`;
+    const mealScope = /午餐/.test(question) ? "LUNCH" : /晚餐/.test(question) ? "DINNER" : null;
+    const scopedSelection = mealScope
+      ? selected.filter((id) => active.candidates.some((candidate) =>
+        candidate.id === id && candidate.planning_category === "FOOD"
+        && (!candidate.meal_type || candidate.meal_type === mealScope),
+      ))
+      : selected;
+    if (!scopedSelection.length) {
+      setError(mealScope
+        ? `还没有选中${mealScope === "LUNCH" ? "午餐" : "晚餐"}地点。先选餐饮候选，再确认写入。`
+        : "当前没有选中与这项确认对应的地点，请检查右侧选择后再试。");
+      return;
+    }
+    const requestedDays = [...new Set(question.match(/20\d{2}-\d{2}-\d{2}/g) ?? [])];
+    if (mealScope && requestedDays.length > 1) {
+      const assignedDays = new Set(scopedSelection.map((id) => schedules[id]?.day).filter(Boolean));
+      const missingDays = requestedDays.filter((day) => !assignedDays.has(day));
+      if (missingDays.length) {
+        setError(`这项确认涉及 ${requestedDays.length} 天，但选中的餐饮地点没有覆盖 ${missingDays.join("、")}。请给每一天各选地点并设置时间后再确认。`);
+        return;
+      }
+    }
+
+    const draftSchedules = scopedSelection
+      .filter((candidateId) => active.candidates.some((candidate) =>
+        candidate.id === candidateId && candidate.planning_category !== "LODGING",
+      ))
+      .map((candidate_id) => ({ candidate_id, ...schedules[candidate_id] }));
+    const draftKey = draftRequestKey(active.id, scopedSelection, draftSchedules, false);
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const updated = await createAdvisorDraft(active.id, scopedSelection, draftSchedules, false, draftKey);
+      finishDraftRequest(draftKey);
+      setActive(updated);
+      setSelected(updated.draft?.selected_candidate_ids ?? scopedSelection);
+      setMapDay(updated.draft?.stops[0]?.day ?? "");
+      setSessions((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
+      if (!updated.draft) throw new Error("服务端没有返回可提交的行程草案，请先检查预览后重试。");
+      const result = await confirmAdvisorDraft(updated.id, updated.draft.version);
+      const confirmedAt = new Date().toISOString();
+      setActive((current) => current?.id === updated.id ? {
+        ...current, status: "CONFIRMED", trip_id: result.trip_id,
+        confirmed_trip_id: result.trip_id, confirmed_plan_id: result.plan_id,
+        updated_at: confirmedAt,
+      } : current);
+      setSessions((current) => current.map((item) => item.id === updated.id ? {
+        ...item, status: "CONFIRMED", trip_id: result.trip_id,
+        confirmed_trip_id: result.trip_id, confirmed_plan_id: result.plan_id,
+        updated_at: confirmedAt,
+      } : item));
+      router.push(`/trips/${result.trip_id}/plan`);
+    } catch (reason) {
+      finishDraftRequest(draftKey);
+      if (!handleDraftMemoryConflict(reason)) setError((reason as Error).message);
+    } finally { setBusy(false); }
   }
 
   function toggleCandidate(id: string) {
@@ -1579,9 +1666,13 @@ export default function AdvisorPage() {
                     {taskLabel.nextStep && <p><strong>接下来</strong>{taskLabel.nextStep}</p>}
                   </section>}
                   {isLatestAssistantMessage && task?.status === "WAITING_USER" && task.question && <section className="advisor-pending-question" aria-label="等待你补充">
-                    <div><strong>{confirmationOptions.length ? "选一个继续" : "这一步需要你来决定"}</strong><p>{task.question}</p><small>当前任务：{task.goal}</small><small>{confirmationOptions.length ? "点击即可接着处理当前任务；正式行程仍会在保存前单独确认。" : "点选即可继续原任务；也可以在下方直接补充自己的想法。"}</small></div>
+                    <div><strong>{confirmationOptions.length ? "选一个继续" : "这一步需要你来决定"}</strong><p>{task.question}</p><small>当前任务：{task.goal}</small><small>{/(?:写入行程|保存到行程|提交到行程|应用到(?:正式)?行程)/.test(task.question) ? "这是正式行程写入确认。确认后会使用当前已选地点和已确认时间；信息不全时会直接告诉你缺什么。" : confirmationOptions.length ? "点击即可继续当前任务；生成草案后会明确显示预览和写入状态。" : "点选即可继续原任务；也可以在下方直接补充自己的想法。"}</small></div>
                     {confirmationOptions.length > 0 && <div className="advisor-pending-quick-replies" aria-label="可选操作">
                       {confirmationOptions.map((option) => <button key={option.label} type="button" disabled={busy || active.status !== "ACTIVE"} onClick={() => {
+                        if (isAffirmativeWriteConfirmation(task, option)) {
+                          void confirmTaskWrite(task);
+                          return;
+                        }
                         const candidateIds = candidateIdsForTaskConfirmation(task, option.answer, active.candidates);
                         const nextSelection = candidateIds
                           ? [...new Set([...selected, ...candidateIds])]
@@ -1949,7 +2040,7 @@ export default function AdvisorPage() {
       {(active?.draft || active?.confirmed_trip_id) && <footer className="advisor-confirm-bar">
         <div><strong>{active?.status === "CONFIRMED" ? "行程已更新" : "确认后直接更新正式行程"}</strong><p>请先检查地点、时间和变更摘要；确认后会创建或更新正式计划。</p></div>
         {active?.draft && draftIsStale && <span role="status" className="advisor-live-error">旅行条件或正式行程已变化，请重新检查这份调整预览</span>}
-        {active?.status === "CONFIRMED" && active.confirmed_trip_id ? <Link className="primary" href={`/trips/${active.confirmed_trip_id}/plan`}>查看已更新行程</Link> : <button type="button" className="primary" onClick={confirmDraft} disabled={!active?.draft || draftIsStale || busy}>{busy ? "正在更新行程…" : "确认并应用到行程"}</button>}
+        {active?.status === "CONFIRMED" && active.confirmed_trip_id ? <Link className="primary" href={`/trips/${active.confirmed_trip_id}/plan`}>查看已更新行程</Link> : <button type="button" className="primary" onClick={() => void confirmDraft()} disabled={!active?.draft || draftIsStale || busy}>{busy ? "正在更新行程…" : "确认并应用到行程"}</button>}
       </footer>}
       {importOpen && active?.trip_id && <TripImportTool tripId={active.trip_id} onClose={closeAdvisorImport} onImported={() => { setImportOpen(false); void refreshAfterGuideImport(); }} />}
       {whatIf && <AdvisorWhatIf tripId={whatIf.tripId} initialEventType={whatIf.eventType} prefill={whatIf.prefill} onClose={() => setWhatIf(null)} onApplied={() => void refreshAfterWhatIfApplied()} />}

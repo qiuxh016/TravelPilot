@@ -57,3 +57,23 @@ def test_trip_snapshot_reloads_all_stops_after_the_plan_version_changes():
 
     assert selected == ["new-stop", "kept"]
     assert context["revision"] == 5
+
+
+def test_trip_snapshot_keeps_selected_lodging_when_plan_version_changes():
+    context = {
+        "revision": 4,
+        "current_plan": {"id": "plan-1", "version": 2},
+        "selected_candidate_ids": ["old-stop", "hotel-1"],
+    }
+
+    selected = _selected_candidates_after_trip_refresh(
+        context,
+        plan_id="plan-1",
+        plan_version=3,
+        plan_candidate_ids=["new-stop"],
+        available_candidate_ids={"new-stop", "hotel-1"},
+        retained_candidate_ids=["hotel-1"],
+    )
+
+    assert selected == ["new-stop", "hotel-1"]
+    assert context["revision"] == 5

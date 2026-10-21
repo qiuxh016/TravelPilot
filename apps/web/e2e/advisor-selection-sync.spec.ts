@@ -172,3 +172,99 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
   await confirmedChecklist.scrollIntoViewIfNeeded();
   await confirmedChecklist.screenshot({ path: testInfo.outputPath("confirmed-advisor-sync.png") });
 });
+
+test("确认写入待办直接创建并提交已选餐饮安排", async ({ page }) => {
+  const sessionId = "task-write-session";
+  const tripId = "task-write-trip";
+  const now = "2026-10-21T08:00:00Z";
+  const day = "2026-11-12";
+  const candidate = {
+    id: "lunch-1", provider: "fake", provider_id: "restaurant-1", name: "模拟午餐餐馆",
+    address: "成都市青羊区", category: "川菜餐厅", planning_category: "FOOD", meal_type: "LUNCH",
+    latitude: 30.66, longitude: 104.05, duration_min: 90, confidence: 1,
+    verification_status: "SIMULATED", verified_at: now,
+    explicit_day: day, explicit_start_time: "12:00",
+  };
+  let persistedSession: Record<string, unknown> = {
+    id: sessionId, mode: "existing", trip_id: tripId, destination: "成都",
+    start_date: day, end_date: day, budget: null, pace_level: 3, preference_text: "",
+    candidates: [candidate],
+    context: {
+      revision: 2, selected_candidate_ids: [candidate.id], current_plan: null,
+      confirmed_memories: [], planning_inputs: { origin: "", companions: [], hard_constraints: [] },
+    },
+    draft: null, draft_version: 0, draft_stale: false, status: "ACTIVE",
+    confirmed_trip_id: null, confirmed_plan_id: null, created_at: now, updated_at: now,
+    messages: [{
+      id: "assistant-1", role: "assistant",
+      content: "现在要确认把午餐12:00写入行程吗？",
+      payload: { agent_task: {
+        task_id: "write-task", task_type: "MEAL", status: "WAITING_USER",
+        goal: "为这天安排午餐", context_revision: 2, turn_number: 2, answers: ["选这家餐馆"],
+        question: "现在要确认把午餐12:00写入行程吗？",
+        confirmation_options: [
+          { label: "确认写入", answer: "确认写入当前安排" },
+          { label: "先不写入", answer: "先不写入，暂不处理这项安排" },
+        ],
+      } }, created_at: now,
+    }],
+  };
+  let draftRequest: unknown = null;
+  let confirmRequest: unknown = null;
+
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/auth/me") return route.fulfill({ json: {
+      id: "user-1", email: "test@example.invalid", username: "tester", created_at: now,
+      display_name: "测试用户", home_city: "", bio: "", has_avatar: false,
+    } });
+    if (url.pathname === "/api/v1/trips") return route.fulfill({ json: [] });
+    if (url.pathname === "/api/v1/advisor/status") return route.fulfill({ json: {
+      llm_status: "CONFIGURED", model_name: "test-model", output_token_limit: 1200,
+      upstream_status: "CHECKED_PER_REQUEST",
+    } });
+    if (url.pathname === "/api/v1/advisor/sessions" && request.method() === "GET") {
+      return route.fulfill({ json: [persistedSession] });
+    }
+    if (url.pathname === `/api/v1/advisor/sessions/${sessionId}` && request.method() === "GET") {
+      return route.fulfill({ json: persistedSession });
+    }
+    if (url.pathname.endsWith("/draft") && request.method() === "POST") {
+      draftRequest = request.postDataJSON();
+      const body = draftRequest as { candidate_ids: string[]; schedules: { candidate_id: string; day: string; start_time: string }[] };
+      expect(body.candidate_ids).toEqual([candidate.id]);
+      expect(body.schedules).toEqual([{ candidate_id: candidate.id, day, start_time: "12:00" }]);
+      persistedSession = {
+        ...persistedSession,
+        context: { ...(persistedSession.context as object), revision: 3, selected_candidate_ids: [candidate.id] },
+        draft_version: 3,
+        draft: {
+          version: 3, context_revision: 3, generated_at: now, selected_candidate_ids: [candidate.id],
+          attention_items: [], lodging: [], warnings: [],
+          changes: [{ stable_key: candidate.id, operation: "ADD", name: candidate.name,
+            reason: "用户确认", change_cost: 1, before: null,
+            after: { day, start_time: "12:00", end_time: "13:30" } }],
+          change_summary: { add: 1, remove: 0, move: 0, keep: 0 }, pace_change: null,
+          stops: [{ candidate_id: candidate.id, name: candidate.name, day, start_time: "12:00",
+            end_time: "13:30", latitude: candidate.latitude, longitude: candidate.longitude,
+            category: candidate.category, planning_category: "FOOD", meal_type: "LUNCH", address: candidate.address }],
+        },
+      };
+      return route.fulfill({ json: persistedSession });
+    }
+    if (url.pathname.endsWith("/confirm") && request.method() === "POST") {
+      confirmRequest = request.postDataJSON();
+      return route.fulfill({ json: {
+        trip_id: tripId, plan_id: "task-write-plan", plan_version: 5, already_confirmed: false,
+      } });
+    }
+    return route.fulfill({ json: {} });
+  });
+
+  await page.goto(`/advisor?sessionId=${sessionId}`);
+  await page.getByRole("button", { name: "确认写入" }).click();
+  await expect.poll(() => draftRequest).not.toBeNull();
+  await expect.poll(() => confirmRequest).toEqual({ draft_version: 3 });
+  await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/plan$`));
+});

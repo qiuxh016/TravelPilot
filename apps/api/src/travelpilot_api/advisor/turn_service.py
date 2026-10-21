@@ -107,7 +107,11 @@ from travelpilot_api.advisor.session_budget import (
 from travelpilot_api.advisor.sessions import read_session
 from travelpilot_api.advisor.stage_execution import AdvisorTurnExecutor
 from travelpilot_api.advisor.state import cancelled_task_reply, pending_context_fingerprint
-from travelpilot_api.advisor.task_state import AdvisorTaskSnapshot, resolve_task_status
+from travelpilot_api.advisor.task_state import (
+    AdvisorTaskSnapshot,
+    confirmation_options_for,
+    resolve_task_status,
+)
 from travelpilot_api.advisor.task_taxonomy import (
     accepts_driving_route_confirmation,
     is_preparation_request,
@@ -116,7 +120,10 @@ from travelpilot_api.advisor.task_taxonomy import (
     unsupported_route_mode_question,
 )
 from travelpilot_api.advisor.tools import advisor_tool_runtime, map_evidence_source
-from travelpilot_api.advisor.turn_lifecycle import resolve_pending_turn
+from travelpilot_api.advisor.turn_lifecycle import (
+    is_repeated_affirmative_question,
+    resolve_pending_turn,
+)
 from travelpilot_api.advisor.turn_observation import build_stage_selection_observation
 from travelpilot_api.advisor.turn_orchestration import (
     choose_stage_order,
@@ -1819,6 +1826,30 @@ async def execute_advisor_turn(
         and schedule_agent_trace.get("status") == "NEEDS_USER_INPUT"
         else search_loop_question or generic_follow_up_question
     )
+    repeated_affirmative_question = is_repeated_affirmative_question(
+        previous_question=continuing_task.question if continuing_task else None,
+        current_question=pending_question_text,
+        answer=content,
+        answer_count=len(pending_question.answers) if pending_question else 0,
+    )
+    if repeated_affirmative_question:
+        # A model can echo the exact question after the user has already
+        # approved it. Treating that echo as a new pending task traps the user
+        # in an endless confirmation loop, so close this question and surface
+        # the tools' current result instead.
+        reply = re.sub(
+            re.escape(continuing_task.question), "", reply, flags=re.IGNORECASE,
+        ).strip(" \n\t，,。；;：:")
+        if not reply:
+            reply = "收到，我已按你刚才确认的要求继续处理。请查看右侧最新候选或行程预览；本轮没有新的可提交结果时，我不会重复询问同一问题。"
+        pending_question_text = None
+        if agent_trace:
+            agent_trace = {
+                **agent_trace,
+                "status": "COMPLETED" if not schedule_suggestions else "PROPOSED",
+                "pending_question": None,
+                "decision_summary": "用户已确认并继续执行；已阻止重复追问同一问题",
+            }
     if schedule_preference_question:
         reply += "\n\n" + schedule_preference_question
     has_pending_question = bool(pending_question_text and agent_trace)
@@ -1858,6 +1889,10 @@ async def execute_advisor_turn(
         else continuing_task.turn_number if continuing_task
         else 1
     )
+    canonical_confirmation_options = (
+        confirmation_options_for(pending_question_text)
+        if pending_question_text else []
+    )
     task_status = resolve_task_status(
         stale=invalidated_pending_task,
         cancelled=cancelled_pending_task,
@@ -1884,9 +1919,10 @@ async def execute_advisor_turn(
         answers=task_answers,
         question=pending_question_text if has_pending_question else None,
         confirmation_options=(
-            [option.model_dump() for option in getattr(composed, "follow_up_options", [])]
+            [option.model_dump() for option in canonical_confirmation_options]
+            or [option.model_dump() for option in getattr(composed, "follow_up_options", [])]
             if composed and composed.follow_up_question and pending_question_text == composed.follow_up_question.strip()
-            else []
+            else [option.model_dump() for option in canonical_confirmation_options]
         ),
         action_summary=str((agent_trace or {}).get("decision_summary") or "")[:240],
     ).model_dump(mode="json")
