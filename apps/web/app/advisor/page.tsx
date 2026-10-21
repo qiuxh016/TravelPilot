@@ -491,6 +491,9 @@ export default function AdvisorPage() {
   const [active, setActive] = useState<AdvisorSession | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [schedules, setSchedules] = useState<Record<string, { day: string; start_time: string }>>({});
+  const [autoPreviewRevision, setAutoPreviewRevision] = useState(0);
+  const [autoPreviewPending, setAutoPreviewPending] = useState(false);
+  const lastAutoPreviewFingerprint = useRef("");
   const [mapDay, setMapDay] = useState("");
   const [candidateFilter, setCandidateFilter] = useState<"AUTO" | "ALL" | "ATTRACTION" | "FOOD" | "LODGING">("AUTO");
   const [candidateMapOpen, setCandidateMapOpen] = useState(false);
@@ -1023,9 +1026,9 @@ export default function AdvisorPage() {
         : [];
       if (assistantPayload?.action === "SCHEDULE_PROPOSAL" && scheduleSuggestions.length) {
         const scheduledIds = scheduleSuggestions.map((item) => item.candidate_id);
-        const retainedLodgingIds = updated.candidates
-          .filter((candidate) => candidate.in_current_plan && candidate.planning_category === "LODGING")
-          .map((candidate) => candidate.id);
+        const retainedLodgingIds = selected.filter((id) => updated.candidates.some((candidate) =>
+          candidate.id === id && candidate.planning_category === "LODGING",
+        ));
         const proposedIds = [...scheduledIds, ...retainedLodgingIds];
         const proposedSchedules = Object.fromEntries(scheduleSuggestions.map((item) => [item.candidate_id, { day: item.day, start_time: item.start_time }]));
         setSelected(proposedIds); setSchedules(proposedSchedules);
@@ -1082,7 +1085,7 @@ export default function AdvisorPage() {
     await submitMessage(undefined, nextTask);
   }
 
-  async function generateDraft(allowProfileMemoryConflicts = false) {
+  async function generateDraft(allowProfileMemoryConflicts = false, automatic = false) {
     if (!active || !selected.length) return;
     if (!schedulesComplete) { setError("请为每个选中的地点确认日期和开始时间；只有对话中明确提到的时间才会预填。"); return; }
     setBusy(true); setError(""); setNotice(""); setMemoryConflictMessage("");
@@ -1091,17 +1094,19 @@ export default function AdvisorPage() {
     try {
       const updated = await createAdvisorDraft(active.id, selected, draftSchedules, allowProfileMemoryConflicts, draftKey);
       finishDraftRequest(draftKey);
-      setActive(updated); setNotice(`第 ${updated.draft_version} 版行程调整预览已就绪；确认后会直接更新正式行程。`);
+      setActive(updated); setNotice(automatic
+        ? "行程预览已根据你的选择自动更新；确认后才会写入正式行程。"
+        : `第 ${updated.draft_version} 版行程调整预览已就绪；确认后会直接更新正式行程。`);
       setSelected(updated.draft?.selected_candidate_ids ?? selected);
       setMapDay(updated.draft?.stops[0]?.day ?? "");
       setSessions((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
-      window.requestAnimationFrame(() => {
+      if (!automatic) window.requestAnimationFrame(() => {
         document.getElementById("advisor-itinerary-preview")?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     } catch (reason) {
       if (!handleDraftMemoryConflict(reason)) setError((reason as Error).message);
     }
-    finally { setBusy(false); }
+    finally { setBusy(false); if (automatic) setAutoPreviewPending(false); }
   }
 
   async function saveAttentionDecision(itemKey: string, decision: "LATER" | "NOT_NEEDED" | "RESET"): Promise<boolean> {
@@ -1245,18 +1250,22 @@ export default function AdvisorPage() {
       }
     }
 
-    const draftSchedules = scopedSelection
+    // The task scope is only for validating that the requested meal was
+    // selected. Draft confirmation replaces the whole plan, so generate it
+    // from every current selection; otherwise confirming one meal silently
+    // drops the other meals, attractions, and lodging from the plan snapshot.
+    const draftSchedules = selected
       .filter((candidateId) => active.candidates.some((candidate) =>
         candidate.id === candidateId && candidate.planning_category !== "LODGING",
       ))
       .map((candidate_id) => ({ candidate_id, ...schedules[candidate_id] }));
-    const draftKey = draftRequestKey(active.id, scopedSelection, draftSchedules, false);
+    const draftKey = draftRequestKey(active.id, selected, draftSchedules, false);
     setBusy(true); setError(""); setNotice("");
     try {
-      const updated = await createAdvisorDraft(active.id, scopedSelection, draftSchedules, false, draftKey);
+      const updated = await createAdvisorDraft(active.id, selected, draftSchedules, false, draftKey);
       finishDraftRequest(draftKey);
       setActive(updated);
-      setSelected(updated.draft?.selected_candidate_ids ?? scopedSelection);
+      setSelected(updated.draft?.selected_candidate_ids ?? selected);
       setMapDay(updated.draft?.stops[0]?.day ?? "");
       setSessions((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
       if (!updated.draft) throw new Error("服务端没有返回可提交的行程草案，请先检查预览后重试。");
@@ -1281,6 +1290,15 @@ export default function AdvisorPage() {
 
   function toggleCandidate(id: string) {
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+    setAutoPreviewRevision((revision) => revision + 1);
+  }
+
+  function updateCandidateSchedule(id: string, field: "day" | "start_time", value: string) {
+    setSchedules((current) => ({
+      ...current,
+      [id]: { ...(current[id] ?? { day: "", start_time: "" }), [field]: value },
+    }));
+    setAutoPreviewRevision((revision) => revision + 1);
   }
 
   const canCreateSession = setupChoice === "ideas" || (setupChoice === "trip" && Boolean(tripId));
@@ -1288,6 +1306,28 @@ export default function AdvisorPage() {
     .filter((candidate) => selected.includes(candidate.id) && candidate.planning_category !== "LODGING")
     .map((candidate) => candidate.id) ?? [];
   const schedulesComplete = selected.length > 0 && scheduleRequiredIds.every((id) => Boolean(schedules[id]?.day && schedules[id]?.start_time));
+  const selectedScheduleFingerprint = JSON.stringify({
+    session_id: active?.id ?? "",
+    selected,
+    schedules: scheduleRequiredIds.map((candidate_id) => ({ candidate_id, ...schedules[candidate_id] })),
+  });
+  useEffect(() => {
+    if (autoPreviewRevision === 0) return;
+    if (busy) return;
+    const hasMissingPlanningContext = Boolean(active?.context?.planning_state?.missing_required?.length);
+    if (!active || active.status !== "ACTIVE" || !selected.length || !schedulesComplete
+      || hasMissingPlanningContext || (active.draft && !draftIsStale)) {
+      setAutoPreviewPending(false);
+      return;
+    }
+    if (lastAutoPreviewFingerprint.current === selectedScheduleFingerprint) return;
+    const timer = window.setTimeout(() => {
+      lastAutoPreviewFingerprint.current = selectedScheduleFingerprint;
+      setAutoPreviewPending(true);
+      void generateDraft(false, true);
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [active, autoPreviewRevision, busy, draftIsStale, schedulesComplete, selected, selectedScheduleFingerprint]);
   const travelDays = (() => {
     if (!active?.start_date || !active.end_date) return [];
     const start = new Date(`${active.start_date}T00:00:00Z`);
@@ -1853,7 +1893,7 @@ export default function AdvisorPage() {
 
         <div className="advisor-plan" style={{ maxHeight: advisorChatPanelHeight ? `${advisorChatPanelHeight}px` : undefined }}>
           <section className="advisor-preferences panel">
-            <div className="advisor-panel-title"><div><h2>{showingMixedRecommendation ? "多类型旅行候选" : activeCandidateDomain === "FOOD" ? "美食与用餐安排" : activeCandidateDomain === "LODGING" ? "住宿候选" : "地图地点候选"}</h2><p>{showingMixedRecommendation ? "景点、餐饮等候选会分别标注；选中后再为每项确认日期与时间。" : activeCandidateDomain === "FOOD" ? "推荐结果只包含餐饮；选择后请确认用餐日期和时间。" : activeCandidateDomain === "LODGING" ? "住宿只加入备选清单，不会占用每日游览时间，也不代表已预订。" : "选择地点后确认日期和开始时间；地图提供的游览时长仅作估算。"}</p></div><button type="button" className="secondary" disabled={!active || (activeCandidateDomain === "FOOD" ? !foodSelectionCount : !selected.length) || !schedulesComplete || Boolean(active.context?.planning_state?.missing_required?.length) || busy || active.status !== "ACTIVE"} onClick={() => void generateDraft()}>{active?.draft ? `更新预览（${selected.length}）` : activeCandidateDomain === "FOOD" ? `生成用餐预览（${foodSelectionCount}）` : `检查并预览行程（${selected.length}）`}</button></div>
+            <div className="advisor-panel-title"><div><h2>{showingMixedRecommendation ? "多类型旅行候选" : activeCandidateDomain === "FOOD" ? "美食与用餐安排" : activeCandidateDomain === "LODGING" ? "住宿候选" : "地图地点候选"}</h2><p>{showingMixedRecommendation ? "景点、餐饮等候选会分别标注；选中后再为每项确认日期与时间。" : activeCandidateDomain === "FOOD" ? "推荐结果只包含餐饮；选择后请确认用餐日期和时间。" : activeCandidateDomain === "LODGING" ? "住宿只加入备选清单，不会占用每日游览时间，也不代表已预订。" : "选择地点后确认日期和开始时间；地图提供的游览时长仅作估算。"}</p><p className="advisor-preview-autosave" role="status">{autoPreviewPending ? "正在自动核验并更新右侧预览…" : "选定地点并补齐日期、时间后，右侧预览会自动更新；确认后才写入正式行程。"}</p></div></div>
             <div className="advisor-candidate-toolbar">
               <div className="advisor-candidate-filters" role="group" aria-label="筛选候选地点">
                 {([ ["AUTO", "当前推荐"], ["ALL", "全部"], ["ATTRACTION", `游玩 ${candidateCount("ATTRACTION")}`], ["FOOD", `美食 ${candidateCount("FOOD")}`], ["LODGING", `住宿 ${candidateCount("LODGING")}`] ] as const).map(([filter, label]) => <button key={filter} type="button" className={candidateFilter === filter ? "is-active" : ""} aria-pressed={candidateFilter === filter} onClick={() => setCandidateFilter(filter)}>{label}</button>)}
@@ -1880,7 +1920,7 @@ export default function AdvisorPage() {
                 </div>
                 <button type="button" className={`advisor-candidate-action${selected.includes(candidate.id) ? " is-selected" : ""}`} onClick={() => toggleCandidate(candidate.id)} disabled={active?.status !== "ACTIVE"}>{selected.includes(candidate.id) ? "已加入 ✓" : candidate.planning_category === "FOOD" ? `加入${planningCategoryLabel("FOOD", candidate.meal_type)}` : candidate.planning_category === "LODGING" ? "加入住宿" : "加入行程"}</button>
                 </div>
-                {selected.includes(candidate.id) && (candidate.planning_category === "LODGING" ? <p className="advisor-lodging-note">已加入住宿清单，不会占用每日游览时间；这不代表已预订。</p> : <div className="advisor-candidate-schedule"><label>{candidate.planning_category === "FOOD" ? "用餐日期" : "安排日期"}<select value={schedule.day} onChange={(event) => setSchedules((current) => ({ ...current, [candidate.id]: { ...schedule, day: event.target.value } }))}><option value="">请选择日期</option>{travelDays.map((day, index) => <option key={day} value={day}>第 {index + 1} 天 · {day}</option>)}</select></label><label>{candidate.planning_category === "FOOD" ? "用餐时间" : "开始时间"}<input type="time" value={schedule.start_time} onChange={(event) => setSchedules((current) => ({ ...current, [candidate.id]: { ...schedule, start_time: event.target.value } }))} /></label>{candidate.explicit_day || candidate.explicit_start_time ? <small>根据你在对话中的明确表述预填，可自行修改。</small> : candidate.in_current_plan && schedule.day && schedule.start_time ? <small>沿用当前行程已有时间（{schedule.day} {schedule.start_time}）；你可以在这里调整。</small> : <small>还没有确认日期和时间，请你选择；系统不会替你决定。</small>}</div>)}
+                {selected.includes(candidate.id) && (candidate.planning_category === "LODGING" ? <p className="advisor-lodging-note">已加入住宿清单，不会占用每日游览时间；这不代表已预订。</p> : <div className="advisor-candidate-schedule"><label>{candidate.planning_category === "FOOD" ? "用餐日期" : "安排日期"}<select value={schedule.day} onChange={(event) => updateCandidateSchedule(candidate.id, "day", event.target.value)}><option value="">请选择日期</option>{travelDays.map((day, index) => <option key={day} value={day}>第 {index + 1} 天 · {day}</option>)}</select></label><label>{candidate.planning_category === "FOOD" ? "用餐时间" : "开始时间"}<input type="time" value={schedule.start_time} onChange={(event) => updateCandidateSchedule(candidate.id, "start_time", event.target.value)} /></label>{candidate.explicit_day || candidate.explicit_start_time ? <small>根据你在对话中的明确表述预填，可自行修改。</small> : candidate.in_current_plan && schedule.day && schedule.start_time ? <small>沿用当前行程已有时间（{schedule.day} {schedule.start_time}）；你可以在这里调整。</small> : <small>还没有确认日期和时间，请你选择；系统不会替你决定。</small>}</div>)}
               </article>;
             })}</div> : <p className="advisor-empty">{active && !active.destination ? "先在旅行条件中补充目的地城市，再按偏好搜索候选。" : "还没有地点候选。你可以说“推荐几个热门地点”，也可以告诉顾问城市和兴趣类别。"}</p>}
             {active?.draft && <div className="advisor-draft-summary"><strong>行程调整预览 · 第 {active.draft.version} 版</strong><span>{active.draft.stops.length} 个时间安排</span>{active.draft.lodging?.length ? <span>{active.draft.lodging.length} 个住宿备选</span> : null}<span>{active.draft.warnings.length} 条排程提示</span></div>}
@@ -1901,17 +1941,17 @@ export default function AdvisorPage() {
           </section>
 
           <section className="advisor-itinerary panel" id="advisor-itinerary-preview" tabIndex={-1}>
-            <div className="advisor-panel-title"><div><h2>行程调整预览</h2><p>{active?.destination || selectedTrip?.destination || "尚未设置目的地"} · {active?.start_date || selectedTrip?.start_date || "日期待定"} 至 {active?.end_date || selectedTrip?.end_date || "日期待定"}</p></div><span className="advisor-draft-state">{active?.status === "CONFIRMED" ? "已写入正式行程" : active?.draft ? draftIsStale ? "选项有变化，需更新预览" : "等待你确认" : "尚未生成"}</span></div>
+            <div className="advisor-panel-title"><div><h2>行程调整预览</h2><p>{active?.destination || selectedTrip?.destination || "尚未设置目的地"} · {active?.start_date || selectedTrip?.start_date || "日期待定"} 至 {active?.end_date || selectedTrip?.end_date || "日期待定"}</p></div><span className="advisor-draft-state">{active?.status === "CONFIRMED" ? "已写入正式行程" : autoPreviewPending ? "正在自动更新" : active?.draft ? draftIsStale ? "正在准备更新预览" : "等待你确认" : "尚未生成"}</span></div>
             {active?.candidates.filter((candidate) => selected.includes(candidate.id)
               && !active.draft?.selected_candidate_ids.includes(candidate.id)
               && !candidate.in_current_plan).map((candidate) => <section className="advisor-selected-candidate-live" role="status" key={`pending:${candidate.id}`}>
                 <div><strong>已选{planningCategoryLabel(candidate.planning_category, candidate.meal_type)}：{candidate.name}</strong>
                   <small>{candidate.planning_category === "LODGING"
-                    ? "已同步为住宿备选；生成或更新预览后会显示在右侧行程摘要中。"
-                    : "已同步到本次选择；确认日期和时间后更新预览，才会排入对应日期。"}</small></div>
+                    ? "已加入住宿备选；右侧预览会自动同步。"
+                    : "已加入本次选择；补齐日期和时间后会自动排入右侧预览。"}</small></div>
                 <button type="button" className="secondary" onClick={() => document.getElementById(`advisor-candidate-${candidate.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}>查看并调整</button>
               </section>)}
-            {active?.draft && draftIsStale && <p className="advisor-live-warning" role="status">你刚才选择或调整的地点、用餐时间尚未写入这份预览。点击“更新预览”重新核验后，午餐/晚餐才会显示在下方；正式行程仍需最后确认。</p>}
+            {active?.draft && draftIsStale && <p className="advisor-live-warning" role="status">你的选择已保存，正在自动重新核验预览；完成后午餐、晚餐和其他安排会同步显示。正式行程仍需最后确认。</p>}
             {draftDays.length > 1 && <label className="advisor-live-day-picker">地图日期<select value={visibleMapDay} onChange={(event) => setMapDay(event.target.value)}>{draftDays.map((day, index) => <option key={day} value={day}>第 {index + 1} 天 · {day}</option>)}</select><small>仅切换下方地图；行程安排按日期分组全部显示。</small></label>}
             {active?.draft?.stops.length ? <div className="advisor-stop-list">{draftDays.map((day) => {
               const dayStops = active.draft?.stops.filter((stop) => stop.day === day) ?? [];

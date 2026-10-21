@@ -326,6 +326,7 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 .advisor-panel-title p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .advisor-demo-mark, .advisor-draft-state { flex: 0 0 auto; border-radius: 6px; padding: 5px 8px; background: var(--bg); color: var(--muted); font-size: 11px; }
 .advisor-draft-state { background: #fff6e6; color: #805000; }
+.advisor-preview-autosave { margin-top: 5px !important; color: var(--muted); font-size: 11px; }
 :root[data-theme="dark"] .advisor-draft-state { background: #382d1d; color: #f2cc87; }
 .advisor-destinations { margin: 0 0 16px; }
 .advisor-destinations h3 { margin: 0 0 9px; color: var(--muted); font-size: 12px; font-weight: 620; }

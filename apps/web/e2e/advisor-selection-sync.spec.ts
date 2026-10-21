@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 
 test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, testInfo) => {
+  const browserErrors: string[] = [];
+  page.on("pageerror", (error) => browserErrors.push(error.stack || error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
   const sessionId = "selection-sync-session";
   const tripId = "selection-sync-trip";
   const now = "2026-10-21T08:00:00Z";
@@ -16,6 +21,18 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
       id: "hotel-1", provider: "fake", provider_id: "hotel-1", name: "模拟旅行酒店",
       address: "成都市锦江区", category: "住宿", planning_category: "LODGING",
       latitude: 30.65, longitude: 104.07, duration_min: 60, confidence: 1,
+      verification_status: "SIMULATED", verified_at: now,
+    },
+    {
+      id: "dinner-1", provider: "fake", provider_id: "restaurant-1", name: "模拟川味餐馆",
+      address: "成都市锦江区", category: "川菜餐厅", planning_category: "FOOD", meal_type: "DINNER",
+      latitude: 30.65, longitude: 104.06, duration_min: 90, confidence: 1,
+      verification_status: "SIMULATED", verified_at: now,
+    },
+    {
+      id: "sightseeing-1", provider: "fake", provider_id: "park-1", name: "模拟游览地点",
+      address: "成都市青羊区", category: "公园", planning_category: "ATTRACTION",
+      latitude: 30.67, longitude: 104.04, duration_min: 90, confidence: 1,
       verification_status: "SIMULATED", verified_at: now,
     },
   ];
@@ -53,6 +70,7 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
   };
   let persistedSession: Record<string, unknown> = session;
   let confirmation: unknown = null;
+  let draftRequestCount = 0;
 
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
@@ -62,6 +80,9 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
       display_name: "测试用户", home_city: "", bio: "", has_avatar: false,
     } });
     if (url.pathname === "/api/v1/trips") return route.fulfill({ json: [] });
+    if (url.pathname.endsWith("/weather")) return route.fulfill({ json: {
+      city: "成都", source: "Fake Weather", fetched_at: now, days: [], message: "测试天气数据",
+    } });
     if (url.pathname === "/api/v1/advisor/status") return route.fulfill({ json: {
       llm_status: "CONFIGURED", model_name: "test-model", output_token_limit: 1200,
       upstream_status: "CHECKED_PER_REQUEST",
@@ -72,34 +93,61 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
     if (url.pathname === "/api/v1/advisor/sessions" && request.method() === "GET") {
       return route.fulfill({ json: [persistedSession] });
     }
-    if (url.pathname.endsWith("/progress")) return route.fulfill({ json: [] });
+    if (url.pathname.endsWith("/progress")) return route.fulfill({ status: 204 });
+    if (url.pathname.endsWith("/events")) return route.fulfill({ status: 204 });
     if (url.pathname.endsWith("/draft") && request.method() === "POST") {
+      draftRequestCount += 1;
       const body = request.postDataJSON() as {
         candidate_ids: string[];
         schedules: { candidate_id: string; day: string; start_time: string }[];
       };
-      expect(body.candidate_ids).toEqual(["lunch-1", "hotel-1"]);
-      expect(body.schedules).toEqual([{ candidate_id: "lunch-1", day, start_time: "10:30" }]);
+      const expectedIds = draftRequestCount === 1
+        ? ["lunch-1"] : ["lunch-1", "dinner-1", "sightseeing-1", "hotel-1"];
+      expect(body.candidate_ids).toEqual(expectedIds);
+      expect(body.schedules).toEqual(draftRequestCount === 1
+        ? [{ candidate_id: "lunch-1", day, start_time: "10:30" }]
+        : [
+            { candidate_id: "lunch-1", day, start_time: "10:30" },
+            { candidate_id: "dinner-1", day, start_time: "18:00" },
+            { candidate_id: "sightseeing-1", day, start_time: "14:00" },
+          ]);
+      const version = draftRequestCount + 1;
       persistedSession = {
         ...session,
-        context: { ...session.context, revision: 2, selected_candidate_ids: body.candidate_ids },
+        context: { ...session.context, revision: version, selected_candidate_ids: body.candidate_ids },
         draft: {
-          version: 2, context_revision: 2, generated_at: now,
+          version, context_revision: version, generated_at: now,
           selected_candidate_ids: body.candidate_ids,
-          attention_items: [],
-          lodging: [{ candidate_id: "hotel-1", name: "模拟旅行酒店", address: "成都市锦江区",
+          attention_items: draftRequestCount === 1 ? [{ kind: "LODGING_MISSING", day }] : [],
+          lodging: draftRequestCount === 1 ? [] : [{ candidate_id: "hotel-1", name: "模拟旅行酒店", address: "成都市锦江区",
             provider: "fake", verification_status: "SIMULATED" }],
           warnings: [],
-          changes: [{ stable_key: "lunch-1", operation: "ADD", name: "模拟川味餐馆",
+        changes: (draftRequestCount === 1 ? ["lunch-1"] : expectedIds.slice(0, 3)).map((id) => {
+          const candidate = candidates.find((item) => item.id === id)!;
+          const start_time = id === "lunch-1" ? "10:30" : id === "dinner-1" ? "18:00" : "14:00";
+          const duration = id === "lunch-1" ? 90 : candidate.duration_min;
+          const [hours, minutes] = start_time.split(":").map(Number);
+          const endMinutes = hours * 60 + minutes + duration;
+          const end_time = `${String(Math.floor(endMinutes / 60)).padStart(2, "0")}:${String(endMinutes % 60).padStart(2, "0")}`;
+          return { stable_key: id, operation: "ADD", name: candidate.name,
             reason: "用户选择", change_cost: 1, before: null,
-            after: { day, start_time: "10:30", end_time: "12:00" } }],
-          change_summary: { add: 1, remove: 0, move: 0, keep: 0 },
+            after: { day, start_time, end_time } };
+        }),
+        change_summary: { add: draftRequestCount === 1 ? 1 : 3, remove: 0, move: 0, keep: 0 },
           pace_change: null,
-          stops: [{ candidate_id: "lunch-1", name: "模拟川味餐馆", day, start_time: "10:30",
-            end_time: "12:00", latitude: 30.66, longitude: 104.05, category: "川菜餐厅",
-            planning_category: "FOOD", meal_type: "LUNCH", address: "成都市青羊区" }],
+        stops: (draftRequestCount === 1 ? ["lunch-1"] : expectedIds.slice(0, 3)).map((id) => {
+          const candidate = candidates.find((item) => item.id === id)!;
+          const start_time = id === "lunch-1" ? "10:30" : id === "dinner-1" ? "18:00" : "14:00";
+          const [hours, minutes] = start_time.split(":").map(Number);
+          const endMinutes = hours * 60 + minutes + candidate.duration_min;
+          const end_time = `${String(Math.floor(endMinutes / 60)).padStart(2, "0")}:${String(endMinutes % 60).padStart(2, "0")}`;
+          return { candidate_id: id, name: candidate.name, day, start_time, end_time,
+            latitude: candidate.latitude, longitude: candidate.longitude, category: candidate.category,
+            planning_category: candidate.planning_category, meal_type: candidate.meal_type,
+            address: candidate.address };
+        }),
         },
-        draft_version: 2,
+        draft_version: version,
       };
       return route.fulfill({ json: persistedSession });
     }
@@ -120,7 +168,8 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
   });
 
   await page.goto(`/advisor?sessionId=${sessionId}`);
-  const lunch = page.locator(".advisor-live-candidate").filter({ hasText: "模拟川味餐馆" });
+  await expect(page).toHaveURL(new RegExp(`/advisor\\?sessionId=${sessionId}`));
+  const lunch = page.locator("#advisor-candidate-lunch-1");
   await expect(lunch).toBeVisible();
   await lunch.getByRole("button", { name: "加入午餐" }).click();
   const attentionPanel = page.getByRole("region", { name: "需要你决定的行程空档" });
@@ -130,38 +179,53 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
   await lunch.getByLabel("用餐日期").selectOption(day);
   await lunch.getByLabel("用餐时间").fill("10:30");
 
+  // The first meal should auto-refresh. The same provider restaurant can then
+  // be assigned independently to dinner without inheriting the lunch time.
+  await expect.poll(() => draftRequestCount).toBe(1);
+  const itineraryPreview = page.locator(".advisor-itinerary");
+  await expect(itineraryPreview).toContainText("模拟川味餐馆");
+  await expect(itineraryPreview).not.toContainText("模拟旅行酒店");
+
+  await page.getByRole("button", { name: "美食 2" }).click();
+  const dinner = page.locator("#advisor-candidate-dinner-1");
+  await dinner.getByRole("button", { name: "加入晚餐" }).click();
+  await expect(dinner.getByLabel("用餐时间")).toHaveValue("");
+  await dinner.getByLabel("用餐日期").selectOption(day);
+  await dinner.getByLabel("用餐时间").fill("18:00");
+
+  await page.getByRole("button", { name: "游玩 1" }).click();
+  const attraction = page.locator(".advisor-live-candidate").filter({ hasText: "模拟游览地点" });
+  await attraction.getByRole("button", { name: "加入行程" }).click();
+  await attraction.getByLabel("安排日期").selectOption(day);
+  await attraction.getByLabel("开始时间").fill("14:00");
+
   await page.getByRole("button", { name: /^住宿 \d+$/ }).click();
   const hotel = page.locator(".advisor-live-candidate").filter({ hasText: "模拟旅行酒店" });
   await expect(hotel).toBeVisible();
   await hotel.getByRole("button", { name: "加入住宿" }).click();
 
-  const preview = page.getByRole("region", { name: "需要你决定的行程空档" });
-  await expect(preview).toContainText("当前缺项已补齐");
-  await expect(preview).toContainText("已按你刚才的选择补上餐饮和住宿候选");
-  await expect(preview).not.toContainText("还没有安排午餐");
-  await expect(preview).not.toContainText("住宿还没有安排");
+  await expect.poll(() => draftRequestCount).toBe(2);
 
-  const itineraryPreview = page.locator(".advisor-itinerary");
-  await expect(page.locator(".advisor-selected-candidate-live").filter({ hasText: "已选午餐" }))
-    .toContainText("模拟川味餐馆");
-  await expect(page.locator(".advisor-selected-candidate-live").filter({ hasText: "已选住宿" }))
-    .toContainText("模拟旅行酒店");
-  await expect(page.getByRole("button", { name: "确认并应用到行程" })).toBeDisabled();
+  await expect(itineraryPreview).toContainText("模拟旅行酒店");
+  await expect(itineraryPreview).toContainText("18:00");
+  await expect(page.locator(".advisor-draft-state")).toHaveText("等待你确认");
+  await expect(page.getByRole("button", { name: "确认并应用到行程" })).toBeEnabled();
   await expect(itineraryPreview).toBeVisible();
 
-  await page.getByRole("button", { name: /更新预览（2）/ }).click();
   await expect(itineraryPreview).toBeInViewport();
   await expect(itineraryPreview).toContainText("模拟川味餐馆");
+  await expect(itineraryPreview).toContainText("模拟游览地点");
   await expect(itineraryPreview).toContainText("2026-11-12");
   await expect(itineraryPreview).toContainText("模拟旅行酒店");
   await expect(page.getByRole("button", { name: "确认并应用到行程" })).toBeEnabled();
+  await expect.poll(() => draftRequestCount).toBe(2);
 
   // The committed server snapshot is the source used when the user returns.
   await page.reload();
   await expect(page.locator(".advisor-itinerary")).toContainText("模拟川味餐馆");
   await expect(page.locator(".advisor-itinerary")).toContainText("模拟旅行酒店");
   await page.getByRole("button", { name: "确认并应用到行程" }).click();
-  await expect.poll(() => confirmation).toEqual({ draft_version: 2 });
+  await expect.poll(() => confirmation).toEqual({ draft_version: 3 });
   await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/plan$`));
   await page.goto(`/advisor?sessionId=${sessionId}`);
   await expect(page.locator(".advisor-draft-state")).toHaveText("已写入正式行程");
@@ -171,6 +235,7 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
   await expect(page.getByRole("link", { name: "查看已更新行程" })).toBeVisible();
   await confirmedChecklist.scrollIntoViewIfNeeded();
   await confirmedChecklist.screenshot({ path: testInfo.outputPath("confirmed-advisor-sync.png") });
+  expect(browserErrors).toEqual([]);
 });
 
 test("确认写入待办直接创建并提交已选餐饮安排", async ({ page }) => {
@@ -185,12 +250,33 @@ test("确认写入待办直接创建并提交已选餐饮安排", async ({ page 
     verification_status: "SIMULATED", verified_at: now,
     explicit_day: day, explicit_start_time: "12:00",
   };
+  const otherSelections = [
+    {
+      id: "dinner-1", provider: "fake", provider_id: "restaurant-2", name: "模拟晚餐餐馆",
+      address: "成都市锦江区", category: "川菜餐厅", planning_category: "FOOD", meal_type: "DINNER",
+      latitude: 30.65, longitude: 104.06, duration_min: 90, confidence: 1,
+      verification_status: "SIMULATED", verified_at: now, explicit_day: day, explicit_start_time: "18:00",
+    },
+    {
+      id: "sightseeing-1", provider: "fake", provider_id: "park-1", name: "模拟游览地点",
+      address: "成都市青羊区", category: "公园", planning_category: "ATTRACTION",
+      latitude: 30.67, longitude: 104.04, duration_min: 90, confidence: 1,
+      verification_status: "SIMULATED", verified_at: now, explicit_day: day, explicit_start_time: "14:00",
+    },
+    {
+      id: "hotel-1", provider: "fake", provider_id: "hotel-1", name: "模拟旅行酒店",
+      address: "成都市锦江区", category: "住宿", planning_category: "LODGING",
+      latitude: 30.65, longitude: 104.07, duration_min: 60, confidence: 1,
+      verification_status: "SIMULATED", verified_at: now,
+    },
+  ];
+  const allSelectedIds = [candidate.id, "dinner-1", "sightseeing-1", "hotel-1"];
   let persistedSession: Record<string, unknown> = {
     id: sessionId, mode: "existing", trip_id: tripId, destination: "成都",
     start_date: day, end_date: day, budget: null, pace_level: 3, preference_text: "",
-    candidates: [candidate],
+    candidates: [candidate, ...otherSelections],
     context: {
-      revision: 2, selected_candidate_ids: [candidate.id], current_plan: null,
+      revision: 2, selected_candidate_ids: allSelectedIds, current_plan: null,
       confirmed_memories: [], planning_inputs: { origin: "", companions: [], hard_constraints: [] },
     },
     draft: null, draft_version: 0, draft_stale: false, status: "ACTIVE",
@@ -233,22 +319,36 @@ test("确认写入待办直接创建并提交已选餐饮安排", async ({ page 
     if (url.pathname.endsWith("/draft") && request.method() === "POST") {
       draftRequest = request.postDataJSON();
       const body = draftRequest as { candidate_ids: string[]; schedules: { candidate_id: string; day: string; start_time: string }[] };
-      expect(body.candidate_ids).toEqual([candidate.id]);
-      expect(body.schedules).toEqual([{ candidate_id: candidate.id, day, start_time: "12:00" }]);
+      expect(body.candidate_ids).toEqual(allSelectedIds);
+      expect(body.schedules).toEqual([
+        { candidate_id: candidate.id, day, start_time: "12:00" },
+        { candidate_id: "dinner-1", day, start_time: "18:00" },
+        { candidate_id: "sightseeing-1", day, start_time: "14:00" },
+      ]);
       persistedSession = {
         ...persistedSession,
-        context: { ...(persistedSession.context as object), revision: 3, selected_candidate_ids: [candidate.id] },
+        context: { ...(persistedSession.context as object), revision: 3, selected_candidate_ids: allSelectedIds },
         draft_version: 3,
         draft: {
-          version: 3, context_revision: 3, generated_at: now, selected_candidate_ids: [candidate.id],
-          attention_items: [], lodging: [], warnings: [],
-          changes: [{ stable_key: candidate.id, operation: "ADD", name: candidate.name,
+          version: 3, context_revision: 3, generated_at: now, selected_candidate_ids: allSelectedIds,
+          attention_items: [],
+          lodging: [{ candidate_id: "hotel-1", name: "模拟旅行酒店", address: "成都市锦江区",
+            provider: "fake", verification_status: "SIMULATED" }],
+          warnings: [],
+          changes: [candidate, otherSelections[0], otherSelections[1]].map((item) => ({
+            stable_key: item.id, operation: "ADD", name: item.name,
             reason: "用户确认", change_cost: 1, before: null,
-            after: { day, start_time: "12:00", end_time: "13:30" } }],
-          change_summary: { add: 1, remove: 0, move: 0, keep: 0 }, pace_change: null,
-          stops: [{ candidate_id: candidate.id, name: candidate.name, day, start_time: "12:00",
-            end_time: "13:30", latitude: candidate.latitude, longitude: candidate.longitude,
-            category: candidate.category, planning_category: "FOOD", meal_type: "LUNCH", address: candidate.address }],
+            after: { day, start_time: item.id === candidate.id ? "12:00" : item.id === "dinner-1" ? "18:00" : "14:00",
+              end_time: item.id === candidate.id ? "13:30" : item.id === "dinner-1" ? "19:30" : "15:30" },
+          })),
+          change_summary: { add: 3, remove: 0, move: 0, keep: 0 }, pace_change: null,
+          stops: [candidate, otherSelections[0], otherSelections[1]].map((item) => ({
+            candidate_id: item.id, name: item.name, day,
+            start_time: item.id === candidate.id ? "12:00" : item.id === "dinner-1" ? "18:00" : "14:00",
+            end_time: item.id === candidate.id ? "13:30" : item.id === "dinner-1" ? "19:30" : "15:30",
+            latitude: item.latitude, longitude: item.longitude, category: item.category,
+            planning_category: item.planning_category, meal_type: item.meal_type, address: item.address,
+          })),
         },
       };
       return route.fulfill({ json: persistedSession });

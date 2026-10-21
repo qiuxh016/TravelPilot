@@ -22,7 +22,7 @@ from travelpilot_infra.db.models.workflow import UserMemorySettingsModel
 from travelpilot_infra.providers.maps.errors import MapsProviderError
 
 from travelpilot_api.advisor.budgets import remaining_turn_output_tokens
-from travelpilot_api.advisor.candidate_identity import provider_candidate_id
+from travelpilot_api.advisor.candidate_identity import candidate_assignment_identity
 from travelpilot_api.advisor.candidate_selection import selected_ids_after_food_search
 from travelpilot_api.advisor.checkpoints import checkpoint_writer
 from travelpilot_api.advisor.context import (
@@ -970,12 +970,15 @@ async def execute_advisor_turn(
                     )
                     if requested_category and planning_category != requested_category:
                         continue
+                    candidate_id, existing_candidate = candidate_assignment_identity(
+                        session_id=row.id,
+                        provider=place["provider"],
+                        provider_id=place["provider_id"],
+                        existing_candidates=row.candidates,
+                        meal_type=requested_meal_type if planning_category == "FOOD" else None,
+                    )
                     candidate = {
-                        "id": provider_candidate_id(
-                            session_id=row.id,
-                            provider=place["provider"],
-                            provider_id=place["provider_id"],
-                        ),
+                        "id": existing_candidate["id"] if existing_candidate else candidate_id,
                         "provider": place["provider"],
                         "provider_id": place["provider_id"],
                         "name": place["name"],
@@ -997,11 +1000,6 @@ async def execute_advisor_turn(
                             place["name"], guide_references_by_name,
                         ),
                     }
-                    existing_candidate = next((
-                        item for item in row.candidates
-                        if item["provider"] == candidate["provider"]
-                        and item["provider_id"] == candidate["provider_id"]
-                    ), None)
                     if existing_candidate:
                         if not existing_candidate.get("planning_category"):
                             existing_candidate["planning_category"] = planning_category
