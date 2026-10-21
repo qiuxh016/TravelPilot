@@ -64,6 +64,44 @@ async def test_confirm_service_reloads_memory_before_any_plan_write(monkeypatch)
     assert calls == [user.id]
 
 
+@pytest.mark.asyncio
+async def test_repeated_confirm_returns_original_plan_without_creating_another_version():
+    plan_id, trip_id = uuid4(), uuid4()
+
+    class Database:
+        def __init__(self):
+            self.get_calls = []
+            self.added = []
+            self.commits = 0
+
+        async def get(self, model, object_id):
+            self.get_calls.append((model, object_id))
+            return SimpleNamespace(id=plan_id, version=7)
+
+        def add(self, row):
+            self.added.append(row)
+
+        async def commit(self):
+            self.commits += 1
+
+    db = Database()
+    row = SimpleNamespace(
+        status="CONFIRMED", confirmed_trip_id=trip_id, confirmed_plan_id=plan_id,
+    )
+
+    result = await confirm_service.confirm_advisor_draft(
+        db, row, SimpleNamespace(draft_version=1), SimpleNamespace(id=uuid4()),
+    )
+
+    assert result.trip_id == trip_id
+    assert result.plan_id == plan_id
+    assert result.plan_version == 7
+    assert result.already_confirmed is True
+    assert db.get_calls == [(confirm_service.TripPlanModel, plan_id)]
+    assert db.added == []
+    assert db.commits == 0
+
+
 def test_confirmation_rejects_blocking_constraints_and_empty_drafts():
     with pytest.raises(HTTPException, match="没有可保存"):
         validate_confirmation_draft({"stops": [], "warnings": []}, 1, 1, 0)
