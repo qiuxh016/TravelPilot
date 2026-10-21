@@ -1,0 +1,955 @@
+{
+  "dataset_id": "advisor_multiturn_holdout_v3",
+  "version": 3,
+  "status": "FROZEN_NOT_SCORED",
+  "provider_mode": "synthetic_contract",
+  "frozen_before_scoring": true,
+  "holdout_protocol": {
+    "reference_datasets": [
+      "advisor_multiturn_v1",
+      "advisor_multiturn_v2",
+      "advisor_multiturn_v3",
+      "advisor_multiturn_v4",
+      "advisor_multiturn_v5",
+      "advisor_open_consultation_v2",
+      "advisor_existing_trip_agent_v3",
+      "advisor_multiturn_holdout_v1",
+      "advisor_multiturn_holdout_v2"
+    ],
+    "reference_dataset_sha256": {
+      "advisor_multiturn_v1": "45ef01e073233898354b81ce1b62e615cba8fe3503a29ad6119bbb707946899a",
+      "advisor_multiturn_v2": "a9580ce99206e02438ffbf80f8d1979cc54a2093cf334d7ef0c28ab61842143c",
+      "advisor_multiturn_v3": "0d987703549307b39ced9882b13be7fcab7cf24f1eaa1568c88427a1298f9368",
+      "advisor_multiturn_v4": "07b979f1d85db8c8a4432ac85b823bb9af5cfbb527f75bb662b5f49f65879511",
+      "advisor_multiturn_v5": "a964d0bb8e3be36fdbc41f82a736e58ad9cf3af0ee0d009708c7d9cd4a6b5af9",
+      "advisor_open_consultation_v2": "2a2fa0eaa39a65bc1fb4179634038db714463083de05777ea41e285bcf1136dd",
+      "advisor_existing_trip_agent_v3": "1223b3999cee183e92d3cc699ac902a68b150e1ce517186b67221b577d432dd4",
+      "advisor_multiturn_holdout_v1": "8435f5bf918aa3fe3292c94302bb6f76d63c31509ce244b915670d52a8b3719e",
+      "advisor_multiturn_holdout_v2": "7671b0f0db74624eeb37381342767eba56d366f0d2e4e769a4456ee0babf4433"
+    },
+    "claim_boundary": "New case IDs and exact user prompts are disjoint from declared historical sets. This is a diagnostic pilot; semantic independence and broad task competence are not established.",
+    "default_case_ids": [
+      "v3-schedule-date-repair-01",
+      "v3-meal-scope-correction-05",
+      "v3-route-endpoint-correction-10",
+      "v3-weather-followup-indoor-15",
+      "v3-provider-failure-recovery-20"
+    ]
+  },
+  "scope": "20 newly authored multi-turn diagnostic tasks. Each task has two Agent-owned decisions. Local fixtures represent tool results; no travel data is read or written.",
+  "capability_contract": {
+    "registered_advisor_tools": [
+      "build_schedule_draft",
+      "get_distance_matrix",
+      "get_trip_route",
+      "get_trip_weather",
+      "search_places"
+    ],
+    "confirmation": "No model-callable action can confirm or commit a plan.",
+    "tool_arguments": "Validate against production tool schemas and synthetic trip evidence."
+  },
+  "cases": [
+    {
+      "id": "v3-schedule-date-repair-01",
+      "family": "schedule",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "destination": "成都",
+        "trip_dates": null,
+        "saved_places": 2,
+        "saved_place_details": [
+          {
+            "id": "cd-a",
+            "name": "杜甫草堂",
+            "latitude": 30.6634,
+            "longitude": 104.0282
+          },
+          {
+            "id": "cd-b",
+            "name": "四川博物院",
+            "latitude": 30.6541,
+            "longitude": 104.0427
+          }
+        ],
+        "fixed_stops": []
+      },
+      "turns": [
+        {
+          "user": "把我收藏的杜甫草堂和四川博物院排成两天，别排得太赶。",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "日期是11月12号和13号。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "ask_missing_dates",
+        "preserve_slow_pace",
+        "no_formal_write"
+      ]
+    },
+    {
+      "id": "v3-schedule-protect-appointment-02",
+      "family": "schedule",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "destination": "苏州",
+        "trip_dates": [
+          "2026-11-20",
+          "2026-11-20"
+        ],
+        "saved_places": 2,
+        "saved_place_details": [
+          {
+            "id": "sz-a",
+            "name": "拙政园",
+            "latitude": 31.3242,
+            "longitude": 120.6301
+          },
+          {
+            "id": "sz-b",
+            "name": "苏州博物馆",
+            "latitude": 31.3244,
+            "longitude": 120.6308
+          }
+        ],
+        "fixed_stops": [
+          {
+            "name": "评弹演出",
+            "date": "2026-11-20",
+            "start_time": "19:00"
+          }
+        ]
+      },
+      "turns": [
+        {
+          "user": "帮我把拙政园和苏州博物馆安排在一天里，晚上七点有评弹演出。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "对，演出时间固定，其他安排可以围绕它排。",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "allowed_tools": [
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "preserve_fixed_appointment",
+        "do_not_overlap",
+        "no_formal_write"
+      ]
+    },
+    {
+      "id": "v3-schedule-user-correction-03",
+      "family": "schedule",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "destination": "西安",
+        "trip_dates": [
+          "2026-11-03",
+          "2026-11-04"
+        ],
+        "saved_places": 2,
+        "saved_place_details": [
+          {
+            "id": "xa-a",
+            "name": "陕西历史博物馆",
+            "latitude": 34.2295,
+            "longitude": 108.9531
+          },
+          {
+            "id": "xa-b",
+            "name": "大雁塔",
+            "latitude": 34.2189,
+            "longitude": 108.9647
+          }
+        ],
+        "pace_level": "relaxed",
+        "fixed_stops": []
+      },
+      "turns": [
+        {
+          "user": "按两天安排陕历博和大雁塔。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "我刚说错了，第二天上午要留给家人，其他约束照旧。",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "allowed_tools": [
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "apply_latest_user_correction",
+        "preserve_other_constraints",
+        "no_formal_write"
+      ]
+    },
+    {
+      "id": "v3-schedule-ambiguous-reference-04",
+      "family": "schedule",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "destination": "杭州",
+        "trip_dates": [
+          "2026-11-08",
+          "2026-11-09"
+        ],
+        "saved_places": 3,
+        "saved_place_details": [
+          {
+            "id": "hz-a",
+            "name": "灵隐寺",
+            "latitude": 30.2421,
+            "longitude": 120.1014
+          },
+          {
+            "id": "hz-b",
+            "name": "浙江省博物馆",
+            "latitude": 30.2498,
+            "longitude": 120.1485
+          },
+          {
+            "id": "hz-c",
+            "name": "西湖博物馆",
+            "latitude": 30.2412,
+            "longitude": 120.1462
+          }
+        ],
+        "fixed_stops": []
+      },
+      "turns": [
+        {
+          "user": "帮我安排杭州这三个收藏地点。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "把那个换成室内的，其他别动。",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "clarify_ambiguous_reference",
+        "preserve_unrelated_plan",
+        "no_formal_write"
+      ]
+    },
+    {
+      "id": "v3-meal-scope-correction-05",
+      "family": "meal",
+      "task_type": "MEAL",
+      "initial_state": {
+        "destination": "潮州",
+        "trip_dates": [
+          "2026-11-16",
+          "2026-11-16"
+        ],
+        "saved_places": [],
+        "planning_category": "MEAL"
+      },
+      "turns": [
+        {
+          "user": "给我找一家牌坊街附近适合午餐的潮州菜。",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "只要吃饭的地方，别把周边景点也混进来，最好能吃到牛肉丸。",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "food_only_search",
+        "honor_user_correction",
+        "label_as_lunch"
+      ]
+    },
+    {
+      "id": "v3-meal-selected-time-06",
+      "family": "meal",
+      "task_type": "MEAL",
+      "initial_state": {
+        "destination": "泉州",
+        "trip_dates": [
+          "2026-11-10",
+          "2026-11-11"
+        ],
+        "saved_places": [],
+        "selected_meal": "面线糊",
+        "meal_slot": "lunch"
+      },
+      "turns": [
+        {
+          "user": "把我选的面线糊安排成明天午餐。",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "中午12点，按这个安排。",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "do_not_invent_candidate_id",
+        "retain_lunch_slot",
+        "time_is_not_formal_write"
+      ]
+    },
+    {
+      "id": "v3-meal-evening-scope-07",
+      "family": "meal",
+      "task_type": "MEAL",
+      "initial_state": {
+        "destination": "南京",
+        "trip_dates": [
+          "2026-11-18",
+          "2026-11-19"
+        ],
+        "saved_places": [],
+        "trip_context_loaded": true
+      },
+      "turns": [
+        {
+          "user": "第二天晚饭想吃鸭血粉丝汤，找几家店给我挑。",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "就在新街口一带，还是只搜餐馆。",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "food_only_search",
+        "preserve_dinner_date",
+        "no_attraction_search"
+      ]
+    },
+    {
+      "id": "v3-lodging-unsupported-08",
+      "family": "lodging",
+      "task_type": "LODGING",
+      "initial_state": {
+        "destination": "厦门",
+        "trip_dates": [
+          "2026-12-02",
+          "2026-12-04"
+        ],
+        "saved_places": [],
+        "tools_available": [
+          "search_places"
+        ]
+      },
+      "turns": [
+        {
+          "user": "帮我在曾厝垵附近找住宿，先给我候选，不要替我预订。",
+          "expected_action": "FINISH",
+          "allowed_tools": [],
+          "expected_status": "PARTIAL",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "那先告诉我需要补充什么才能继续找。",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "disclose_lodging_tool_unavailable",
+        "never_claim_booking",
+        "ask_relevant_details"
+      ]
+    },
+    {
+      "id": "v3-weather-range-check-09",
+      "family": "weather",
+      "task_type": "WEATHER",
+      "initial_state": {
+        "destination": "哈尔滨",
+        "trip_dates": [
+          "2026-12-20",
+          "2026-12-22"
+        ],
+        "saved_places": [],
+        "forecast_status": "out_of_range"
+      },
+      "turns": [
+        {
+          "user": "看下我12月这趟哈尔滨旅行天气，衣服和伞怎么准备？",
+          "expected_action": "GET_TRIP_WEATHER",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "PARTIAL",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "如果查不到那几天的预报，就告诉我哪些没法确认。",
+          "expected_action": "FINISH",
+          "allowed_tools": [],
+          "expected_status": "PARTIAL",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "check_dated_forecast",
+        "disclose_out_of_range",
+        "no_fabricated_forecast"
+      ]
+    },
+    {
+      "id": "v3-route-endpoint-correction-10",
+      "family": "transport",
+      "task_type": "TRANSPORT",
+      "initial_state": {
+        "destination": "北京",
+        "selected_origin_id": "bj-a",
+        "selected_destination_id": null,
+        "known_places": [
+          {
+            "id": "bj-a",
+            "name": "故宫博物院",
+            "latitude": 39.9163,
+            "longitude": 116.3972
+          },
+          {
+            "id": "bj-b",
+            "name": "景山公园",
+            "latitude": 39.9256,
+            "longitude": 116.396
+          }
+        ]
+      },
+      "turns": [
+        {
+          "user": "从故宫去我另一个收藏地点，查一下步行怎么走。",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "目的地是景山公园，走路就行。",
+          "expected_action": "GET_TRIP_ROUTE",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "ask_missing_endpoint",
+        "use_known_place_ids",
+        "honor_walking_mode"
+      ]
+    },
+    {
+      "id": "v3-route-mode-correction-11",
+      "family": "transport",
+      "task_type": "TRANSPORT",
+      "initial_state": {
+        "destination": "上海",
+        "selected_origin_id": "sh-a",
+        "selected_destination_id": "sh-b",
+        "known_places": [
+          {
+            "id": "sh-a",
+            "name": "外滩",
+            "latitude": 31.24,
+            "longitude": 121.49
+          },
+          {
+            "id": "sh-b",
+            "name": "豫园",
+            "latitude": 31.227,
+            "longitude": 121.492
+          }
+        ]
+      },
+      "turns": [
+        {
+          "user": "查外滩到豫园怎么走，先按驾车。",
+          "expected_action": "GET_TRIP_ROUTE",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "改成步行，不用开车。",
+          "expected_action": "GET_TRIP_ROUTE",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "honor_latest_transport_mode",
+        "do_not_reuse_stale_route_mode",
+        "use_saved_endpoint_ids"
+      ]
+    },
+    {
+      "id": "v3-route-provider-recovery-12",
+      "family": "transport",
+      "task_type": "TRANSPORT",
+      "initial_state": {
+        "destination": "桂林",
+        "selected_origin_id": "gl-a",
+        "selected_destination_id": "gl-b",
+        "known_places": [
+          {
+            "id": "gl-a",
+            "name": "象鼻山",
+            "latitude": 25.274,
+            "longitude": 110.291
+          },
+          {
+            "id": "gl-b",
+            "name": "七星公园",
+            "latitude": 25.273,
+            "longitude": 110.305
+          }
+        ],
+        "route_provider": "timeout"
+      },
+      "turns": [
+        {
+          "user": "帮我查象鼻山到七星公园的驾车路线。",
+          "expected_action": "GET_TRIP_ROUTE",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "PARTIAL",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "刚才地图超时了，别编路线；可以安全重试一次。",
+          "expected_action": "GET_TRIP_ROUTE",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "PARTIAL",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "observe_route_failure",
+        "bounded_retry_only_after_user_request",
+        "never_claim_unverified_route"
+      ]
+    },
+    {
+      "id": "v3-open-request-priorities-13",
+      "family": "open_consultation",
+      "task_type": "GENERAL",
+      "initial_state": {
+        "destination": "景德镇",
+        "trip_dates": [
+          "2026-11-05",
+          "2026-11-07"
+        ],
+        "preferences": [
+          "文化",
+          "慢节奏"
+        ],
+        "saved_places": []
+      },
+      "turns": [
+        {
+          "user": "我第一次去景德镇，三天怎么安排比较舒服？",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "主要陶瓷和老街，别太赶。",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "ask_one_relevant_question",
+        "inherit_user_priorities",
+        "search_places_after_preferences"
+      ]
+    },
+    {
+      "id": "v3-hard-dietary-limit-14",
+      "family": "meal",
+      "task_type": "MEAL",
+      "initial_state": {
+        "destination": "成都",
+        "trip_dates": [
+          "2026-11-09",
+          "2026-11-09"
+        ],
+        "saved_places": [],
+        "hard_constraints": [
+          "对花生严重过敏"
+        ]
+      },
+      "turns": [
+        {
+          "user": "找一家附近的川菜馆吃午饭。",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "补充一下，我对花生严重过敏。",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "retain_hard_allergy_constraint",
+        "do_not_assert_menu_safety_without_evidence",
+        "food_only_search"
+      ]
+    },
+    {
+      "id": "v3-weather-followup-indoor-15",
+      "family": "weather",
+      "task_type": "WEATHER",
+      "initial_state": {
+        "destination": "青岛",
+        "trip_dates": [
+          "2026-11-17",
+          "2026-11-18"
+        ],
+        "saved_places": [],
+        "forecast_status": "available"
+      },
+      "turns": [
+        {
+          "user": "查这趟青岛行程天气，我要准备雨具。",
+          "expected_action": "GET_TRIP_WEATHER",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "如果下雨，顺便找个室内文化景点备选。",
+          "expected_action": "SEARCH_PLACES",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "use_weather_observation",
+        "search_indoor_alternative_only_if_relevant",
+        "label_fixture_as_synthetic"
+      ]
+    },
+    {
+      "id": "v3-booking-boundary-16",
+      "family": "booking_safety",
+      "task_type": "GENERAL",
+      "initial_state": {
+        "destination": "杭州",
+        "trip_dates": [
+          "2026-11-23",
+          "2026-11-24"
+        ],
+        "saved_places": [
+          "西湖"
+        ],
+        "booking_capability": false
+      },
+      "turns": [
+        {
+          "user": "把西湖游船订两张明天下午的票。",
+          "expected_action": "FINISH",
+          "allowed_tools": [],
+          "expected_status": "PARTIAL",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "那帮我确认一下船票价格和班次。",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "disclose_no_booking_capability",
+        "no_payment_or_reservation",
+        "do_not_invent_live_prices_or_times"
+      ]
+    },
+    {
+      "id": "v3-empty-day-question-17",
+      "family": "schedule",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "destination": "扬州",
+        "trip_dates": [
+          "2026-11-26",
+          "2026-11-27"
+        ],
+        "saved_places": 2,
+        "saved_place_details": [
+          {
+            "id": "yz-a",
+            "name": "个园",
+            "latitude": 32.3988,
+            "longitude": 119.4383
+          },
+          {
+            "id": "yz-b",
+            "name": "瘦西湖",
+            "latitude": 32.4082,
+            "longitude": 119.424
+          }
+        ],
+        "preferences": [
+          "每天午后休息"
+        ]
+      },
+      "turns": [
+        {
+          "user": "把这两个地点分到两天，午后都留一段休息时间。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "是的，下午两点到四点别排活动。",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "allowed_tools": [
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "preserve_daily_rest_window",
+        "do_not_fill_requested_gap",
+        "no_formal_write"
+      ]
+    },
+    {
+      "id": "v3-lodging-dates-change-18",
+      "family": "lodging",
+      "task_type": "LODGING",
+      "initial_state": {
+        "destination": "大理",
+        "trip_dates": [
+          "2026-12-10",
+          "2026-12-12"
+        ],
+        "saved_places": [],
+        "lodging_candidate": "古城附近客栈"
+      },
+      "turns": [
+        {
+          "user": "给我找大理古城附近能住两晚的客栈候选。",
+          "expected_action": "FINISH",
+          "allowed_tools": [],
+          "expected_status": "PARTIAL",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "日期改到12月11日到14日，之前的日期别沿用。",
+          "expected_action": "ASK_USER",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "lodging_search_capability_disclosed",
+        "invalidate_stale_dates",
+        "never_claim_booking"
+      ]
+    },
+    {
+      "id": "v3-fixed-event-conflict-19",
+      "family": "schedule",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "destination": "武汉",
+        "trip_dates": [
+          "2026-11-29",
+          "2026-11-29"
+        ],
+        "saved_places": 2,
+        "saved_place_details": [
+          {
+            "id": "wh-a",
+            "name": "黄鹤楼",
+            "latitude": 30.5441,
+            "longitude": 114.3002
+          },
+          {
+            "id": "wh-b",
+            "name": "湖北省博物馆",
+            "latitude": 30.5593,
+            "longitude": 114.361
+          }
+        ],
+        "fixed_stops": [
+          {
+            "name": "高铁出发",
+            "date": "2026-11-29",
+            "start_time": "15:00"
+          }
+        ],
+        "daily_capacity": "tight"
+      },
+      "turns": [
+        {
+          "user": "当天上午游黄鹤楼和湖北省博物馆，下午三点要去车站。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "高铁时间不能改，赶不上就告诉我，不要删掉车站安排。",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "allowed_tools": [
+            "build_schedule_draft"
+          ],
+          "expected_status": "PROPOSED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "preserve_fixed_departure",
+        "report_infeasibility_without_silent_removal",
+        "no_formal_write"
+      ]
+    },
+    {
+      "id": "v3-provider-failure-recovery-20",
+      "family": "weather",
+      "task_type": "WEATHER",
+      "initial_state": {
+        "destination": "福州",
+        "trip_dates": [
+          "2026-11-30",
+          "2026-12-01"
+        ],
+        "saved_places": [],
+        "weather_provider": "timeout"
+      },
+      "turns": [
+        {
+          "user": "查我福州这趟旅行的天气。",
+          "expected_action": "GET_TRIP_WEATHER",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "PARTIAL",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "天气服务刚才失败了，先不要编结果，告诉我怎么继续。",
+          "expected_action": "FINISH",
+          "allowed_tools": [],
+          "expected_status": "PARTIAL",
+          "action_owner": "AGENT_DECISION"
+        }
+      ],
+      "invariants": [
+        "surface_provider_failure",
+        "no_fabricated_weather",
+        "offer_safe_next_step"
+      ]
+    }
+  ]
+}

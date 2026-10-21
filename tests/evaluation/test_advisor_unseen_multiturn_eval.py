@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 from travelpilot_core.agents.loop import AgentAction
+from travelpilot_core.agents.planner import PlannerDecisionFailure, TokenUsage
 
 from tests.evaluation import advisor_unseen_multiturn_eval as evaluation
 
@@ -135,3 +136,41 @@ def test_live_cap_defaults_fit_user_approved_ceiling():
     assert evaluation.DEFAULT_REQUEST_CAP == 120
     assert evaluation.DEFAULT_OUTPUT_CAP == 128
     assert evaluation.DEFAULT_REQUEST_CAP * evaluation.DEFAULT_OUTPUT_CAP == 15_360
+
+
+@pytest.mark.asyncio
+async def test_structured_output_failures_are_counted_and_usage_is_preserved(monkeypatch):
+    dataset = evaluation.json.loads(evaluation.DATASET.read_text(encoding="utf-8"))
+    case = dataset["cases"][0]
+
+    async def invalid_decision(*_args, **_kwargs):
+        raise PlannerDecisionFailure("AGENT_ACTION_INVALID", TokenUsage(17, 6, 23))
+
+    monkeypatch.setattr(evaluation, "decide_next_action", invalid_decision)
+    row = await evaluation._run_turn(
+        case=case,
+        turn=case["turns"][0],
+        turn_index=0,
+        arm="B2_AGENT_LOOP",
+        history=[],
+        api_key="test-key",
+        model="test-model",
+        base_url="https://example.test/v1",
+        output_token_cap=128,
+        global_budget={
+            "requests": 0,
+            "output_tokens": 0,
+            "request_cap": 10,
+            "exhausted": 0,
+            "reported_overrun": 0,
+        },
+    )
+
+    assert row["invalid_model_actions"] == 1
+    assert row["output_usage"] == [
+        {
+            "prompt_tokens": 17,
+            "output_tokens": 6,
+            "total_tokens": 23,
+        }
+    ]

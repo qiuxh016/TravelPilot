@@ -300,6 +300,7 @@ async def _run_turn(
                     "total_tokens": exc.usage.total_tokens,
                 }
             )
+            invalid_actions += 1
             actions.append({"kind": "INVALID_MODEL_ACTION", "summary": exc.code})
             return AgentAction(kind="FINISH", summary="模型动作不符合约定，安全停止")
         except BaseException:
@@ -442,6 +443,23 @@ async def run_live(
             ),
             "verification_failures": sum(item.get("verification_failures", 0) for item in turns),
             "invalid_model_actions": sum(item.get("invalid_model_actions", 0) for item in turns),
+            "tool_failures": sum(
+                transition.get("status") == "FAILED"
+                for item in turns
+                for transition in item.get("tool_transitions", [])
+            ),
+            "verified_tool_actions": sum(
+                transition.get("status") == "VERIFIED"
+                for item in turns
+                for transition in item.get("tool_transitions", [])
+            ),
+            "recovery_decisions": sum(
+                len(item.get("additional_recovery_actions", [])) for item in turns
+            ),
+            "loop_status_counts": {
+                status: sum(item.get("loop_status") == status for item in turns)
+                for status in sorted({item.get("loop_status") for item in turns})
+            },
             "output_tokens": sum(
                 usage.get("output_tokens", 0)
                 for item in turns
