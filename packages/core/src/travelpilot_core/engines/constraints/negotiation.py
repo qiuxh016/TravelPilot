@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
-from itertools import pairwise
+from itertools import combinations, pairwise, product
 from typing import Literal
 
 
@@ -123,14 +123,19 @@ def negotiate_schedule(
     if not conflicts:
         return NegotiationResult(True, (), (), (), 0, False)
 
-    conflict_ids = tuple(dict.fromkeys(conflicts[0].activity_ids))
+    minimal_conflict_ids = tuple(dict.fromkeys(conflicts[0].activity_ids))
+    conflict_ids = tuple(dict.fromkeys(
+        item_id for conflict in conflicts for item_id in conflict.activity_ids
+    ))
     by_id = {item.id: item for item in original}
     movable = [
         by_id[item_id] for item_id in conflict_ids if item_id in by_id and not by_id[item_id].fixed
     ]
     alternatives: dict[tuple[tuple[str, date, int], ...], NegotiationAlternative] = {}
+    variants_by_id: dict[str, list[NegotiationActivity | None]] = {}
     explored = 0
     truncated = False
+    single_change_budget = max(1, max_states // 2)
 
     def consider(
         candidate_items: list[NegotiationActivity],
@@ -139,7 +144,7 @@ def negotiate_schedule(
         before: NegotiationActivity | None,
     ) -> None:
         nonlocal explored, truncated
-        if explored >= max_states:
+        if explored >= single_change_budget:
             truncated = True
             return
         explored += 1
@@ -199,6 +204,7 @@ def negotiate_schedule(
 
     for activity in sorted(movable, key=lambda item: (item.priority, item.id)):
         if activity.optional and not activity.required:
+            variants_by_id.setdefault(activity.id, []).append(None)
             consider(
                 [item for item in original if item.id != activity.id],
                 activity,
@@ -230,19 +236,96 @@ def negotiate_schedule(
                     lunch_window,
                     dinner_window,
                 )
-            for start in starts:
+            for start in sorted(starts, key=lambda value: (abs(value - activity.start_minute), value)):
                 if target_day == activity.day and start == activity.start_minute:
                     continue
                 moved = NegotiationActivity(
                     **{**activity.__dict__, "day": target_day, "start_minute": start}
                 )
+                variants = variants_by_id.setdefault(activity.id, [])
+                if len(variants) < 8:
+                    variants.append(moved)
                 changed_items = [moved if item.id == activity.id else item for item in original]
                 consider(changed_items, moved, "MOVE", activity)
-                if explored >= max_states:
+                if explored >= single_change_budget:
                     truncated = True
                     break
-            if explored >= max_states:
+            if explored >= single_change_budget:
                 break
+        if explored >= single_change_budget:
+            break
+
+    # Repair independent conflicts with a bounded two-activity combination.
+    # Keep at most eight deterministic variants per activity and validate each
+    # combined schedule against the complete original constraint set.
+    for first_id, second_id in combinations(variants_by_id, 2):
+        for first_variant, second_variant in product(
+            variants_by_id[first_id], variants_by_id[second_id]
+        ):
+            if explored >= max_states:
+                truncated = True
+                break
+            explored += 1
+            replacements = {first_id: first_variant, second_id: second_variant}
+            candidate_items = [
+                replacements.get(item.id, item)
+                for item in original
+                if replacements.get(item.id, item) is not None
+            ]
+            candidate = tuple(sorted(candidate_items, key=_sort_key))
+            if _find_conflicts(
+                candidate,
+                travel_minutes,
+                day_start_minute,
+                day_end_minute,
+                transfer_buffer_minute,
+                lunch_window,
+                dinner_window,
+            ):
+                continue
+            signature = tuple((item.id, item.day, item.start_minute) for item in candidate)
+            changes: list[dict[str, object]] = []
+            cost = 0
+            summaries: list[str] = []
+            for item_id, variant in replacements.items():
+                before = by_id[item_id]
+                if variant is None:
+                    operation = "REMOVE"
+                    item_cost = 20 + (5 - before.priority) * 3
+                    summaries.append(f"移除可选地点{before.name}")
+                    after_day = after_start = None
+                    changed_name = before.name
+                else:
+                    operation = "MOVE"
+                    item_cost = 2 + abs((variant.day - before.day).days) * 4
+                    item_cost += abs(variant.start_minute - before.start_minute) // 30
+                    summaries.append(
+                        f"将{variant.name}调整到{variant.day.isoformat()} "
+                        f"{_clock(variant.start_minute)}"
+                    )
+                    after_day, after_start = variant.day.isoformat(), _clock(variant.start_minute)
+                    changed_name = variant.name
+                cost += item_cost
+                changes.append({
+                    "operation": operation,
+                    "activity_id": item_id,
+                    "name": changed_name,
+                    "before_day": before.day.isoformat(),
+                    "before_start": _clock(before.start_minute),
+                    "after_day": after_day,
+                    "after_start": after_start,
+                })
+            alternatives.setdefault(
+                signature,
+                NegotiationAlternative(
+                    id=f"option-combined-{first_id}-{second_id}",
+                    title="同时调整两项安排",
+                    summary="；".join(summaries) + "，其他安排不变",
+                    change_cost=cost,
+                    activities=candidate,
+                    changes=tuple(changes),
+                ),
+            )
         if explored >= max_states:
             break
 
@@ -253,7 +336,7 @@ def negotiate_schedule(
     return NegotiationResult(
         feasible=bool(ranked),
         conflicts=tuple(conflicts),
-        minimal_conflict_set=conflict_ids,
+        minimal_conflict_set=minimal_conflict_ids,
         alternatives=tuple(ranked),
         explored_states=explored,
         search_truncated=truncated,

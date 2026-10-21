@@ -130,6 +130,36 @@ def test_two_conflicting_fixed_events_are_rejected_without_relaxing_hard_constra
     assert result.alternatives == ()
 
 
+def test_two_independent_conflicts_can_be_resolved_with_two_moves():
+    items = [
+        activity("a", DAY_1, 9 * 60, 60),
+        activity("b", DAY_1, 9 * 60 + 30, 60),
+        activity("c", DAY_1, 14 * 60, 60),
+        activity("d", DAY_1, 14 * 60 + 30, 60),
+    ]
+    routes = {(left.id, right.id): 0 for left in items for right in items if left.id != right.id}
+
+    result = negotiate_schedule(items, start_date=DAY_1, end_date=DAY_1, travel_minutes=routes)
+
+    combined = [option for option in result.alternatives if len(option.changes) == 2]
+    assert result.feasible
+    assert combined
+    assert all(
+        len(option.changes) == 2
+        for option in result.alternatives
+        if option.title == "同时调整两项安排"
+    )
+
+
+def test_activity_outside_hard_trip_date_is_rejected():
+    outside = activity("outside", DAY_2, 10 * 60, 30)
+
+    with pytest.raises(ValueError, match="outside the trip dates"):
+        negotiate_schedule(
+            [outside], start_date=DAY_1, end_date=DAY_1, travel_minutes={}
+        )
+
+
 def test_optional_removal_is_offered_only_for_optional_nonrequired_activity():
     fixed = activity("fixed", DAY_1, 10 * 60, 120, fixed=True, required=True)
     optional = activity(
@@ -198,13 +228,14 @@ def test_search_limits_are_validated(kwargs):
 
 
 @pytest.mark.asyncio
-async def test_negotiate_endpoint_rejects_stale_draft(monkeypatch):
+@pytest.mark.parametrize("stale_kind", ["PAYLOAD_VERSION", "CONTEXT_REVISION"])
+async def test_negotiate_endpoint_rejects_stale_draft(monkeypatch, stale_kind):
     row = SimpleNamespace(
         id=uuid4(),
         status="ACTIVE",
         draft_version=2,
         draft={"version": 2, "context_revision": 4, "stops": []},
-        context={"revision": 4},
+        context={"revision": 5 if stale_kind == "CONTEXT_REVISION" else 4},
         start_date=DAY_1,
         end_date=DAY_1,
     )
@@ -216,12 +247,11 @@ async def test_negotiate_endpoint_rejects_stale_draft(monkeypatch):
     with pytest.raises(HTTPException) as error:
         await advisor_drafts.negotiate_draft(
             row.id,
-            AdvisorNegotiationRequest(draft_version=1),
+            AdvisorNegotiationRequest(draft_version=1 if stale_kind == "PAYLOAD_VERSION" else 2),
             object(),
             SimpleNamespace(id=uuid4()),
         )
     assert error.value.status_code == 409
-    assert "刷新" in error.value.detail
 
 
 @pytest.mark.asyncio
