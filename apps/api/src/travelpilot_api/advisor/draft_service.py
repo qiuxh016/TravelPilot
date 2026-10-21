@@ -6,6 +6,22 @@ from itertools import pairwise
 from fastapi import HTTPException
 
 
+def overlaps_time_window(
+    start_minute: int,
+    end_minute: int,
+    window_start: int,
+    window_end: int,
+    *,
+    minimum_overlap: int = 30,
+) -> bool:
+    """Return whether a scheduled stop meaningfully overlaps a meal window."""
+    if end_minute < start_minute:
+        return False
+    if end_minute == start_minute:
+        return window_start <= start_minute < window_end
+    return min(end_minute, window_end) - max(start_minute, window_start) >= minimum_overlap
+
+
 def rest_check_item(day: date, stops: list[tuple[time, time]]) -> dict[str, str] | None:
     """Suggest review for a long, tightly scheduled day; this is not a blocker."""
     if len(stops) < 3:

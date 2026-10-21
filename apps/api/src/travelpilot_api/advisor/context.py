@@ -14,6 +14,7 @@ from travelpilot_infra.db.models.trip import TripModel
 from travelpilot_infra.db.models.wishlist import WishlistItemModel
 
 from travelpilot_api.advisor.candidate_identity import provider_candidate_id
+from travelpilot_api.advisor.draft_service import overlaps_time_window
 from travelpilot_api.advisor.interpretation import _candidate_planning_category
 from travelpilot_api.advisor.route_evidence import reusable_route_evidence
 
@@ -310,8 +311,7 @@ def trip_completeness_audit(row: AdvisorSessionModel, context: dict | None = Non
                     # previous start-time interpretation instead of inventing
                     # a duration that could hide an unplanned meal.
                     stop_end = stop_start
-                overlap = max(0, min(stop_end, end) - max(stop_start, start))
-                if overlap >= 30 or (stop_end == stop_start and start <= stop_start < end):
+                if overlaps_time_window(stop_start, stop_end, start, end):
                     covered = True
                     break
             if not covered:

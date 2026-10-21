@@ -1170,6 +1170,23 @@ export default function AdvisorPage() {
     setBusy(true); setError("");
     try {
       const result = await confirmAdvisorDraft(active.id, active.draft.version);
+      const confirmedAt = new Date().toISOString();
+      setActive((current) => current?.id === active.id ? {
+        ...current,
+        status: "CONFIRMED",
+        trip_id: result.trip_id,
+        confirmed_trip_id: result.trip_id,
+        confirmed_plan_id: result.plan_id,
+        updated_at: confirmedAt,
+      } : current);
+      setSessions((current) => current.map((session) => session.id === active.id ? {
+        ...session,
+        status: "CONFIRMED",
+        trip_id: result.trip_id,
+        confirmed_trip_id: result.trip_id,
+        confirmed_plan_id: result.plan_id,
+        updated_at: confirmedAt,
+      } : session));
       router.push(`/trips/${result.trip_id}/plan`);
     } catch (reason) { setError((reason as Error).message); }
     finally { setBusy(false); }
@@ -1793,7 +1810,7 @@ export default function AdvisorPage() {
           </section>
 
           <section className="advisor-itinerary panel" id="advisor-itinerary-preview" tabIndex={-1}>
-            <div className="advisor-panel-title"><div><h2>行程调整预览</h2><p>{active?.destination || selectedTrip?.destination || "尚未设置目的地"} · {active?.start_date || selectedTrip?.start_date || "日期待定"} 至 {active?.end_date || selectedTrip?.end_date || "日期待定"}</p></div><span className="advisor-draft-state">{active?.draft ? draftIsStale ? "选项有变化，需更新预览" : "等待你确认" : "尚未生成"}</span></div>
+            <div className="advisor-panel-title"><div><h2>行程调整预览</h2><p>{active?.destination || selectedTrip?.destination || "尚未设置目的地"} · {active?.start_date || selectedTrip?.start_date || "日期待定"} 至 {active?.end_date || selectedTrip?.end_date || "日期待定"}</p></div><span className="advisor-draft-state">{active?.status === "CONFIRMED" ? "已写入正式行程" : active?.draft ? draftIsStale ? "选项有变化，需更新预览" : "等待你确认" : "尚未生成"}</span></div>
             {active?.candidates.filter((candidate) => selected.includes(candidate.id)
               && !active.draft?.selected_candidate_ids.includes(candidate.id)
               && !candidate.in_current_plan).map((candidate) => <section className="advisor-selected-candidate-live" role="status" key={`pending:${candidate.id}`}>
@@ -1849,8 +1866,8 @@ export default function AdvisorPage() {
               </div>}
               <small>{active.draft.weather.attribution} · 更新于 {active.draft.weather.fetched_at.slice(0, 16).replace("T", " ")}</small>
             </div>}
-            {active?.draft?.attention_items?.length ? <section className="advisor-attention-panel" aria-label="需要你决定的行程空档">
-              <div className="advisor-attention-heading"><span aria-hidden="true">✳</span><div><h3>{currentAttentionItems.length ? "有几段安排还没确定" : "当前缺项已补齐"}</h3><p>你来决定怎么处理，正式行程不会在你确认前改变。</p></div></div>
+            {active?.draft && (active.draft.attention_items?.length || active.status === "CONFIRMED") ? <section className="advisor-attention-panel" aria-label={active.status === "CONFIRMED" ? "行程保存检查结果" : "需要你决定的行程空档"}>
+              <div className="advisor-attention-heading"><span aria-hidden="true">✳</span><div><h3>{active?.status === "CONFIRMED" ? currentAttentionItems.length ? "行程已保存，仍有可选完善项" : "行程已保存，检查结果已同步" : currentAttentionItems.length ? "有几段安排还没确定" : "当前缺项已补齐"}</h3><p>{active?.status === "CONFIRMED" ? currentAttentionItems.length ? "正式行程已更新；以下是仍未安排的可选项目。" : "正式行程已更新，当前安排与检查结果一致。" : "你来决定怎么处理，正式行程不会在你确认前改变。"}</p></div></div>
               {selectedUnscheduledMealCandidates.length > 0 && <p className="advisor-attention-selection-note" role="status">
                 已选餐饮地点：{selectedUnscheduledMealCandidates.map((candidate) => candidate.name).join("、")}。还需选择用餐日期和时间；顾问不会替你填默认值。<button type="button" className="advisor-attention-inline-action" onClick={() => {
                   setCandidateFilter("FOOD");

@@ -66,6 +66,7 @@ async def confirm_advisor_draft(
         trip_end_date=row.end_date,
         current_plan=context.get("current_plan"),
     )
+    created_trip = row.trip_id is None
     trip = None
     if row.trip_id:
         trip = await db.scalar(
@@ -120,6 +121,9 @@ async def confirm_advisor_draft(
         )
         db.add(trip)
         await db.flush()
+    # Associate idea-first sessions with the trip created by confirmation so
+    # subsequent reads refresh the same trip snapshot used by the right panel.
+    row.trip_id = trip.id
     selected_ids = row.draft.get("selected_candidate_ids", [])
     selected = {
         candidate["id"]: candidate
@@ -235,7 +239,7 @@ async def confirm_advisor_draft(
             phase="user",
             operation="confirm_draft",
             status="SUCCEEDED",
-            metadata_json={"plan_version": version, "created_trip": row.trip_id is None},
+            metadata_json={"plan_version": version, "created_trip": created_trip},
         )
     )
     db.add(

@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from travelpilot_api.advisor.draft_service import (
     meal_schedule_advisories,
     meal_time_advisory,
+    overlaps_time_window,
     validate_draft_selection,
 )
 from travelpilot_api.schemas.advisor import AdvisorDraftCreate
@@ -121,6 +122,22 @@ def test_meal_time_advisory_does_not_classify_an_attraction_as_a_meal():
         {"name": "博物馆", "planning_category": "ATTRACTION", "meal_type": "LUNCH"},
         time(22, 0),
     ) is None
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "window_start", "window_end", "expected"),
+    [
+        (10 * 60 + 30, 12 * 60, 11 * 60, 14 * 60, True),
+        (16 * 60 + 30, 18 * 60, 17 * 60, 20 * 60, True),
+        (13 * 60 + 40, 13 * 60 + 55, 11 * 60, 14 * 60, False),
+        (14 * 60, 15 * 60, 11 * 60, 14 * 60, False),
+        (12 * 60, 12 * 60, 11 * 60, 14 * 60, True),
+    ],
+)
+def test_meal_window_coverage_uses_consistent_duration_overlap(
+    start, end, window_start, window_end, expected,
+):
+    assert overlaps_time_window(start, end, window_start, window_end) is expected
 
 
 def test_meal_schedule_advisories_only_report_selected_mis_timed_typed_meals():

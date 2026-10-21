@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }) => {
+test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, testInfo) => {
   const sessionId = "selection-sync-session";
   const tripId = "selection-sync-trip";
   const now = "2026-10-21T08:00:00Z";
@@ -105,6 +105,13 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }) 
     }
     if (url.pathname.endsWith("/confirm") && request.method() === "POST") {
       confirmation = request.postDataJSON();
+      persistedSession = {
+        ...persistedSession,
+        status: "CONFIRMED",
+        trip_id: tripId,
+        confirmed_trip_id: tripId,
+        confirmed_plan_id: "selection-sync-plan",
+      };
       return route.fulfill({ json: {
         trip_id: tripId, plan_id: "selection-sync-plan", plan_version: 4, already_confirmed: false,
       } });
@@ -156,4 +163,12 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }) 
   await page.getByRole("button", { name: "确认并应用到行程" }).click();
   await expect.poll(() => confirmation).toEqual({ draft_version: 2 });
   await expect(page).toHaveURL(new RegExp(`/trips/${tripId}/plan$`));
+  await page.goto(`/advisor?sessionId=${sessionId}`);
+  await expect(page.locator(".advisor-draft-state")).toHaveText("已写入正式行程");
+  const confirmedChecklist = page.getByRole("region", { name: "行程保存检查结果" });
+  await expect(confirmedChecklist)
+    .toContainText("行程已保存，检查结果已同步");
+  await expect(page.getByRole("link", { name: "查看已更新行程" })).toBeVisible();
+  await confirmedChecklist.scrollIntoViewIfNeeded();
+  await confirmedChecklist.screenshot({ path: testInfo.outputPath("confirmed-advisor-sync.png") });
 });

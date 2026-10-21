@@ -27,6 +27,7 @@ from travelpilot_api.advisor.context import (
 )
 from travelpilot_api.advisor.draft_service import (
     meal_schedule_advisories,
+    overlaps_time_window,
     rest_check_item,
     validate_draft_selection,
 )
@@ -333,13 +334,19 @@ async def create_draft(
                     "hours": gap // 60,
                 })
         meal_terms = ("餐饮", "餐厅", "餐馆", "美食", "小吃", "火锅", "饭店", "快餐", "restaurant", "food")
-        lunch_covered = any(11 * 60 <= _clock_minutes(visit.start_time) < 14 * 60
+        lunch_covered = any(overlaps_time_window(
+                                _clock_minutes(visit.start_time), _clock_minutes(visit.end_time),
+                                11 * 60, 14 * 60,
+                            )
                             and (str(visit.candidate.poi_id) in food_candidate_ids or any(
                                 term in category_text_by_candidate.get(str(visit.candidate.poi_id), "")
                                 for term in meal_terms
                             ))
                             for visit in day_visits)
-        dinner_covered = any(17 * 60 <= _clock_minutes(visit.start_time) < 20 * 60
+        dinner_covered = any(overlaps_time_window(
+                                 _clock_minutes(visit.start_time), _clock_minutes(visit.end_time),
+                                 17 * 60, 20 * 60,
+                             )
                              and (str(visit.candidate.poi_id) in food_candidate_ids or any(
                                  term in category_text_by_candidate.get(str(visit.candidate.poi_id), "")
                                  for term in meal_terms
