@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -71,6 +71,30 @@ def test_lunch_conflict_moves_meal_inside_user_visible_meal_window():
     assert result.conflicts[0].code == "LUNCH_WINDOW"
     assert all(11 * 60 + 30 <= option.activities[0].start_minute for option in result.alternatives)
     assert all(option.activities[0].end_minute <= 14 * 60 for option in result.alternatives)
+
+
+@pytest.mark.parametrize("start", [8 * 60, 22 * 60])
+def test_valid_early_and_late_visits_are_not_restricted_to_default_tourist_hours(start):
+    visit = activity("visit", DAY_1, start, 30)
+
+    result = negotiate_schedule(
+        [visit], start_date=DAY_1, end_date=DAY_1, travel_minutes={},
+    )
+
+    assert result.feasible
+    assert result.conflicts == ()
+
+
+def test_dinner_window_matches_existing_advisor_reference_window():
+    dinner = activity("dinner", DAY_1, 20 * 60 + 15, 30, category="DINNER")
+
+    result = negotiate_schedule(
+        [dinner], start_date=DAY_1, end_date=DAY_1, travel_minutes={},
+    )
+
+    assert result.feasible
+    assert result.conflicts[0].code == "DINNER_WINDOW"
+    assert all(option.activities[0].end_minute <= 20 * 60 for option in result.alternatives)
 
 
 def test_unknown_route_is_never_assumed_to_be_zero_or_surfaced_as_feasible():
@@ -262,6 +286,7 @@ async def test_negotiate_endpoint_returns_only_revalidated_schedule_options(monk
 
     assert result.status == "OPTIONS"
     assert result.conflicts
+    assert result.notes == ["2 个地点缺少可核验的营业时间，本次未将其作为已检查条件。"]
     assert result.alternatives
     assert all(
         change.operation == "MOVE" for option in result.alternatives for change in option.changes
@@ -274,8 +299,27 @@ async def test_negotiate_endpoint_returns_only_revalidated_schedule_options(monk
 
 
 @pytest.mark.asyncio
-async def test_negotiate_endpoint_fails_closed_without_fresh_route_evidence(monkeypatch):
+@pytest.mark.parametrize("cache_kind", ["MISSING", "FAILED", "EXPIRED"])
+async def test_negotiate_endpoint_fails_closed_without_fresh_route_evidence(monkeypatch, cache_kind):
     first_id, second_id = str(uuid4()), str(uuid4())
+    cache = None
+    if cache_kind == "FAILED":
+        cache = {
+            "candidate_ids": [first_id, second_id], "context_revision": 2,
+            "durations_min": [[0, 15], [15, 0]], "status": "UNAVAILABLE",
+            "source": None, "retrieved_at": datetime.now(UTC).isoformat(), "mode": "DRIVING",
+        }
+    elif cache_kind == "EXPIRED":
+        cache = {
+            "candidate_ids": [first_id, second_id], "context_revision": 2,
+            "durations_min": [[0, 15], [15, 0]], "status": "SIMULATED",
+            "source": "Local simulated maps",
+            "retrieved_at": (datetime.now(UTC) - timedelta(minutes=20)).isoformat(),
+            "mode": "DRIVING",
+        }
+    context = {"revision": 2}
+    if cache is not None:
+        context["agent_route_evidence"] = cache
     row = SimpleNamespace(
         id=uuid4(),
         status="ACTIVE",
@@ -300,7 +344,7 @@ async def test_negotiate_endpoint_fails_closed_without_fresh_route_evidence(monk
                 },
             ],
         },
-        context={"revision": 2},
+        context=context,
         candidates=[{"id": first_id, "name": "A"}, {"id": second_id, "name": "B"}],
         start_date=DAY_1,
         end_date=DAY_1,

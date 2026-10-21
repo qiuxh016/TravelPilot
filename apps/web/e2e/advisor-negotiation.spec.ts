@@ -45,7 +45,7 @@ test("顾问展示已验证的冲突方案并将选择同步到新草案", async
     if (url.pathname === `/api/v1/advisor/sessions/${sessionId}` && request.method() === "GET") return route.fulfill({ json: session });
     if (url.pathname === "/api/v1/advisor/sessions" && request.method() === "GET") return route.fulfill({ json: [session] });
     if (url.pathname.endsWith("/negotiate") && request.method() === "POST") return route.fulfill({ json: {
-      draft_version: 1, status: "OPTIONS", conflicts: ["梅州学宫 与 江北老街 时间重叠"], alternatives: [
+      draft_version: 1, status: "OPTIONS", conflicts: ["梅州学宫 与 江北老街 时间重叠"], notes: [], alternatives: [
         { id: "move-street", title: "调整时间或日期", summary: "将江北老街调整到 2026-11-03 12:30，保留其他安排", change_cost: 2,
           changes: [{ candidate_id: secondId, operation: "MOVE", day, start_time: "12:30:00" }] },
       ],

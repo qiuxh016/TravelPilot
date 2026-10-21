@@ -2085,17 +2085,18 @@ export default function AdvisorPage() {
               <small>{active.draft.weather.attribution} · 更新于 {active.draft.weather.fetched_at.slice(0, 16).replace("T", " ")}</small>
             </div>}
             {active?.draft && active.status === "ACTIVE" && <section className="advisor-negotiation-panel" aria-label="行程冲突协商">
-              <div className="advisor-negotiation-heading"><div><strong>安排合理性检查</strong><small>检查时间重叠、营业时段、用餐时间和地点间交通，并提供经过验证的调整方案。</small></div>
+              <div className="advisor-negotiation-heading"><div><strong>安排合理性检查</strong><small>检查时间重叠、已知营业时段、用餐时间和地点间交通，并提供经过验证的调整方案。</small></div>
                 <button type="button" className="secondary" disabled={busy || negotiationBusy || draftIsStale} onClick={() => void findConflictOptions()}>{negotiationBusy ? "正在检查…" : "检查并协商"}</button>
               </div>
               {negotiation?.sessionId === active.id && negotiation.draftVersion === active.draft.version && <div className="advisor-negotiation-result" aria-live="polite">
-                {negotiation.result.status === "NO_CONFLICT" ? <p>当前安排未发现时间、营业或路线冲突。</p>
+                {negotiation.result.status === "NO_CONFLICT" ? <p>当前安排在可核验的信息范围内未发现冲突。</p>
                   : negotiation.result.status === "NO_FEASIBLE_OPTION" ? <><p>发现安排冲突，但在不改变固定安排和硬约束的前提下，没有找到可验证的调整方案。</p>{negotiation.result.conflicts.slice(0, 3).map((item) => <small key={item}>{item}</small>)}</>
                     : <>{negotiation.result.conflicts.slice(0, 3).map((item) => <small key={item}>{item}</small>)}
                       {negotiation.result.alternatives.map((option) => <article className="advisor-negotiation-option" key={option.id}>
                         <div><strong>{option.title}</strong><p>{option.summary}</p></div>
                         <button type="button" className="primary" disabled={busy} onClick={() => void applyNegotiationOption(option)}>采用并重新核验</button>
                       </article>)}</>}
+                {negotiation.result.notes.map((note) => <small key={note}>{note}</small>)}
               </div>}
             </section>}
             {active?.draft && (active.draft.attention_items?.length || active.status === "CONFIRMED") ? <section className="advisor-attention-panel" aria-label={active.status === "CONFIRMED" ? "行程保存检查结果" : "需要你决定的行程空档"}>

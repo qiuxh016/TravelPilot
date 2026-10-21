@@ -167,6 +167,7 @@ class AdvisorNegotiationRead(BaseModel):
     draft_version: int
     status: Literal["NO_CONFLICT", "OPTIONS", "NO_FEASIBLE_OPTION"]
     conflicts: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
     alternatives: list[AdvisorNegotiationAlternativeRead] = Field(default_factory=list)
 
 

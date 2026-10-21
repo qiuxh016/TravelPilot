@@ -640,6 +640,7 @@ async def negotiate_draft(
         if isinstance(candidate, dict)
     }
     activities: list[NegotiationActivity] = []
+    unverified_hours = 0
     for stop in stops:
         candidate_id = str(stop["candidate_id"])
         candidate = candidates.get(candidate_id)
@@ -657,6 +658,10 @@ async def negotiate_draft(
             raise HTTPException(409, detail="当前安排的结束时间无效，无法安全试算")
         opening_hours = candidate.get("opening_hours")
         opening_hours = opening_hours if isinstance(opening_hours, dict) else {}
+        opens_at = _opening_minute(opening_hours.get("open"))
+        closes_at = _opening_minute(opening_hours.get("close"))
+        if opens_at is None or closes_at is None:
+            unverified_hours += 1
         meal_type = str(stop.get("meal_type") or candidate.get("meal_type") or "").upper()
         category = (
             "LUNCH"
@@ -682,8 +687,8 @@ async def negotiate_draft(
                 required=candidate.get("required") is True,
                 fixed=isinstance(fixed_schedule, dict) and bool(fixed_schedule),
                 category=category,
-                opens_at=_opening_minute(opening_hours.get("open")),
-                closes_at=_opening_minute(opening_hours.get("close")),
+                opens_at=opens_at,
+                closes_at=closes_at,
             )
         )
 
@@ -719,6 +724,11 @@ async def negotiate_draft(
             else "NO_FEASIBLE_OPTION"
         ),
         conflicts=[conflict.message for conflict in result.conflicts],
+        notes=(
+            [f"{unverified_hours} 个地点缺少可核验的营业时间，本次未将其作为已检查条件。"]
+            if unverified_hours
+            else []
+        ),
         alternatives=[
             {
                 "id": alternative.id,
