@@ -3,6 +3,7 @@ import json
 import re
 from datetime import UTC, date, datetime, time
 from itertools import pairwise
+from math import ceil
 from time import perf_counter
 from uuid import UUID
 
@@ -10,6 +11,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from travelpilot_core.agents.verifiers import verify_distance_matrix
+from travelpilot_core.engines.constraints.negotiation import (
+    NegotiationActivity,
+    negotiate_schedule,
+)
 from travelpilot_core.engines.optimizer.itinerary import Candidate, Visit
 from travelpilot_core.ports.tools import ToolFailure
 from travelpilot_infra.db.models.advisor import (
@@ -51,6 +56,8 @@ from travelpilot_api.auth import get_current_user
 from travelpilot_api.dependencies import get_maps_provider, get_weather_provider
 from travelpilot_api.schemas.advisor import (
     AdvisorDraftCreate,
+    AdvisorNegotiationRead,
+    AdvisorNegotiationRequest,
     AdvisorSessionRead,
 )
 
@@ -442,6 +449,16 @@ async def create_draft(
     if set(context.get("selected_candidate_ids", [])) != set(selected_ids):
         context["selected_candidate_ids"] = selected_ids
         context["revision"] = int(context.get("revision", 0)) + 1
+    if matrix is not None and transport_provenance["status"] in {"VERIFIED", "SIMULATED"}:
+        context["agent_route_evidence"] = {
+            "candidate_ids": [str(candidate.poi_id) for candidate in planner_candidates],
+            "context_revision": int(context.get("revision", 0)),
+            "durations_min": matrix,
+            "status": transport_provenance["status"],
+            "source": transport_provenance["source"],
+            "retrieved_at": transport_provenance["retrieved_at"],
+            "mode": "DRIVING",
+        }
     row.context = context
     selected_by_id = {item["id"]: item for item in selected}
     after_stops = [{
@@ -575,3 +592,149 @@ async def create_draft(
     await db.commit()
     await db.refresh(row)
     return await read_session(db, row)
+
+def _opening_minute(value: object) -> int | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = time.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed.hour * 60 + parsed.minute
+
+
+@drafts_router.post(
+    "/sessions/{session_id}/negotiate",
+    response_model=AdvisorNegotiationRead,
+)
+async def negotiate_draft(
+    session_id: UUID,
+    payload: AdvisorNegotiationRequest,
+    db: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
+):
+    row = await owned_session(db, session_id, user.id, lock=True)
+    draft = row.draft if isinstance(row.draft, dict) else None
+    if row.status != "ACTIVE" or draft is None:
+        raise HTTPException(409, detail="请先生成仍有效的行程安排")
+    if row.start_date is None or row.end_date is None:
+        raise HTTPException(409, detail="旅行日期尚未设置，无法检查安排")
+    context = row.context if isinstance(row.context, dict) else {}
+    revision = int(context.get("revision", 0))
+    if (
+        payload.draft_version != row.draft_version
+        or draft.get("version") != row.draft_version
+        or draft.get("context_revision") != revision
+    ):
+        raise HTTPException(409, detail="行程或旅行条件已更新，请先刷新当前安排")
+
+    stops = draft.get("stops")
+    if not isinstance(stops, list) or not stops:
+        raise HTTPException(409, detail="当前没有可检查的时间安排")
+    stop_ids = [str(stop.get("candidate_id", "")) for stop in stops if isinstance(stop, dict)]
+    if len(stop_ids) != len(stops) or len(set(stop_ids)) != len(stop_ids):
+        raise HTTPException(409, detail="当前安排数据不完整，无法安全试算")
+    candidates = {
+        str(candidate.get("id")): candidate
+        for candidate in (row.candidates or [])
+        if isinstance(candidate, dict)
+    }
+    activities: list[NegotiationActivity] = []
+    for stop in stops:
+        candidate_id = str(stop["candidate_id"])
+        candidate = candidates.get(candidate_id)
+        if candidate is None:
+            raise HTTPException(409, detail="当前安排缺少地点信息，请刷新后重试")
+        try:
+            day = date.fromisoformat(str(stop["day"]))
+            start_time = time.fromisoformat(str(stop["start_time"]))
+            end_time = time.fromisoformat(str(stop["end_time"]))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise HTTPException(409, detail="当前安排的日期或时间无效，无法安全试算") from exc
+        start_minute = start_time.hour * 60 + start_time.minute
+        end_minute = end_time.hour * 60 + end_time.minute
+        if end_minute <= start_minute:
+            raise HTTPException(409, detail="当前安排的结束时间无效，无法安全试算")
+        opening_hours = candidate.get("opening_hours")
+        opening_hours = opening_hours if isinstance(opening_hours, dict) else {}
+        meal_type = str(stop.get("meal_type") or candidate.get("meal_type") or "").upper()
+        category = (
+            "LUNCH"
+            if meal_type == "LUNCH"
+            else "DINNER"
+            if meal_type == "DINNER"
+            else "OTHER"
+            if stop.get("planning_category") == "FOOD"
+            else "ATTRACTION"
+        )
+        fixed_schedule = candidate.get("fixed_schedule")
+        activities.append(
+            NegotiationActivity(
+                id=candidate_id,
+                name=str(stop.get("name") or candidate.get("name") or "地点"),
+                day=day,
+                start_minute=start_minute,
+                duration_minute=end_minute - start_minute,
+                priority=int(candidate.get("priority", 3))
+                if str(candidate.get("priority", 3)).isdigit()
+                else 3,
+                optional=candidate.get("optional") is True,
+                required=candidate.get("required") is True,
+                fixed=isinstance(fixed_schedule, dict) and bool(fixed_schedule),
+                category=category,
+                opens_at=_opening_minute(opening_hours.get("open")),
+                closes_at=_opening_minute(opening_hours.get("close")),
+            )
+        )
+
+    travel_minutes: dict[tuple[str, str], int] = {}
+    if len(stop_ids) > 1:
+        cache = context.get("agent_route_evidence")
+        evidence = reusable_route_evidence(cache, stop_ids, revision)
+        if evidence is None:
+            raise HTTPException(
+                409,
+                detail="路线证据缺失或已过期；请先重新校验路线，再生成冲突方案",
+            )
+        matrix = evidence["durations_min"]
+        travel_minutes = {
+            (stop_ids[i], stop_ids[j]): ceil(float(matrix[i][j]))
+            for i in range(len(stop_ids))
+            for j in range(len(stop_ids))
+            if i != j
+        }
+    result = negotiate_schedule(
+        activities,
+        start_date=row.start_date,
+        end_date=row.end_date,
+        travel_minutes=travel_minutes,
+    )
+    return AdvisorNegotiationRead(
+        draft_version=row.draft_version,
+        status=(
+            "NO_CONFLICT"
+            if result.feasible and not result.conflicts
+            else "OPTIONS"
+            if result.alternatives
+            else "NO_FEASIBLE_OPTION"
+        ),
+        conflicts=[conflict.message for conflict in result.conflicts],
+        alternatives=[
+            {
+                "id": alternative.id,
+                "title": alternative.title,
+                "summary": alternative.summary,
+                "change_cost": alternative.change_cost,
+                "changes": [
+                    {
+                        "candidate_id": str(change["activity_id"]),
+                        "operation": str(change["operation"]),
+                        "day": change.get("after_day"),
+                        "start_time": change.get("after_start"),
+                    }
+                    for change in alternative.changes
+                ],
+            }
+            for alternative in result.alternatives
+        ],
+    )

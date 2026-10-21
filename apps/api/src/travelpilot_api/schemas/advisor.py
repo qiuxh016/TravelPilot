@@ -144,6 +144,32 @@ class AdvisorDraftCreate(BaseModel):
     allow_profile_memory_conflicts: bool = False
 
 
+class AdvisorNegotiationRequest(BaseModel):
+    draft_version: int = Field(ge=1)
+
+
+class AdvisorNegotiationChange(BaseModel):
+    candidate_id: UUID
+    operation: Literal["MOVE", "REMOVE"]
+    day: date | None = None
+    start_time: time | None = None
+
+
+class AdvisorNegotiationAlternativeRead(BaseModel):
+    id: str
+    title: str
+    summary: str
+    change_cost: int
+    changes: list[AdvisorNegotiationChange]
+
+
+class AdvisorNegotiationRead(BaseModel):
+    draft_version: int
+    status: Literal["NO_CONFLICT", "OPTIONS", "NO_FEASIBLE_OPTION"]
+    conflicts: list[str] = Field(default_factory=list)
+    alternatives: list[AdvisorNegotiationAlternativeRead] = Field(default_factory=list)
+
+
 class AdvisorChecklistDecision(BaseModel):
     item_key: str = Field(min_length=3, max_length=220, pattern=r"^[A-Z_]+:\d{4}-\d{2}-\d{2}(?::[A-Z]+(?::[^\r\n]{0,80})?)?$" )
     decision: Literal["LATER", "NOT_NEEDED", "RESET"]

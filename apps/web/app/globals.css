@@ -1500,6 +1500,17 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 .advisor-lodging-summary strong { color: var(--text); }
 .advisor-draft-summary strong { color: var(--text); }
 .advisor-live-warning { border-left: 3px solid #d99b35; margin: 7px 0; padding: 7px 10px; color: var(--muted); font-size: 12px; }
+.advisor-negotiation-panel { display: grid; gap: 12px; margin: 16px 0; border: 1px solid var(--border); border-radius: 14px; padding: 14px; background: var(--surface-raised); }
+.advisor-negotiation-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.advisor-negotiation-heading > div { display: grid; gap: 4px; }
+.advisor-negotiation-heading > button { flex: 0 0 auto; white-space: nowrap; }
+.advisor-negotiation-heading small, .advisor-negotiation-result small { color: var(--muted); }
+.advisor-negotiation-result { display: grid; gap: 8px; }
+.advisor-negotiation-result > p { margin: 0; }
+.advisor-negotiation-option { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+.advisor-negotiation-option p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.advisor-negotiation-option button { flex: 0 0 auto; }
+@media (max-width: 620px) { .advisor-negotiation-heading, .advisor-negotiation-option { align-items: stretch; flex-direction: column; } }
 .advisor-selected-candidate-live { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 0; border: 1px solid var(--accent); border-radius: 10px; padding: 10px 12px; background: var(--surface-raised); }
 .advisor-selected-candidate-live > div { display: grid; gap: 4px; min-width: 0; }
 .advisor-selected-candidate-live strong { color: var(--text); font-size: 13px; }

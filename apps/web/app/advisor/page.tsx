@@ -8,9 +8,9 @@ import { TripImportTool } from "../../components/trip-import-tool";
 import { AdvisorWhatIf } from "../../components/advisor-what-if";
 import { tripOptionLabel, useTripSelection } from "../../components/trip-selection-context";
 import {
-  AdvisorCandidate, AdvisorDestinationRecommendation, AdvisorMemorySuggestion, AdvisorMessageFeedbackReason, AdvisorMessageFeedbackRating, AdvisorProgressEvent, AdvisorRuntimeStatus, AdvisorSession, AdvisorTaskSnapshot, AdvisorTransportRoute, ApiError, Trip, confirmAdvisorDraft, confirmUserMemorySuggestion, createAdvisorDraft, createAdvisorSession, createUserMemory,
+  AdvisorCandidate, AdvisorDestinationRecommendation, AdvisorMemorySuggestion, AdvisorMessageFeedbackReason, AdvisorMessageFeedbackRating, AdvisorProgressEvent, AdvisorRuntimeStatus, AdvisorSession, AdvisorTaskSnapshot, AdvisorTransportRoute, AdvisorNegotiation, ApiError, Trip, confirmAdvisorDraft, confirmUserMemorySuggestion, createAdvisorDraft, createAdvisorSession, createUserMemory,
   getAdvisorRunProgress, getAdvisorRuntimeStatus, getAdvisorSession, getStaticMapImage, listAdvisorSessions, listTrips, recommendAdvisorDestinations, sendAdvisorMessage, submitAdvisorMessageFeedback, updateAdvisorSessionContext,
-  updateAdvisorChecklistDecision, updateAdvisorSelection,
+  updateAdvisorChecklistDecision, updateAdvisorSelection, negotiateAdvisorDraft,
   deleteAdvisorSession as removeAdvisorSession,
 } from "../../lib/api";
 
@@ -497,6 +497,8 @@ export default function AdvisorPage() {
   const [schedules, setSchedules] = useState<Record<string, { day: string; start_time: string }>>({});
   const [autoPreviewRevision, setAutoPreviewRevision] = useState(0);
   const [autoPreviewPending, setAutoPreviewPending] = useState(false);
+  const [negotiation, setNegotiation] = useState<{ sessionId: string; draftVersion: number; result: AdvisorNegotiation } | null>(null);
+  const [negotiationBusy, setNegotiationBusy] = useState(false);
   const lastAutoPreviewFingerprint = useRef("");
   const [mapDay, setMapDay] = useState("");
   const [candidateFilter, setCandidateFilter] = useState<"AUTO" | "ALL" | "ATTRACTION" | "FOOD" | "LODGING">("AUTO");
@@ -1164,6 +1166,7 @@ export default function AdvisorPage() {
     try {
       await persistSelectionSnapshot(active, selected, schedules);
       const updated = await createAdvisorDraft(active.id, selected, draftSchedules, allowProfileMemoryConflicts, draftKey);
+      setNegotiation(null);
       finishDraftRequest(draftKey);
       setActive(updated); setNotice(automatic
         ? "行程预览已根据你的选择自动更新；确认后才会写入正式行程。"
@@ -2081,6 +2084,20 @@ export default function AdvisorPage() {
               </div>}
               <small>{active.draft.weather.attribution} · 更新于 {active.draft.weather.fetched_at.slice(0, 16).replace("T", " ")}</small>
             </div>}
+            {active?.draft && active.status === "ACTIVE" && <section className="advisor-negotiation-panel" aria-label="行程冲突协商">
+              <div className="advisor-negotiation-heading"><div><strong>安排合理性检查</strong><small>检查时间重叠、营业时段、用餐时间和地点间交通，并提供经过验证的调整方案。</small></div>
+                <button type="button" className="secondary" disabled={busy || negotiationBusy || draftIsStale} onClick={() => void findConflictOptions()}>{negotiationBusy ? "正在检查…" : "检查并协商"}</button>
+              </div>
+              {negotiation?.sessionId === active.id && negotiation.draftVersion === active.draft.version && <div className="advisor-negotiation-result" aria-live="polite">
+                {negotiation.result.status === "NO_CONFLICT" ? <p>当前安排未发现时间、营业或路线冲突。</p>
+                  : negotiation.result.status === "NO_FEASIBLE_OPTION" ? <><p>发现安排冲突，但在不改变固定安排和硬约束的前提下，没有找到可验证的调整方案。</p>{negotiation.result.conflicts.slice(0, 3).map((item) => <small key={item}>{item}</small>)}</>
+                    : <>{negotiation.result.conflicts.slice(0, 3).map((item) => <small key={item}>{item}</small>)}
+                      {negotiation.result.alternatives.map((option) => <article className="advisor-negotiation-option" key={option.id}>
+                        <div><strong>{option.title}</strong><p>{option.summary}</p></div>
+                        <button type="button" className="primary" disabled={busy} onClick={() => void applyNegotiationOption(option)}>采用并重新核验</button>
+                      </article>)}</>}
+              </div>}
+            </section>}
             {active?.draft && (active.draft.attention_items?.length || active.status === "CONFIRMED") ? <section className="advisor-attention-panel" aria-label={active.status === "CONFIRMED" ? "行程保存检查结果" : "需要你决定的行程空档"}>
               <div className="advisor-attention-heading"><span aria-hidden="true">✳</span><div><h3>{active?.status === "CONFIRMED" ? currentAttentionItems.length ? "行程已保存，仍有可选完善项" : "行程已保存，检查结果已同步" : currentAttentionItems.length ? "有几段安排还没确定" : "当前缺项已补齐"}</h3><p>{active?.status === "CONFIRMED" ? currentAttentionItems.length ? "正式行程已更新；以下是仍未安排的可选项目。" : "正式行程已更新，当前安排与检查结果一致。" : "你来决定怎么处理，正式行程不会在你确认前改变。"}</p></div></div>
               {selectedUnscheduledMealCandidates.length > 0 && <p className="advisor-attention-selection-note" role="status">
