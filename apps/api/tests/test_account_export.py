@@ -100,6 +100,8 @@ async def test_account_export_is_owner_scoped_and_includes_advisor_data_once():
         home_city=None,
         bio=None,
         password_hash="must-not-be-exported",
+        timezone="Asia/Shanghai",
+        trip_reminders_enabled=True,
     )
     event_id = uuid4()
     advisor_event = AdvisorRunEventModel(
@@ -178,6 +180,8 @@ async def test_account_export_is_owner_scoped_and_includes_advisor_data_once():
         "display_name": "Traveler",
         "home_city": None,
         "bio": None,
+        "timezone": "Asia/Shanghai",
+        "trip_reminders_enabled": True,
     }
     assert "password_hash" not in payload["user"]
     assert {"advisor_sessions", "advisor_messages", "advisor_run_events"} <= {

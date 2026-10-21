@@ -243,17 +243,15 @@ async def test_load_ignores_invalid_or_incomplete_stage_order():
     assert result is None
 
 
-@pytest.mark.parametrize(
-    "created_at",
-    [
-        datetime.now(UTC) - timedelta(seconds=orchestration_state._STAGE_ORDER_TTL_SECONDS + 1),
-        datetime.now(UTC).replace(tzinfo=None),
-        datetime.now(UTC) + timedelta(seconds=30),
-    ],
-    ids=["expired", "naive", "future"],
-)
+@pytest.mark.parametrize("timestamp_kind", ["expired", "naive", "future"])
 @pytest.mark.asyncio
-async def test_load_ignores_invalid_timestamp_stage_order_checkpoint(created_at):
+async def test_load_ignores_invalid_timestamp_stage_order_checkpoint(timestamp_kind):
+    now = datetime.now(UTC)
+    created_at = {
+        "expired": now - timedelta(seconds=orchestration_state._STAGE_ORDER_TTL_SECONDS + 1),
+        "naive": now.replace(tzinfo=None),
+        "future": now + timedelta(seconds=30),
+    }[timestamp_kind]
     task_id = "retryable-task-id"
     stale = SimpleNamespace(
         created_at=created_at,
