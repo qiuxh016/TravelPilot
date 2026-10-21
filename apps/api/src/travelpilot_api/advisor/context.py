@@ -246,6 +246,14 @@ async def refresh_trip_snapshot(db: AsyncSession, row: AdvisorSessionModel) -> d
         if not candidate.get("existing_poi_id")
         or str(candidate.get("existing_poi_id")) not in plan_poi_ids
     ]
+    # Keep Advisor-only search results in this session snapshot. They may be
+    # selected meals or lodging that have not yet been written to the trip's
+    # wishlist/plan. A read-only action such as route validation must not drop
+    # them or their selected_candidate_ids before the user confirms the plan.
+    session_only_candidates = [
+        candidate for candidate in other_candidates
+        if not candidate.get("existing_poi_id")
+    ]
     wishlist_rows = (await db.execute(
         select(WishlistItemModel, PoiModel)
         .join(PoiModel, PoiModel.id == WishlistItemModel.poi_id)
@@ -283,7 +291,11 @@ async def refresh_trip_snapshot(db: AsyncSession, row: AdvisorSessionModel) -> d
         if candidate.get("id") in previous_selected
         and candidate.get("planning_category") == "LODGING"
     ]
-    row.candidates = [*wishlist_candidates_by_poi.values(), *plan_candidates]
+    row.candidates = [
+        *session_only_candidates,
+        *wishlist_candidates_by_poi.values(),
+        *plan_candidates,
+    ]
     selected_ids = [candidate["id"] for candidate in plan_candidates]
     previous_plan = context.get("current_plan") or {}
     if previous_plan.get("version") != (latest_plan.version if latest_plan else None):
@@ -406,12 +418,17 @@ def trip_completeness_audit(row: AdvisorSessionModel, context: dict | None = Non
     if not str(planning_inputs.get("origin", "")).strip():
         audit.append("没有出发地信息，无法估算出发地到首个地点的交通时间")
     route_evidence = context.get("agent_route_evidence") or {}
-    if len(formal_stops) > 1:
-        candidate_ids = [str(stop.get("candidate_id", "")) for stop in formal_stops]
+    if len(stops) > 1:
+        route_stops = sorted(
+            stops,
+            key=lambda stop: (str(stop.get("day", "")), str(stop.get("start_time", ""))),
+        )
+        candidate_ids = [str(stop.get("candidate_id", "")) for stop in route_stops]
         reusable = reusable_route_evidence(
             route_evidence,
             candidate_ids,
             int(context.get("revision", 0)),
+            expected_mode=str(route_evidence.get("mode") or "DRIVING"),
         )
         if reusable is None or reusable.get("status") != "VERIFIED":
             audit.append("地点之间的实际交通路线尚未核验")

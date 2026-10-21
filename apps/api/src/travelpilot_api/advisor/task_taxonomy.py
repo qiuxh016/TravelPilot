@@ -1,5 +1,6 @@
 """Small, explicit taxonomy for user-visible Advisor task state."""
 
+import re
 from typing import Literal
 
 AdvisorTaskType = Literal[
@@ -27,6 +28,31 @@ _UNSUPPORTED_ROUTE_MODE_TERMS = ("火车", "高铁", "飞机", "铁路", "动车
 
 def is_route_query_request(goal: str) -> bool:
     return any(term in goal.casefold() for term in _ROUTE_QUERY_TERMS)
+
+
+def is_itinerary_route_validation_request(goal: str) -> bool:
+    """Recognize whole-itinerary validation separately from a point-to-point query."""
+    normalized = goal.casefold().strip()
+    if "当前行程中已保存地点之间的路线" in normalized:
+        return True
+    asks_to_validate = any(term in normalized for term in ("校验", "核验", "检查", "验证"))
+    refers_to_itinerary = any(
+        term in normalized
+        for term in ("行程", "整段", "全部地点", "所有地点", "已保存地点", "地点之间")
+    )
+    has_route = any(term in normalized for term in ("路线", "路程", "交通时间"))
+    if asks_to_validate and refers_to_itinerary and has_route:
+        return True
+    # A short mode-qualified action also means the current itinerary. Explicit
+    # endpoint requests such as "核验 A 到 B 的路线" stay point-to-point.
+    has_explicit_pair = bool(re.search(
+        r"[\u4e00-\u9fffA-Za-z0-9]{2,40}\s*(?:到|至)\s*[\u4e00-\u9fffA-Za-z0-9]{2,40}",
+        normalized,
+    ))
+    return (
+        asks_to_validate and has_route and not has_explicit_pair
+        and any(term in normalized for term in ("校验路线", "核验路线", "检查路线", "验证路线"))
+    )
 
 
 def is_preparation_request(goal: str) -> bool:

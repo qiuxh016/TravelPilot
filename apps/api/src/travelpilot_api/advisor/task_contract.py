@@ -26,7 +26,7 @@ _TASK_POLICIES: dict[str, tuple[tuple[str, ...], tuple[str, ...], str]] = {
         "READ_ONLY",
     ),
     "TRANSPORT": (
-        ("get_trip_route",),
+        ("get_trip_route", "get_distance_matrix"),
         ("verify a route between owner-scoped saved places", "clarify unsupported modes"),
         "READ_ONLY",
     ),

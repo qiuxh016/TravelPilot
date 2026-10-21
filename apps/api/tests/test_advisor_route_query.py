@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 from travelpilot_api.advisor.route_query import _verified_route, run_advisor_route_query
+from travelpilot_api.advisor.task_taxonomy import is_itinerary_route_validation_request
 from travelpilot_core.agents.loop import AgentAction
 from travelpilot_core.ports.maps import Route
 
@@ -9,6 +10,20 @@ PLACES = [
     {"id": "place-a", "name": "宽窄巷子", "latitude": 30.6633, "longitude": 104.0647},
     {"id": "place-b", "name": "成都大熊猫繁育研究基地", "latitude": 30.7337, "longitude": 104.1477},
 ]
+
+
+@pytest.mark.parametrize("goal", [
+    "校验路线",
+    "请按步行核验路线",
+    "请核验当前行程中已保存地点之间的路线",
+    "检查整段行程所有地点的交通时间",
+])
+def test_itinerary_route_validation_intent_is_distinct_from_point_to_point(goal):
+    assert is_itinerary_route_validation_request(goal)
+
+
+def test_point_to_point_route_query_does_not_become_itinerary_audit():
+    assert not is_itinerary_route_validation_request("核验宽窄巷子到武侯祠的路线")
 
 
 class Maps:

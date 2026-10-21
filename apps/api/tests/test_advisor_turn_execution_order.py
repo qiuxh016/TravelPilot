@@ -1,10 +1,11 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from travelpilot_api.advisor import turn_service
 from travelpilot_api.advisor.orchestration_state import stage_observation_ref
+from travelpilot_api.advisor.route_validation import ItineraryRouteValidation
 from travelpilot_core.agents.loop import LoopResult
 from travelpilot_core.agents.runtime import AgentRuntime
 from travelpilot_infra.db.models.advisor import AdvisorMessageModel
@@ -252,6 +253,100 @@ async def test_weather_and_saved_route_execute_in_selected_order(
         "trip_facts": {**decision_observation["trip_facts"], "saved_places": 3},
     }
     assert stage_observation_ref(changed_facts) != decision_observation_ref
+
+
+@pytest.mark.asyncio
+async def test_itinerary_route_action_updates_right_side_evidence_and_keeps_meal_selection(monkeypatch):
+    owner_id, session_id, trip_id = uuid4(), uuid4(), uuid4()
+    stops = [
+        {"candidate_id": "place-a", "name": "客家博物馆", "planning_category": "ATTRACTION",
+         "day": "2026-11-02", "start_time": "09:00", "end_time": "11:00"},
+        {"candidate_id": "place-b", "name": "东山书院", "planning_category": "ATTRACTION",
+         "day": "2026-11-02", "start_time": "12:00", "end_time": "13:00"},
+    ]
+    context = {
+        "revision": 4,
+        "planning_inputs": {"origin": "梅州站"},
+        "selected_candidate_ids": ["place-a", "lunch", "place-b"],
+        "current_plan": {"version": 3, "stops": stops},
+    }
+    row = SimpleNamespace(
+        id=session_id, owner_id=owner_id, status="ACTIVE", mode="existing", trip_id=trip_id,
+        destination="梅州", start_date=date(2026, 11, 2), end_date=date(2026, 11, 2),
+        budget=None, pace_level=3, preference_text="", context=context,
+        candidates=[
+            {"id": "place-a", "name": "客家博物馆", "planning_category": "ATTRACTION",
+             "latitude": 24.30, "longitude": 116.10, "duration_min": 60},
+            {"id": "lunch", "name": "已选午餐店", "planning_category": "FOOD",
+             "latitude": 24.29, "longitude": 116.09, "duration_min": 60},
+            {"id": "place-b", "name": "东山书院", "planning_category": "ATTRACTION",
+             "latitude": 24.31, "longitude": 116.11, "duration_min": 60},
+        ],
+        updated_at=None,
+        draft=None,
+    )
+    db = Database()
+
+    async def no_refresh(*_args):
+        return context
+
+    def no_memory_refresh(current, _memories):
+        return current, False
+
+    async def no_memories(*_args):
+        return []
+
+    async def read_session(_db, session_row):
+        return session_row
+
+    def no_checkpoint_writer(**_kwargs):
+        async def write_checkpoint(_state):
+            return None
+        return write_checkpoint
+
+    async def validate(**kwargs):
+        kwargs["context"]["agent_route_evidence"] = {
+            "candidate_ids": ["place-a", "place-b"],
+            "context_revision": 4,
+            "durations_min": [[0, 21], [21, 0]],
+            "status": "VERIFIED",
+            "source": "AMap Web Service",
+            "retrieved_at": datetime.now(UTC).isoformat(),
+        }
+        return ItineraryRouteValidation(
+            stops=stops,
+            candidate_ids=["place-a", "place-b"],
+            matrix=[[0, 21], [21, 0]],
+            status="VERIFIED",
+            source="AMap Web Service",
+            retrieved_at=datetime.now(UTC).isoformat(),
+        )
+
+    monkeypatch.setattr(turn_service, "refresh_trip_snapshot", no_refresh)
+    monkeypatch.setattr(turn_service, "sync_personal_memory_snapshot", no_memory_refresh)
+    monkeypatch.setattr(turn_service, "_active_personal_memories", no_memories)
+    monkeypatch.setattr(turn_service, "_memory_suggestions_enabled", lambda *_args: _false())
+    monkeypatch.setattr(turn_service, "read_session", read_session)
+    monkeypatch.setattr(turn_service, "checkpoint_writer", no_checkpoint_writer)
+    monkeypatch.setattr(turn_service, "validate_active_itinerary_routes", validate)
+    monkeypatch.setattr(turn_service.settings, "llm_api_key", "")
+    monkeypatch.setattr(turn_service.settings, "llm_model", "")
+    monkeypatch.setattr(turn_service.settings, "maps_provider", "fake")
+
+    await turn_service.execute_advisor_turn(
+        db, row, "校验路线", Maps(), object(), "route-validation-test-0001",
+        SimpleNamespace(id=owner_id),
+    )
+
+    assistant = next(
+        item for item in reversed(db.rows)
+        if isinstance(item, AdvisorMessageModel) and item.role == "assistant"
+    )
+    assert "客家博物馆 → 东山书院约 21 分钟" in assistant.content
+    assert assistant.payload["route_validation"]["status"] == "VERIFIED"
+    assert "ROUTES" not in {item["key"] for item in assistant.payload["trip_action_items"]}
+    assert context["selected_candidate_ids"] == ["place-a", "lunch", "place-b"]
+    assert assistant.payload["agent_task"]["status"] == "COMPLETED"
 
 
 async def _false():

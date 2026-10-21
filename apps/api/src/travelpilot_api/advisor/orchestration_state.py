@@ -736,7 +736,7 @@ def route_evidence_checkpoint_writer(
         retrieved_at = snapshot.get("retrieved_at")
         if (
             not isinstance(candidate_ids, list)
-            or not 2 <= len(candidate_ids) <= 29
+            or not 2 <= len(candidate_ids) <= 30
             or any(not isinstance(item, str) or not item for item in candidate_ids)
             or len(set(candidate_ids)) != len(candidate_ids)
             or not verify_distance_matrix({"durations_min": matrix}, len(candidate_ids))

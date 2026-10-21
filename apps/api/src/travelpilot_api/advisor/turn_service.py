@@ -94,6 +94,10 @@ from travelpilot_api.advisor.request_planning import (
     should_start_destination_recommendation_from_chat,
 )
 from travelpilot_api.advisor.route_query import run_advisor_route_query
+from travelpilot_api.advisor.route_validation import (
+    itinerary_route_summary,
+    validate_active_itinerary_routes,
+)
 from travelpilot_api.advisor.scheduling import propose_existing_trip_schedule
 from travelpilot_api.advisor.search_loop import run_advisor_search_loop
 from travelpilot_api.advisor.session_budget import (
@@ -114,6 +118,7 @@ from travelpilot_api.advisor.task_state import (
 )
 from travelpilot_api.advisor.task_taxonomy import (
     accepts_driving_route_confirmation,
+    is_itinerary_route_validation_request,
     is_preparation_request,
     is_route_query_request,
     requests_unsupported_route_mode,
@@ -619,6 +624,7 @@ async def execute_advisor_turn(
         search_loop_question = None
         transport_result = None
         transport_trace = None
+        itinerary_route_validation = None
         reused_weather_evidence = "NOT_REQUESTED"
         reused_route_evidence = "NOT_REQUESTED"
         stage_execution_order = []
@@ -627,6 +633,7 @@ async def execute_advisor_turn(
         async def execute_route_stage() -> dict | None:
             nonlocal transport_result, transport_trace, search_loop_question, route_stage_executed
             nonlocal reused_route_evidence
+            nonlocal itinerary_route_validation
             if transport_route_requested and not row.trip_id:
                 search_loop_question = "请先在顶部选择或创建一段旅行；路线查询会限定在该旅行已保存并核验过的地点之间。"
                 transport_trace = {
@@ -644,6 +651,39 @@ async def execute_advisor_turn(
                         "status": "NEEDS_USER_INPUT",
                         "transitions": [],
                     }
+                elif is_itinerary_route_validation_request(turn_goal):
+                    route_evidence_saver = (
+                        route_evidence_checkpoint_writer(
+                            owner_id=user.id,
+                            session_id=row.id,
+                            task_id=checkpoint_task_id,
+                        )
+                        if idempotency_key else None
+                    )
+                    itinerary_route_validation = await validate_active_itinerary_routes(
+                        row=row,
+                        context=context,
+                        maps=maps,
+                        user_goal=turn_goal,
+                        checkpoint=checkpoint_writer(
+                            owner_id=user.id,
+                            session_id=row.id,
+                            task_id=checkpoint_task_id,
+                            phase="itinerary_route_validation",
+                            context_revision=int(context.get("revision", 0)),
+                        ),
+                        route_observation_callback=route_evidence_saver,
+                    )
+                    transport_trace = itinerary_route_validation.trace or {
+                        "decision_source": "RULE",
+                        "decision_summary": "检查当前行程地点是否具备路线核验条件",
+                        "status": "FAILED" if itinerary_route_validation.error else "UNKNOWN",
+                        "transitions": [],
+                    }
+                    if itinerary_route_validation.matrix is not None:
+                        transport_trace["status"] = "COMPLETED"
+                    elif itinerary_route_validation.error:
+                        transport_trace["status"] = "FAILED"
                 else:
                     cached_route = None
                     route_observation_callback = None
@@ -1230,7 +1270,9 @@ async def execute_advisor_turn(
                         and candidate.get("verification_status") in {"VERIFIED", "SIMULATED"}
                         and isinstance(candidate.get("name"), str)
                     ][:8]
-        if search_loop_question and transport_result and transport_result.route:
+        if itinerary_route_validation is not None:
+            reply = itinerary_route_summary(itinerary_route_validation)
+        elif search_loop_question and transport_result and transport_result.route:
             reply = f"{_transport_route_summary(transport_result.route)} 另外，{search_loop_question}"
         elif search_loop_question:
             reply = search_loop_question
@@ -1447,7 +1489,7 @@ async def execute_advisor_turn(
         )
         reply_fallback_reason = None
         composed_result = None
-        if not event_replan_handoff and can_compose_grounded_reply(
+        if itinerary_route_validation is None and not event_replan_handoff and can_compose_grounded_reply(
             schedule_recommendation_requested=schedule_recommendation_requested,
             cancelled_pending_task=cancelled_pending_task,
             invalidated_pending_task=invalidated_pending_task,
@@ -2002,6 +2044,15 @@ async def execute_advisor_turn(
                     schedule_suggestions, row.candidates, row.start_date, row.end_date,
                 ),
                 "transport_route": transport_result.route if transport_result else None,
+                "route_validation": ({
+                    "status": itinerary_route_validation.status,
+                    "mode": itinerary_route_validation.mode,
+                    "source": itinerary_route_validation.source,
+                    "candidate_ids": itinerary_route_validation.candidate_ids,
+                    "retrieved_at": itinerary_route_validation.retrieved_at,
+                    "summary": itinerary_route_summary(itinerary_route_validation),
+                    "error": itinerary_route_validation.error,
+                } if itinerary_route_validation else None),
                 "agent_trace": agent_trace,
                 "turn_orchestration": turn_orchestration,
                 "schedule_recommendation_requested": schedule_recommendation_requested,

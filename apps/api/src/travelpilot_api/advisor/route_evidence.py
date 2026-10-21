@@ -44,7 +44,7 @@ ScheduleBuilder = Callable[[list[list[float]] | None], Awaitable[dict[str, Any]]
 def reusable_route_evidence(
     cache: dict | None, candidate_ids: list[str], context_revision: int,
     *, expected_source: str | None = None, now: datetime | None = None,
-    max_age_seconds: int = 600,
+    expected_mode: str = "DRIVING", max_age_seconds: int = 600,
 ) -> dict | None:
     """Return a fresh verified matrix reordered to the current candidate order."""
     if not isinstance(cache, dict):
@@ -64,6 +64,7 @@ def reusable_route_evidence(
         or len(set(cached_ids)) != len(cached_ids)
         or set(cached_ids) != set(candidate_ids)
         or cache.get("context_revision") != context_revision
+        or cache.get("mode", "DRIVING") != expected_mode
         or cache.get("status") not in {"VERIFIED", "SIMULATED"}
         or cache.get("status") == "VERIFIED" and cache.get("source") != "AMap Web Service"
         or cache.get("status") == "SIMULATED" and cache.get("source") != "Local simulated maps"
