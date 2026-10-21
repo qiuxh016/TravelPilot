@@ -143,6 +143,7 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }) 
   await expect(itineraryPreview).toBeVisible();
 
   await page.getByRole("button", { name: /更新预览（2）/ }).click();
+  await expect(itineraryPreview).toBeInViewport();
   await expect(itineraryPreview).toContainText("模拟川味餐馆");
   await expect(itineraryPreview).toContainText("2026-11-12");
   await expect(itineraryPreview).toContainText("模拟旅行酒店");

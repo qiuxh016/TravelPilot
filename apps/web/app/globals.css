@@ -1584,6 +1584,7 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 .advisor-column-resizer::after { position: absolute; top: 0; bottom: 0; left: 6px; width: 2px; border-radius: 3px; background: var(--border); content: ""; transition: width .15s ease, left .15s ease, background .15s ease; }
 .advisor-column-resizer:hover::after, .advisor-column-resizer:focus-visible::after { left: 4px; width: 6px; background: var(--action); }
 .advisor-live .advisor-plan { overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.advisor-live #advisor-itinerary-preview { scroll-margin-top: 16px; }
 .advisor-live-columns.is-chat-expanded { display: grid; grid-template-columns: minmax(0, 1fr) !important; }
 .advisor-live-columns.is-chat-expanded .advisor-plan { display: none; }
 @media (max-width: 1100px) {

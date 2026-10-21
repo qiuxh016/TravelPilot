@@ -1085,6 +1085,9 @@ export default function AdvisorPage() {
       setSelected(updated.draft?.selected_candidate_ids ?? selected);
       setMapDay(updated.draft?.stops[0]?.day ?? "");
       setSessions((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
+      window.requestAnimationFrame(() => {
+        document.getElementById("advisor-itinerary-preview")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
     } catch (reason) {
       if (!handleDraftMemoryConflict(reason)) setError((reason as Error).message);
     }
@@ -1789,7 +1792,7 @@ export default function AdvisorPage() {
             </div>}
           </section>
 
-          <section className="advisor-itinerary panel">
+          <section className="advisor-itinerary panel" id="advisor-itinerary-preview" tabIndex={-1}>
             <div className="advisor-panel-title"><div><h2>行程调整预览</h2><p>{active?.destination || selectedTrip?.destination || "尚未设置目的地"} · {active?.start_date || selectedTrip?.start_date || "日期待定"} 至 {active?.end_date || selectedTrip?.end_date || "日期待定"}</p></div><span className="advisor-draft-state">{active?.draft ? draftIsStale ? "选项有变化，需更新预览" : "等待你确认" : "尚未生成"}</span></div>
             {active?.candidates.filter((candidate) => selected.includes(candidate.id)
               && !active.draft?.selected_candidate_ids.includes(candidate.id)
