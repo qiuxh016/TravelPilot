@@ -1,6 +1,6 @@
 # TravelPilot Roadmap
 
-Updated: 2026-10-21
+Updated: 2026-10-22
 
 Current next-agent plan status (2026-10-21): **W0–W6 complete for local scope.** W4 added an in-Advisor What-if dialog with per-day preview, PlanDiff/warnings, and explicit confirmation before formal writes. W5 reran the 40-case B1/B2/B3 comparison, 60-case/129-turn scripted and Runtime replays, and the authenticated 18-scenario/22-turn local product suite. W6 reconciled the README and roadmap; the full API/evaluation suite passed **998 tests** with Python UTF-8 mode. No new live-model or external-provider calls were made. Local evaluation limits and reproduction commands: `docs/evaluation/local-agent-eval-2026-10-21.md`.
 
@@ -35,6 +35,8 @@ The completed roadmap above remains closed for its local-scope acceptance criter
 5. Add scenario coverage for route duration, opening hours, meal timing, lodging/transport gaps, fixed appointments, overlapping events, stale plan versions, provider failure, and truly infeasible requests.
 
 **Exit gate:** all surfaced alternatives pass deterministic validation; hard constraints are never silently weakened; infeasible cases are correctly rejected; the chosen alternative produces an accurate diff and only changes the formal plan after confirmation. Measure feasible-alternative rate, hard-constraint relaxation errors, change cost, infeasible-case rejection, latency, and user choice/abandonment.
+
+**Execution record (2026-10-22, commit `2afbbbd`):** The first end-to-end negotiation slice is implemented. The bounded deterministic engine checks overlaps, day windows, known opening/closing times, meal windows, and directed route time plus transfer buffer. It only moves non-fixed activities and only removes activities explicitly marked optional and not required. Current verified/simulated route matrices are retained with candidate IDs, context revision, source, mode, and retrieval time; negotiation rejects stale or missing route evidence. The API requires the current draft version and returns at most three validated alternatives. The Advisor can apply an alternative to a new draft; the formal trip still changes only after the existing confirmation action. Validation: 11 targeted API/core tests, 2 Playwright runs (desktop and mobile), TypeScript check, and Ruff passed. This is the initial implementation, not the negotiation exit gate: broader hard-constraint, provider-failure, stale-version, multi-conflict, and infeasible-case coverage plus measured baselines remain for W4–W5.
 
 ### P1 — Productization and system improvement
 
