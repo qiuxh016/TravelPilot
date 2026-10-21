@@ -8,6 +8,8 @@ test("顾问展示已验证的冲突方案并将选择同步到新草案", async
   const now = "2026-10-22T08:00:00Z";
   const firstId = "museum-1";
   const secondId = "street-1";
+  const lunchId = "lunch-1";
+  const lodgingId = "lodging-1";
   const firstStop = {
     candidate_id: firstId, name: "梅州学宫", day, start_time: "10:00:00", end_time: "12:00:00",
     latitude: 24.29, longitude: 116.12, category: "博物馆", planning_category: "ATTRACTION", address: "梅州",
@@ -16,15 +18,21 @@ test("顾问展示已验证的冲突方案并将选择同步到新草案", async
     candidate_id: secondId, name: "江北老街", day, start_time: "11:00:00", end_time: "12:00:00",
     latitude: 24.30, longitude: 116.11, category: "街区", planning_category: "ATTRACTION", address: "梅州",
   };
+  const lunchStop = {
+    candidate_id: lunchId, name: "鑫丰特色餐饮", day, start_time: "12:15:00", end_time: "13:00:00",
+    latitude: 24.31, longitude: 116.10, category: "餐饮", planning_category: "FOOD", meal_type: "LUNCH", address: "梅州",
+  };
   const candidates = [
     { id: firstId, name: firstStop.name, provider: "fake", provider_id: firstId, address: "梅州", category: "博物馆", planning_category: "ATTRACTION", latitude: firstStop.latitude, longitude: firstStop.longitude, duration_min: 120, confidence: 1, verification_status: "SIMULATED" },
     { id: secondId, name: secondStop.name, provider: "fake", provider_id: secondId, address: "梅州", category: "街区", planning_category: "ATTRACTION", latitude: secondStop.latitude, longitude: secondStop.longitude, duration_min: 60, confidence: 1, verification_status: "SIMULATED" },
+    { id: lunchId, name: lunchStop.name, provider: "fake", provider_id: lunchId, address: "梅州", category: "餐饮", planning_category: "FOOD", latitude: lunchStop.latitude, longitude: lunchStop.longitude, duration_min: 45, confidence: 1, verification_status: "SIMULATED", meal_type: "LUNCH" },
+    { id: lodgingId, name: "梅州客家酒店", provider: "fake", provider_id: lodgingId, address: "梅州", category: "住宿", planning_category: "LODGING", latitude: 24.32, longitude: 116.09, duration_min: 60, confidence: 1, verification_status: "SIMULATED" },
   ];
   const session = {
     id: sessionId, mode: "destination", trip_id: null, destination: "梅州", start_date: day, end_date: day,
     budget: null, pace_level: 3, preference_text: "", candidates,
-    context: { revision: 1, selected_candidate_ids: [firstId, secondId], current_plan: null, confirmed_memories: [], planning_inputs: { origin: "", companions: [], hard_constraints: [] } },
-    draft: { version: 1, context_revision: 1, generated_at: now, selected_candidate_ids: [firstId, secondId], warnings: ["阻断：时间重叠"], changes: [], change_summary: { add: 0, remove: 0, move: 0, keep: 2 }, pace_change: null, stops: [firstStop, secondStop], transitions: [] },
+    context: { revision: 1, selected_candidate_ids: [firstId, secondId, lunchId, lodgingId], current_plan: null, confirmed_memories: [], planning_inputs: { origin: "", companions: [], hard_constraints: [] } },
+    draft: { version: 1, context_revision: 1, generated_at: now, selected_candidate_ids: [firstId, secondId, lunchId, lodgingId], warnings: ["阻断：时间重叠"], changes: [], change_summary: { add: 0, remove: 0, move: 0, keep: 4 }, pace_change: null, lodging: [{ candidate_id: lodgingId, name: "梅州客家酒店", address: "梅州", provider: "fake", verification_status: "SIMULATED" }], stops: [firstStop, secondStop, lunchStop], transitions: [] },
     draft_version: 1, draft_stale: false, status: "ACTIVE", confirmed_trip_id: null, confirmed_plan_id: null,
     created_at: now, updated_at: now, messages: [],
   };
@@ -55,11 +63,12 @@ test("顾问展示已验证的冲突方案并将选择同步到新草案", async
       draftRequests.push(draftRequest);
       const schedules = draftRequest.schedules as { candidate_id: string; day: string; start_time: string }[];
       const moved = schedules.find((item) => item.candidate_id === secondId)!;
+      const lunch = schedules.find((item) => item.candidate_id === lunchId)!;
       return route.fulfill({ json: {
-        ...session, draft_version: 2, context: { ...session.context, revision: 2, selected_candidate_ids: [firstId, secondId] },
-        draft: { ...session.draft, version: 2, context_revision: 2, selected_candidate_ids: [firstId, secondId],
+        ...session, draft_version: 2, context: { ...session.context, revision: 2, selected_candidate_ids: [firstId, secondId, lunchId, lodgingId] },
+        draft: { ...session.draft, version: 2, context_revision: 2, selected_candidate_ids: [firstId, secondId, lunchId, lodgingId],
         warnings: [],
-          stops: [firstStop, { ...secondStop, start_time: `${moved.start_time}:00`, end_time: "13:30:00" }] },
+          stops: [firstStop, { ...secondStop, start_time: `${moved.start_time}:00`, end_time: "13:30:00" }, { ...lunchStop, start_time: `${lunch.start_time}:00` }] },
       } });
     }
     if (url.pathname.endsWith("/progress")) return route.fulfill({ json: [] });
@@ -75,12 +84,14 @@ test("顾问展示已验证的冲突方案并将选择同步到新草案", async
   }
   await page.getByRole("button", { name: "采用并重新核验" }).click();
   await expect.poll(() => draftRequests.length).toBe(1);
-  expect(draftRequests[0].candidate_ids).toEqual([firstId, secondId]);
+  expect(draftRequests[0].candidate_ids).toEqual([firstId, secondId, lunchId, lodgingId]);
   expect(draftRequests[0].schedules).toEqual([
     { candidate_id: firstId, day, start_time: "10:00" },
     { candidate_id: secondId, day, start_time: "12:30" },
+    { candidate_id: lunchId, day, start_time: "12:15" },
   ]);
   await expect(page.getByText("江北老街", { exact: true }).last()).toBeVisible();
+  await expect(page.getByText("鑫丰特色餐饮", { exact: true }).last()).toBeVisible();
   await expect(page.getByText("已按你选的冲突调整方案重新核验")).toBeVisible();
   await expect(page.locator(".advisor-confirm-bar")).not.toContainText("预览已过期");
   if (process.env.TRAVELPILOT_QA_SCREENSHOT) {
