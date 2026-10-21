@@ -4,6 +4,58 @@ Updated: 2026-10-21
 
 Current next-agent plan status (2026-10-21): **W0–W6 complete for local scope.** W4 added an in-Advisor What-if dialog with per-day preview, PlanDiff/warnings, and explicit confirmation before formal writes. W5 reran the 40-case B1/B2/B3 comparison, 60-case/129-turn scripted and Runtime replays, and the authenticated 18-scenario/22-turn local product suite. W6 reconciled the README and roadmap; the full API/evaluation suite passed **998 tests** with Python UTF-8 mode. No new live-model or external-provider calls were made. Local evaluation limits and reproduction commands: `docs/evaluation/local-agent-eval-2026-10-21.md`.
 
+## Next stage plan (proposed, 2026-10-21)
+
+The completed roadmap above remains closed for its local-scope acceptance criteria. The next stage shifts from expanding synthetic coverage to measuring unseen-task quality, then adds user-visible constraint negotiation and prepares a bounded demo. The three workstreams are reasonable, with the following sequencing and acceptance boundaries:
+
+| Priority | Workstream | Goal | Estimate |
+|---|---|---|---|
+| P0 | Real-model generalization and user-quality evaluation | Establish whether the product handles previously unseen, multi-turn travel tasks and produces useful, understandable replies | 1–2 weeks |
+| P1 | Itinerary constraint negotiation | Turn detected conflicts into a small set of feasible, minimally disruptive alternatives that users can compare and approve | 1–2 weeks |
+| P1 | Productization and system improvement | Improve the unified Advisor workbench, task-level observability, demo readiness, and bounded reliability | 1–2 weeks |
+
+### P0 — Real-model and unseen-task evaluation
+
+1. Freeze a new set of **20–30 exploratory tasks** only after the prompt, runtime policy, and scoring protocol are recorded. Cover multi-turn edits, ambiguous references, user corrections, hard constraints, tool failures, and cross-domain/open-ended requests. Treat this size as a diagnostic pilot, not statistical proof of general competence.
+2. Do not reuse `advisor_multiturn_holdout_v2` or any previously exposed set as a blind holdout. Keep the new prompts and expected outcomes private until the evaluated code/prompt revision is frozen; record dataset, prompt, model, runtime, and tool-fixture hashes.
+3. Compare three clearly identified systems: the existing fixed workflow (B1), the production constrained Agent Loop (B2), and that same loop with the production verifier/recovery path enabled (B3). Do not substitute a scripted policy for the real model while reporting model quality; scripted replays remain separate contract diagnostics.
+4. Score task outcome, preservation of existing constraints, tool choice/arguments, unnecessary clarification or repetition, recovery after tool failure, answer usefulness/readability, and unsafe or unconfirmed writes. Use independent blind human ratings for subjective answer quality; report model/action metrics separately from ratings.
+5. Report per-case evidence, failures, token/cost and latency, and uncertainty. Keep every run bounded by an explicit request/token budget; use Fake Maps/weather or fixed fixtures unless separately approved live-provider evaluation is needed. No evaluation case may mutate a real trip.
+
+**Exit gate:** reproducible matched B1/B2/B3 results on the newly frozen cases, with no hard-invariant violation or unconfirmed formal write in B2/B3; every failure categorized and linked to evidence. Human ratings and small-sample limitations must be disclosed. A favorable score is not by itself a claim of arbitrary-task competence.
+
+### P1 — Itinerary constraint negotiation
+
+1. Represent hard constraints (fixed booking, trip dates, explicit “must” requirements) separately from adjustable preferences (pace, optional stops, preferred return time). The agent must never relax a hard constraint on its own.
+2. When deterministic validation finds a conflict, identify the smallest relevant conflict set, then search a bounded number of alternatives by relaxing only user-adjustable preferences. Candidate actions may include removing an optional stop, shifting a flexible time, or moving an activity to another day.
+3. Run each alternative through the existing route/time/opening-hours/meal-window and plan validators. Show only alternatives that pass validation; label unavailable evidence and unresolved assumptions plainly. If none passes, explain the blocking constraint and ask what the user is willing to change.
+4. Rank passing options by change cost against the current plan (preserved fixed events and stops, moved items, added travel time, and preference deviations). Present a concise comparison with the affected dates and an explicit choice. Selecting an option creates a What-if/PlanDiff proposal; formal itinerary writes still require user confirmation.
+5. Add scenario coverage for route duration, opening hours, meal timing, lodging/transport gaps, fixed appointments, overlapping events, stale plan versions, provider failure, and truly infeasible requests.
+
+**Exit gate:** all surfaced alternatives pass deterministic validation; hard constraints are never silently weakened; infeasible cases are correctly rejected; the chosen alternative produces an accurate diff and only changes the formal plan after confirmation. Measure feasible-alternative rate, hard-constraint relaxation errors, change cost, infeasible-case rejection, latency, and user choice/abandonment.
+
+### P1 — Productization and system improvement
+
+1. Consolidate the Advisor into one workbench that shows the user goal, one next question or action, live task progress, evidence, candidate alternatives, conflict status, and the applied itinerary state. Keep optional diagnostics collapsed by default.
+2. Add task-level observability for tool duration, model usage/cost, retries, failure class, evidence source, and plan version. Provide a redacted failure-trace export that excludes credentials, raw private conversation by default, and model hidden reasoning.
+3. Prepare a reproducible controlled demo: setup/run instructions, seeded or disposable sample data, health checks, configuration validation, and recovery instructions. If inviting a small number of opt-in reviewers, use isolated accounts/data and label the exercise as a bounded demo rather than an open external trial.
+4. Keep public SaaS operations outside this stage: quotas at scale, continuous availability/on-call, production email/object storage, and off-site backup/restore remain a separate gate before open external trials.
+
+**Exit gate:** a clean setup can run the end-to-end demo; the user can understand what the agent observed, proposed, changed, and saved; failure traces are redacted; account/trip isolation and confirmation semantics are verified. No production-operations claim is made from a local or controlled demo.
+
+### Indicative six-week sequence
+
+| Week | Focus | Deliverable |
+|---|---|---|
+| W1 | Evaluation protocol and new tasks | Frozen 20–30 case pilot, scoring rubric, budgets, and B1 baseline |
+| W2 | Agent failure analysis | B2/B3 runs, blind human-rating packet, failure taxonomy, and fixes for recurring context/tool/confirmation errors |
+| W3 | Negotiation engine | Hard/soft constraint model, bounded alternative search, deterministic validation, and change-cost ranking |
+| W4 | Negotiation interaction | Compare/select alternatives in the Advisor, What-if diff, stale-state handling, and confirmation path |
+| W5 | Comparative evaluation | Negotiation scenario suite and measured comparison against a simple conflict warning and a single-fix baseline |
+| W6 | Controlled demo and handoff | Reproducible demo, architecture/limitations notes, evaluation report, and optional small opt-in feedback session |
+
+The 1–2 week estimates are workstream-level rough estimates and overlap within this six-week sequence; they are not additive guarantees. Re-estimate after W1 identifies dataset and review workload. Prioritize P0 first so later agent changes can be evaluated against a newly frozen baseline. Push each completed implementation milestone separately, while keeping the evaluation artifacts and reports attributable to the exact source revision.
+
 Latest local authenticated product-service suite (2026-10-20): **18/18 scenarios, 22 turns** passed with the loopback model stub, Fake Maps and synthetic weather/route failures. All **18/18 temporary accounts were deleted**, and every scenario prevented a formal plan write. The concise per-scenario checklist report is `tests/evaluation/results/advisor_product_local_suite_20261020_summary.json`; it records source revision `17bd262` and a dirty-tree flag, so it is local-worktree evidence rather than a clean-commit claim. Raw turn reports remain outside the repository.
 
 Replanning safety evidence (2026-10-20): the current API integration tests confirm `USER_ADD` is handled only after POI candidate lookup, route feasibility is checked, and a fixed booking remains untouched. The added cases cover route success, route-provider failure, overlong route/time conflict, and events outside trip dates; the shared USER_ADD and weather-evidence comparison checks pass **49 tests**. The v3 synthetic weather ablation has three cases: the category-only heuristic removes 3 places without evidence, while evidence-aware behavior avoids all 3 unverified removals (including a low-confidence inferred profile). This is deterministic test evidence, not proof of real-world weather classification.
