@@ -233,6 +233,29 @@ async def test_agent_action_is_limited_to_supplied_read_only_tools(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_deepseek_agent_decision_disables_thinking_and_requests_compact_json(monkeypatch):
+    requests = mock_client(monkeypatch, {
+        "usage": {"total_tokens": 25, "prompt_tokens": 20, "completion_tokens": 5},
+        "choices": [{"message": {"content": '{"kind":"FINISH","summary":"ready"}'}}],
+    })
+
+    action, _usage = await decide_next_action(
+        {"wishlist_count": 2},
+        {"get_distance_matrix": {"input_schema": {"type": "object"}}},
+        api_key="test", model="deepseek-flash", base_url="https://api.deepseek.com/v1",
+        token_budget=128,
+    )
+
+    assert action.kind == "FINISH"
+    assert requests[0]["thinking"] == {"type": "disabled"}
+    assert requests[0]["max_tokens"] == 128
+    system_prompt = requests[0]["messages"][0]["content"]
+    assert '"kind":"CALL_TOOL"' in system_prompt
+    assert "summary of at most 80 characters" in system_prompt
+    assert "the user-facing answer is composed separately" in system_prompt
+
+
+@pytest.mark.asyncio
 async def test_agent_action_rejects_tool_outside_allowlist(monkeypatch):
     from travelpilot_core.agents.planner import PlannerDecisionFailure
 

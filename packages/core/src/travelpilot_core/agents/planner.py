@@ -112,8 +112,11 @@ async def decide_next_action(
                     "messages": [
                         {"role": "system", "content": (
                             "Select exactly one next action using only the supplied observations and tools. "
-                            "Output one compact JSON object and no prose. Schema examples: "
-                            '{"kind":"CALL_TOOL","tool":"get_distance_matrix","arguments":{},"summary":"check route"}; '
+                            "Output one minimal JSON object and no prose. For CALL_TOOL include only kind, tool, and arguments; "
+                            "omit summary. For ASK_USER include only kind and one concise question. For FINISH include kind "
+                            "and a summary of at most 80 characters. Do not put analysis or full travel advice in action fields; "
+                            "the user-facing answer is composed separately. Examples: "
+                            '{"kind":"CALL_TOOL","tool":"get_distance_matrix","arguments":{}}; '
                             '{"kind":"ASK_USER","question":"Which date?"}; '
                             '{"kind":"FINISH","summary":"Ready for review"}. '
                             "Use ASK_USER when a required user choice or feasibility-critical fact is missing; "
