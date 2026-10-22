@@ -101,12 +101,16 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
         schedules: { candidate_id: string; day?: string; start_time?: string }[];
       };
       const current = persistedSession as typeof session;
+      const schedules = Object.fromEntries(body.schedules.map(({ candidate_id, ...schedule }) => [candidate_id, schedule]));
+      const changed = JSON.stringify(current.context.selected_candidate_ids ?? []) !== JSON.stringify(body.selected_candidate_ids)
+        || JSON.stringify(current.context.candidate_schedules ?? {}) !== JSON.stringify(schedules);
       persistedSession = {
         ...current,
         context: {
           ...current.context,
+          revision: current.context.revision + (changed ? 1 : 0),
           selected_candidate_ids: body.selected_candidate_ids,
-          candidate_schedules: Object.fromEntries(body.schedules.map(({ candidate_id, ...schedule }) => [candidate_id, schedule])),
+          candidate_schedules: schedules,
         },
       };
       return route.fulfill({ json: persistedSession });
@@ -116,7 +120,12 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
       const body = request.postDataJSON() as {
         candidate_ids: string[];
         schedules: { candidate_id: string; day: string; start_time: string }[];
+        expected_draft_version?: number;
+        expected_context_revision?: number;
       };
+      const current = persistedSession as typeof session;
+      expect(body.expected_context_revision).toBe(current.context.revision);
+      expect(body.expected_draft_version).toBe(current.draft?.version);
       const expectedIds = draftRequestCount === 1
         ? ["lunch-1"] : ["lunch-1", "dinner-1", "sightseeing-1", "hotel-1"];
       expect(body.candidate_ids).toEqual(expectedIds);
@@ -128,12 +137,11 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
             { candidate_id: "sightseeing-1", day, start_time: "14:00" },
           ]);
       const version = draftRequestCount + 1;
-      const current = persistedSession as typeof session;
       persistedSession = {
         ...current,
-        context: { ...current.context, revision: version, selected_candidate_ids: body.candidate_ids },
+        context: { ...current.context, revision: current.context.revision + 1, selected_candidate_ids: body.candidate_ids },
         draft: {
-          version, context_revision: version, generated_at: now,
+          version, context_revision: current.context.revision + 1, generated_at: now,
           selected_candidate_ids: body.candidate_ids,
           attention_items: draftRequestCount === 1 ? [{ kind: "LODGING_MISSING", day }] : [],
           lodging: draftRequestCount === 1 ? [] : [{ candidate_id: "hotel-1", name: "模拟旅行酒店", address: "成都市锦江区",

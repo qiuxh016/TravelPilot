@@ -142,6 +142,8 @@ class AdvisorDraftCreate(BaseModel):
     candidate_ids: list[UUID] = Field(min_length=1, max_length=30)
     schedules: list[AdvisorCandidateSchedule] = Field(default_factory=list, max_length=30)
     allow_profile_memory_conflicts: bool = False
+    expected_draft_version: int | None = Field(default=None, ge=1)
+    expected_context_revision: int | None = Field(default=None, ge=0)
 
 
 class AdvisorNegotiationRequest(BaseModel):

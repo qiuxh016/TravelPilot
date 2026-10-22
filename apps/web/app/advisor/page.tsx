@@ -548,8 +548,8 @@ export default function AdvisorPage() {
     session: AdvisorSession,
     selectedIds: string[],
     scheduleState: Record<string, { day: string; start_time: string }>,
-  ) {
-    if (session.status !== "ACTIVE") return Promise.resolve();
+  ): Promise<AdvisorSession> {
+    if (session.status !== "ACTIVE") return Promise.resolve(session);
     const selectedSet = new Set(selectedIds);
     const schedulesToSave = Object.entries(scheduleState).flatMap(([candidate_id, schedule]) => {
       const candidate = session.candidates.find((item) => item.id === candidate_id);
@@ -560,13 +560,14 @@ export default function AdvisorPage() {
     });
     setSelectionSyncStatus("SAVING");
     const request = selectionSaveQueueRef.current.catch(() => undefined).then(async () => {
-      await updateAdvisorSelection(session.id, selectedIds, schedulesToSave);
+      return await updateAdvisorSelection(session.id, selectedIds, schedulesToSave);
     });
-    selectionSaveQueueRef.current = request;
+    const queuedRequest = request.then(() => undefined);
+    selectionSaveQueueRef.current = queuedRequest;
     void request.then(() => {
-      if (active?.id === session.id && selectionSaveQueueRef.current === request) setSelectionSyncStatus("SAVED");
+      if (active?.id === session.id && selectionSaveQueueRef.current === queuedRequest) setSelectionSyncStatus("SAVED");
     }).catch((reason) => {
-      if (active?.id === session.id && selectionSaveQueueRef.current === request) {
+      if (active?.id === session.id && selectionSaveQueueRef.current === queuedRequest) {
         setSelectionSyncStatus("FAILED");
         setError(`选择尚未同步到会话，稍后重试：${(reason as Error).message}`);
       }
@@ -634,12 +635,16 @@ export default function AdvisorPage() {
     candidateIds: string[],
     draftSchedules: { candidate_id: string; day: string; start_time: string }[],
     allowMemoryConflicts: boolean,
+    expectedDraftVersion?: number,
+    expectedContextRevision?: number,
   ) {
     const fingerprint = JSON.stringify({
       sessionId,
       candidate_ids: candidateIds,
       schedules: draftSchedules,
       allow_profile_memory_conflicts: allowMemoryConflicts,
+      expected_draft_version: expectedDraftVersion,
+      expected_context_revision: expectedContextRevision,
     });
     const current = pendingDraftRequestRef.current;
     if (current?.fingerprint === fingerprint) return current.key;
@@ -1135,9 +1140,11 @@ export default function AdvisorPage() {
           return true;
         }
         setAgentActivity("正在核验地点之间的路线，并检查日期、节奏与时间冲突…");
-        const draftKey = draftRequestKey(updated.id, proposedIds, proposedScheduleItems, false);
+        const expectedDraftVersion = updated.draft?.version;
+        const expectedContextRevision = updated.context?.revision;
+        const draftKey = draftRequestKey(updated.id, proposedIds, proposedScheduleItems, false, expectedDraftVersion, expectedContextRevision);
         try {
-          const proposedDraft = await createAdvisorDraft(updated.id, proposedIds, proposedScheduleItems, false, draftKey);
+          const proposedDraft = await createAdvisorDraft(updated.id, proposedIds, proposedScheduleItems, false, draftKey, expectedDraftVersion, expectedContextRevision);
           finishDraftRequest(draftKey);
           setActive(proposedDraft); setSelected(proposedDraft.draft?.selected_candidate_ids ?? proposedIds);
           setMapDay(proposedDraft.draft?.stops[0]?.day ?? "");
@@ -1192,12 +1199,15 @@ export default function AdvisorPage() {
     if (!schedulesComplete) { setError("请为每个选中的地点确认日期和开始时间；只有对话中明确提到的时间才会预填。"); return; }
     setBusy(true); setError(""); setNotice(""); setMemoryConflictMessage("");
     const draftSchedules = scheduleRequiredIds.map((candidate_id) => ({ candidate_id, ...schedules[candidate_id] }));
-    const draftKey = draftRequestKey(active.id, selected, draftSchedules, allowProfileMemoryConflicts);
+    let draftKey = "";
     try {
-      await persistSelectionSnapshot(active, selected, schedules);
-      const updated = await createAdvisorDraft(active.id, selected, draftSchedules, allowProfileMemoryConflicts, draftKey);
+      const saved = await persistSelectionSnapshot(active, selected, schedules);
+      const expectedDraftVersion = saved.draft?.version;
+      const expectedContextRevision = saved.context?.revision;
+      draftKey = draftRequestKey(saved.id, selected, draftSchedules, allowProfileMemoryConflicts, expectedDraftVersion, expectedContextRevision);
+      const updated = await createAdvisorDraft(saved.id, selected, draftSchedules, allowProfileMemoryConflicts, draftKey, expectedDraftVersion, expectedContextRevision);
       setNegotiation(null);
-      finishDraftRequest(draftKey);
+      if (draftKey) finishDraftRequest(draftKey);
       setActive(updated); setNotice(automatic
         ? "行程预览已根据你的选择自动更新；确认后才会写入正式行程。"
         : `第 ${updated.draft_version} 版行程调整预览已就绪；确认后会直接更新正式行程。`);
@@ -1237,9 +1247,13 @@ export default function AdvisorPage() {
         start_time: change?.start_time?.slice(0, 5) ?? stop.start_time.slice(0, 5),
       };
     });
+    const expectedDraftVersion = negotiation?.sessionId === active.id ? negotiation.draftVersion : active.draft.version;
+    const expectedContextRevision = active.context?.revision;
+    const draftKey = draftRequestKey(active.id, candidateIds, draftSchedules, false, expectedDraftVersion, expectedContextRevision);
     setBusy(true); setError(""); setNegotiation(null);
     try {
-      const updated = await createAdvisorDraft(active.id, candidateIds, draftSchedules, false, crypto.randomUUID());
+      const updated = await createAdvisorDraft(active.id, candidateIds, draftSchedules, false, draftKey, expectedDraftVersion, expectedContextRevision);
+      if (draftKey) finishDraftRequest(draftKey);
       setActive(updated);
       setSelected(updated.draft?.selected_candidate_ids ?? candidateIds);
       setSchedules(Object.fromEntries(draftSchedules.map((item) => [item.candidate_id, { day: item.day, start_time: item.start_time }])));
@@ -1247,7 +1261,20 @@ export default function AdvisorPage() {
       setSessions((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
       setNotice("已按你选的冲突调整方案重新核验。检查更新后的安排后，可确认写入正式行程。");
     } catch (reason) {
-      setError((reason as Error).message);
+      finishDraftRequest(draftKey);
+      if (reason instanceof ApiError && reason.status === 409) {
+        try {
+          const latest = await getAdvisorSession(active.id);
+          setActive(latest);
+          setSelected(latest.context?.selected_candidate_ids ?? latest.draft?.selected_candidate_ids ?? []);
+          setSchedules(schedulesForSession(latest));
+          setSessions((current) => [latest, ...current.filter((item) => item.id !== latest.id)]);
+          setNegotiation(null);
+          setError("行程或旅行条件刚刚更新，已同步最新安排；请检查后再重新协商。未覆盖新版本。");
+        } catch (refreshError) {
+          setError(`当前安排已被更新，刷新失败；请重新载入对话后再操作。${(refreshError as Error).message}`);
+        }
+      } else setError((reason as Error).message);
     } finally { setBusy(false); }
   }
 
@@ -1342,13 +1369,15 @@ export default function AdvisorPage() {
     }
     setBusy(true); setError("");
     try {
-      await persistSelectionSnapshot(session, selected, schedules);
-      let sessionToConfirm = session;
-      const mustRefreshDraft = !session.draft || (session.id === active?.id && draftIsStale);
+      let sessionToConfirm = await persistSelectionSnapshot(session, selected, schedules);
+      const mustRefreshDraft = !sessionToConfirm.draft || sessionToConfirm.draft_stale
+        || (sessionToConfirm.id === active?.id && draftIsStale);
       if (mustRefreshDraft) {
         const draftSchedules = scheduleRequiredIds.map((candidate_id) => ({ candidate_id, ...schedules[candidate_id] }));
-        const draftKey = draftRequestKey(session.id, selected, draftSchedules, false);
-        sessionToConfirm = await createAdvisorDraft(session.id, selected, draftSchedules, false, draftKey);
+        const expectedDraftVersion = sessionToConfirm.draft?.version;
+        const expectedContextRevision = sessionToConfirm.context?.revision;
+        const draftKey = draftRequestKey(sessionToConfirm.id, selected, draftSchedules, false, expectedDraftVersion, expectedContextRevision);
+        sessionToConfirm = await createAdvisorDraft(sessionToConfirm.id, selected, draftSchedules, false, draftKey, expectedDraftVersion, expectedContextRevision);
         finishDraftRequest(draftKey);
         if (!sessionToConfirm.draft || sessionToConfirm.draft_stale) {
           throw new Error("当前安排还不能直接写入，请检查地点、日期和时间后重试。");
@@ -1430,12 +1459,15 @@ export default function AdvisorPage() {
         candidate.id === candidateId && candidate.planning_category !== "LODGING",
       ))
       .map((candidate_id) => ({ candidate_id, ...schedules[candidate_id] }));
-    const draftKey = draftRequestKey(active.id, selected, draftSchedules, false);
+    let draftKey = "";
     setBusy(true); setError(""); setNotice("");
     try {
-      await persistSelectionSnapshot(active, selected, schedules);
-      const updated = await createAdvisorDraft(active.id, selected, draftSchedules, false, draftKey);
-      finishDraftRequest(draftKey);
+      const saved = await persistSelectionSnapshot(active, selected, schedules);
+      const expectedDraftVersion = saved.draft?.version;
+      const expectedContextRevision = saved.context?.revision;
+      draftKey = draftRequestKey(saved.id, selected, draftSchedules, false, expectedDraftVersion, expectedContextRevision);
+      const updated = await createAdvisorDraft(saved.id, selected, draftSchedules, false, draftKey, expectedDraftVersion, expectedContextRevision);
+      if (draftKey) finishDraftRequest(draftKey);
       setActive(updated);
       setSelected(updated.draft?.selected_candidate_ids ?? selected);
       setMapDay(updated.draft?.stops[0]?.day ?? "");

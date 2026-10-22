@@ -81,6 +81,20 @@ async def create_draft(
 ):
     started_at = perf_counter()
     row = await owned_session(db, session_id, user.id, lock=True)
+    context_snapshot = row.context if isinstance(row.context, dict) else {}
+    current_context_revision = int(context_snapshot.get("revision", 0))
+    current_draft = row.draft if isinstance(row.draft, dict) else None
+    if payload.expected_draft_version is not None and (
+        payload.expected_draft_version != row.draft_version
+        or current_draft is None
+        or current_draft.get("version") != row.draft_version
+    ):
+        raise HTTPException(409, detail="行程草案已被更新，请刷新当前安排后再试")
+    if (
+        payload.expected_context_revision is not None
+        and payload.expected_context_revision != current_context_revision
+    ):
+        raise HTTPException(409, detail="旅行条件已被更新，请刷新当前安排后再试")
     key_ref = None
     request_ref = None
     if idempotency_key is not None:
