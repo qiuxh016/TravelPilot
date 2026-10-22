@@ -1,7 +1,7 @@
 """Stable identifiers for provider-backed candidates within one Advisor session."""
 
-from uuid import UUID, uuid5
 from collections.abc import Mapping, Sequence
+from uuid import UUID, uuid5
 
 
 def provider_candidate_id(

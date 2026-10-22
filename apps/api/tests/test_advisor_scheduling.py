@@ -14,8 +14,8 @@ from travelpilot_api.advisor.task_contract import build_agent_task_context
 from travelpilot_api.advisor.tools import distance_tool_runtime
 from travelpilot_core.agents.loop import AgentAction
 from travelpilot_core.engines.optimizer.itinerary import Candidate, Visit
-from travelpilot_infra.providers.maps.fake import FakeMapsProvider
 from travelpilot_infra.providers.maps.errors import MapsProviderError
+from travelpilot_infra.providers.maps.fake import FakeMapsProvider
 
 
 def _visits(second_start: time) -> tuple[list[Visit], list[str]]:

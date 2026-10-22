@@ -16,8 +16,8 @@ from travelpilot_infra.db.models.advisor import (
 from travelpilot_infra.db.models.user import UserModel
 from travelpilot_infra.db.session import AsyncSessionFactory, get_session
 
-from travelpilot_api.advisor.checkpoints import checkpoint_writer
 from travelpilot_api.advisor.candidate_selection import explicit_candidate_selection_ids
+from travelpilot_api.advisor.checkpoints import checkpoint_writer
 from travelpilot_api.advisor.sessions import owned_session, read_session
 from travelpilot_api.auth import get_current_user
 from travelpilot_api.dependencies import get_maps_provider, get_weather_provider

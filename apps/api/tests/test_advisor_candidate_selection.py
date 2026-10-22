@@ -1,5 +1,4 @@
 import pytest
-
 from travelpilot_api.advisor.candidate_selection import (
     explicit_candidate_selection_ids,
     selected_ids_after_food_search,
@@ -60,8 +59,8 @@ def test_food_search_preserves_prior_selected_food_lodging_and_sightseeing():
         (set(), {"dinner-1"}, ["dinner-1", "tour-1"]),
         # IDs no longer present in the refreshed candidate snapshot are discarded.
         ({"hotel-removed", "old-food"}, {"lunch-1"}, ["lunch-1", "tour-1"]),
-        # Repeated IDs and repeated candidate rows cannot duplicate the selected state.
-        ({"hotel-1", "hotel-1"}, {"lunch-1", "lunch-1"}, ["hotel-1", "lunch-1", "tour-1"]),
+        # Repeated selected IDs and candidate rows cannot duplicate the selected state.
+        (["hotel-1", "hotel-1"], ["lunch-1", "lunch-1"], ["hotel-1", "lunch-1", "tour-1"]),
     ],
 )
 def test_meal_candidate_refresh_keeps_only_current_plan_active_lodging_and_current_choice(
@@ -70,6 +69,7 @@ def test_meal_candidate_refresh_keeps_only_current_plan_active_lodging_and_curre
     candidates = [
         {"id": "tour-1", "in_current_plan": True, "planning_category": "ATTRACTION"},
         {"id": "park-1", "planning_category": "ATTRACTION"},
+        {"id": "lunch-1", "planning_category": "FOOD", "meal_type": "LUNCH"},
         {"id": "lunch-1", "planning_category": "FOOD", "meal_type": "LUNCH"},
         {"id": "dinner-1", "planning_category": "FOOD", "meal_type": "DINNER"},
         {"id": "hotel-1", "planning_category": "LODGING"},

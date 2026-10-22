@@ -1,5 +1,4 @@
 import pytest
-
 from travelpilot_core.agents import advisor_reply
 
 

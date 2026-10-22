@@ -15,7 +15,10 @@ from travelpilot_core.agents.verifiers import verify_distance_matrix
 from travelpilot_infra.db.models.advisor import AdvisorRunEventModel
 from travelpilot_infra.db.session import AsyncSessionFactory
 
-from travelpilot_api.advisor.decision_refs import readonly_action_ref, stage_observation_ref  # noqa: F401
+from travelpilot_api.advisor.decision_refs import (  # noqa: F401
+    readonly_action_ref,
+    stage_observation_ref,
+)
 from travelpilot_api.advisor.route_evidence import reusable_route_evidence
 from travelpilot_api.advisor.weather_evidence import valid_weather_evidence
 

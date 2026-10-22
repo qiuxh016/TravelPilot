@@ -62,9 +62,7 @@ def resolve_pending_turn(
     if supersedes_stale_task:
         invalidated = False
         continuing_task = None
-    if invalidated:
-        pending = None
-    elif supersedes_stale_task:
+    if invalidated or supersedes_stale_task:
         pending = None
 
     context.pop("pending_agent_question", None)

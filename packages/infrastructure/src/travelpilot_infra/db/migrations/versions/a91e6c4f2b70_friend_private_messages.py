@@ -3,7 +3,6 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-
 revision = "a91e6c4f2b70"
 down_revision = "8b3c1d5e7f90"
 branch_labels = None

@@ -137,12 +137,14 @@ def confirmation_options_for(question: str) -> list[AdvisorConfirmationOption]:
 
     if "还是" in normalized or "或者" in normalized or "或" in normalized or re.search(r"[/／]", normalized):
         choices = re.split(r"还是|或者|或|[/／]", normalized)
-        choices = [choice.strip(" ，,、：:；;。？?吗 ") for choice in choices]
+        edge_punctuation = r"^[ ，,、：:；;。？?吗]+|[ ，,、：:；;。？?吗]+$"
+        choices = [re.sub(edge_punctuation, "", choice) for choice in choices]
         if choices:
             choices[0] = re.sub(
                 r"^.*?(?:更倾向于|倾向于|更喜欢|更偏爱|更偏好|偏爱|偏向|更看重|更在意|偏好|更想|想体验|希望去|希望是|希望|想要|想去|选择|选|喜欢)\s*",
                 "", choices[0],
-            ).strip(" ，,、：:；;。？?吗 ")
+            )
+            choices[0] = re.sub(edge_punctuation, "", choices[0])
             # A common three-way form places the first two options before “还是”.
             if len(choices) == 2:
                 choices = re.split(r"[、，,：:]", choices[0]) + [choices[1]]

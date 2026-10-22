@@ -1,7 +1,10 @@
 from uuid import uuid4
 
 import pytest
-from travelpilot_api.advisor.candidate_identity import candidate_assignment_identity, provider_candidate_id
+from travelpilot_api.advisor.candidate_identity import (
+    candidate_assignment_identity,
+    provider_candidate_id,
+)
 
 
 def test_provider_candidate_id_is_stable_across_retry_and_provider_case_changes():

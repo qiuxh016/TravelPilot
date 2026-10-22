@@ -1,15 +1,14 @@
 from types import SimpleNamespace
 from uuid import uuid4
 
+import httpx
 import pytest
 from sqlalchemy.dialects import postgresql
-import httpx
-
-from travelpilot_core.agents.advisor_reply import compose_advisor_reply_with_diagnostics
 from travelpilot_api.advisor.guide_evidence import (
     guide_references_for_place,
     load_trip_guide_references,
 )
+from travelpilot_core.agents.advisor_reply import compose_advisor_reply_with_diagnostics
 
 
 def test_guide_place_matching_is_conservative_and_preserves_source_claim():
