@@ -5,7 +5,7 @@ import asyncio
 import os
 import subprocess
 import sys
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -42,7 +42,7 @@ class FakeWeatherProvider:
 
 
 def _payload(candidate_id: UUID, *, start_time: str = "10:00") -> AdvisorDraftCreate:
-    day = date.today() + timedelta(days=3)
+    day = datetime.now().astimezone().date() + timedelta(days=3)
     return AdvisorDraftCreate(
         candidate_ids=[candidate_id],
         schedules=[{
@@ -159,7 +159,7 @@ async def _verify_food_and_lodging_persist(owner_id: UUID) -> None:
 
     session_id = uuid4()
     attraction_id, food_id, lodging_id = uuid4(), uuid4(), uuid4()
-    start = date.today() + timedelta(days=20)
+    start = datetime.now().astimezone().date() + timedelta(days=20)
     end = start + timedelta(days=1)
     now = datetime.now(UTC)
     candidates = [
@@ -265,7 +265,7 @@ async def _verify_food_and_lodging_persist(owner_id: UUID) -> None:
 async def verify() -> None:
     owner_id, session_id, candidate_id = uuid4(), uuid4(), uuid4()
     key = f"draft-retry-{uuid4().hex[:20]}"
-    trip_day = date.today() + timedelta(days=3)
+    trip_day = datetime.now().astimezone().date() + timedelta(days=3)
     now = datetime.now(UTC)
     try:
         async with AsyncSessionFactory() as db:

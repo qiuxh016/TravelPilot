@@ -183,8 +183,9 @@ def _resolve_trip_dates(start_date: date | None) -> tuple[date, date]:
     # cases exercise forecast handling instead of silently testing unavailable
     # long-range dates. Synthetic weather fixtures accept the same near-future
     # date, which keeps real-model runs deterministic.
-    start = start_date or (date.today() + timedelta(days=3))
-    if start <= date.today():
+    local_today = datetime.now().astimezone().date()
+    start = start_date or (local_today + timedelta(days=3))
+    if start <= local_today:
         raise ValueError("evaluation trip start date must be in the future")
     return start, start + timedelta(days=1)
 

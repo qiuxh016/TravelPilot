@@ -7,7 +7,7 @@ import asyncio
 import os
 import subprocess
 import sys
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -96,7 +96,7 @@ async def verify() -> None:
     owner_id, trip_id, poi_id = uuid4(), uuid4(), uuid4()
     source_plan_id, event_id, run_id = uuid4(), uuid4(), uuid4()
     token = uuid4().hex[:20]
-    start_date = date.today() + timedelta(days=7)
+    start_date = datetime.now().astimezone().date() + timedelta(days=7)
     now = datetime.now(UTC)
     try:
         async with AsyncSessionFactory() as db:

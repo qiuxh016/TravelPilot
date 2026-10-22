@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import httpx
 import pytest
@@ -919,7 +919,7 @@ def test_frozen_trip_dates_are_reused_for_paired_runs():
 def test_default_trip_dates_stay_inside_standard_weather_forecast_horizon():
     start, end = evaluation._resolve_trip_dates(None)
 
-    assert start == date.today() + timedelta(days=3)
+    assert start == datetime.now().astimezone().date() + timedelta(days=3)
     assert end == start + timedelta(days=1)
 
 
@@ -934,7 +934,7 @@ def test_product_eval_stops_when_turn_usage_exceeds_approved_cap():
 
 def test_live_evaluation_rejects_past_trip_date_before_http_requests(tmp_path):
     with pytest.raises(ValueError, match="must be in the future"):
-        evaluation._resolve_trip_dates(date.today() - timedelta(days=1))
+        evaluation._resolve_trip_dates(datetime.now().astimezone().date() - timedelta(days=1))
 
 
 @pytest.mark.asyncio
@@ -946,7 +946,7 @@ async def test_live_evaluation_never_overwrites_an_existing_report(tmp_path):
         await evaluation.run_eval(
             base_url="http://127.0.0.1:8015",
             output=report,
-            trip_start_date=date.today() - timedelta(days=1),
+            trip_start_date=datetime.now().astimezone().date() - timedelta(days=1),
         )
 
     assert report.read_text(encoding="utf-8") == "preserve"
@@ -960,7 +960,7 @@ async def test_live_evaluation_rejects_past_trip_date_before_network_or_output(t
         await evaluation.run_eval(
             base_url="http://127.0.0.1:8015",
             output=output,
-            trip_start_date=date.today() - timedelta(days=1),
+            trip_start_date=datetime.now().astimezone().date() - timedelta(days=1),
         )
 
     assert not output.exists()
@@ -1016,7 +1016,7 @@ async def test_runtime_mismatch_fails_before_temporary_account_registration(monk
         await evaluation.run_eval(
             base_url="http://127.0.0.1:8015",
             output=output,
-            trip_start_date=date.today() + timedelta(days=100),
+            trip_start_date=datetime.now().astimezone().date() + timedelta(days=100),
             server_output_cap=128,
             server_session_cap=512,
         )
