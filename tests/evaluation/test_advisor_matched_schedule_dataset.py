@@ -41,9 +41,11 @@ def test_matched_baseline_dataset_has_four_two_turn_supported_schedule_tasks():
         seen_ids.add(case["id"])
         assert case["state"]["trip_dates"]
         assert len(case["state"]["saved_places"]) >= 1
+        assert case["setup"]["confirmed_plan"] is True
+        assert case["setup"]["method"] == "POST /api/v1/trips/{tripId}/plan-runs"
         assert len(case["turns"]) == 2
         assert case["acceptance"]
-        assert case["state"]["hard_constraints"]
+        assert isinstance(case["state"]["hard_constraints"], list)
         for place in case["state"]["saved_places"]:
             assert math.isfinite(place["latitude"])
             assert math.isfinite(place["longitude"])
