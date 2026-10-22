@@ -75,6 +75,8 @@ The completed roadmap above remains closed for its local-scope acceptance criter
 
 **Execution record (2026-10-22, task-level progress observability):** The merged Advisor trace now aggregates bounded per-stage logical steps, tool attempts, retries, and model token counts; tool transitions include measured latency for verified, rejected, and failed calls. The collapsed progress card presents a concise turn summary and safe failure codes alongside each step. It does not expose raw observations, queries, place names, or hidden reasoning. Targeted trace/report/runtime/evaluation regression: **37 passed**; TypeScript check and `git diff --check` passed. Model cost pricing and plan-version correlation remain outside this UI slice and still need an explicit data-source/UI design before the productization gate can close.
 
+**Execution record (2026-10-22, redacted diagnostics export):** Added an owner-scoped Advisor diagnostics endpoint and a chat-page export action. The export is capped at the latest 250 events and uses a strict metadata allowlist for timings, token counts, plan/draft/context versions, evidence source/status, and sanitized tool transitions; it excludes user/assistant message text, candidate names, query/input payloads, arbitrary event metadata, and model reasoning. API tests verify authorization scoping, the query limit, and redaction of seeded private text. Targeted diagnostics/session/trace tests: **8 passed**; Ruff and TypeScript check passed. This is an operational support export, not a full cost accounting surface; provider price schedules and per-plan cost attribution remain to be designed.
+
 ### Indicative six-week sequence
 
 | Week | Focus | Deliverable |

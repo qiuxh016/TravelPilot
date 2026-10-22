@@ -9,7 +9,7 @@ import { AdvisorWhatIf } from "../../components/advisor-what-if";
 import { tripOptionLabel, useTripSelection } from "../../components/trip-selection-context";
 import {
   AdvisorCandidate, AdvisorDestinationRecommendation, AdvisorMemorySuggestion, AdvisorMessageFeedbackReason, AdvisorMessageFeedbackRating, AdvisorProgressEvent, AdvisorRuntimeStatus, AdvisorSession, AdvisorTaskSnapshot, AdvisorTransportRoute, AdvisorNegotiation, ApiError, Trip, confirmAdvisorDraft, confirmUserMemorySuggestion, createAdvisorDraft, createAdvisorSession, createUserMemory,
-  getAdvisorRunProgress, getAdvisorRuntimeStatus, getAdvisorSession, getStaticMapImage, listAdvisorSessions, listTrips, recommendAdvisorDestinations, sendAdvisorMessage, submitAdvisorMessageFeedback, updateAdvisorSessionContext,
+  exportAdvisorDiagnostics, getAdvisorRunProgress, getAdvisorRuntimeStatus, getAdvisorSession, getStaticMapImage, listAdvisorSessions, listTrips, recommendAdvisorDestinations, sendAdvisorMessage, submitAdvisorMessageFeedback, updateAdvisorSessionContext,
   updateAdvisorChecklistDecision, updateAdvisorSelection, negotiateAdvisorDraft,
   deleteAdvisorSession as removeAdvisorSession,
 } from "../../lib/api";
@@ -1047,6 +1047,23 @@ export default function AdvisorPage() {
     finally { setBusy(false); }
   }
 
+  async function downloadAdvisorDiagnostics() {
+    if (!active) return;
+    try {
+      const diagnostics = await exportAdvisorDiagnostics(active.id);
+      const blob = new Blob([JSON.stringify(diagnostics, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `travelpilot-advisor-diagnostics-${active.id}.json`;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNotice("已导出脱敏排查信息，不包含对话原文和地点名称。");
+    } catch (reason) {
+      setError(`导出排查信息失败：${(reason as Error).message}`);
+    }
+  }
+
   async function submitMessage(
     event?: FormEvent<HTMLFormElement>,
     preset?: string,
@@ -1820,6 +1837,7 @@ export default function AdvisorPage() {
         <section className="advisor-chat panel" aria-label="顾问对话" ref={advisorChatPanelRef}>
           <div className="advisor-panel-title"><div><h2>对话</h2><p>{active ? `${active.destination || selectedTrip?.destination || "未设置目的地"} · ${active.status === "ACTIVE" ? "等待你的行程确认" : "已确认"}` : "创建或打开一个会话后开始"}</p></div>
             <div className="advisor-panel-title-actions">
+              {active && <button type="button" className="advisor-expand-chat" onClick={() => void downloadAdvisorDiagnostics()}>导出排查信息</button>}
               <button type="button" className="advisor-expand-chat" aria-pressed={chatExpanded} onClick={() => setChatExpanded((expanded) => !expanded)}>{chatExpanded ? "返回左右布局" : "放大对话"}</button>
               {active && <span className="advisor-demo-mark">已保存</span>}
             </div></div>

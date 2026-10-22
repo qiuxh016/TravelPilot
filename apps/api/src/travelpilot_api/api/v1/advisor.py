@@ -34,6 +34,7 @@ from travelpilot_api.advisor.destination_service import (
     destination_evidence_callbacks,
     execute_destination_stage,
 )
+from travelpilot_api.advisor.diagnostics import redact_advisor_event
 from travelpilot_api.advisor.interpretation import _candidate_planning_category
 from travelpilot_api.advisor.orchestration_state import readonly_tool_decision_callbacks
 from travelpilot_api.advisor.session_budget import (
@@ -149,6 +150,31 @@ async def advisor_runtime_status(_user: UserModel = Depends(get_current_user)):
         output_token_limit=settings.llm_max_tokens_per_turn,
         session_output_token_limit=settings.llm_max_output_tokens_per_session,
     )
+
+
+@router.get("/sessions/{session_id}/diagnostics")
+async def export_advisor_diagnostics(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
+):
+    """Export bounded operational diagnostics without conversation content."""
+    row = await owned_session(db, session_id, user.id)
+    events = (await db.scalars(
+        select(AdvisorRunEventModel)
+        .where(
+            AdvisorRunEventModel.owner_id == user.id,
+            AdvisorRunEventModel.session_id == row.id,
+        )
+        .order_by(AdvisorRunEventModel.created_at.desc())
+        .limit(250)
+    )).all()
+    return {
+        "format": "travelpilot-advisor-diagnostics-v1",
+        "session_id": str(row.id),
+        "event_limit": 250,
+        "events": [redact_advisor_event(event) for event in reversed(events)],
+    }
 
 
 @router.patch("/sessions/{session_id}/checklist", response_model=AdvisorSessionRead)

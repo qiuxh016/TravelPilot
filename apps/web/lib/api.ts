@@ -307,6 +307,10 @@ export const updateAdvisorSelection = (
   method: "PATCH", body: JSON.stringify({ selected_candidate_ids, schedules, expected_context_revision }),
 });
 export const getAdvisorSession = (sessionId: string) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}`);
+export const exportAdvisorDiagnostics = (sessionId: string) => request<{
+  format: string; session_id: string; event_limit: number;
+  events: { phase: string; operation: string; status: string; duration_ms: number; token_usage: number; error_code: string | null; created_at: string | null; metadata: Record<string, unknown> }[];
+}>(`/api/v1/advisor/sessions/${sessionId}/diagnostics`);
 export const updateAdvisorChecklistDecision = (sessionId: string, item_key: string, decision: "LATER" | "NOT_NEEDED" | "RESET", draft_version: number) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/checklist`, { method: "PATCH", body: JSON.stringify({ item_key, decision, draft_version }) });
 export const sendAdvisorMessage = (
   sessionId: string,

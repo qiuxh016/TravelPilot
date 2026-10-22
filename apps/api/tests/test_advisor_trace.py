@@ -1,4 +1,35 @@
+from types import SimpleNamespace
+
+from travelpilot_api.advisor.diagnostics import redact_advisor_event
 from travelpilot_api.advisor.trace import combine_agent_traces
+
+
+def test_diagnostics_export_redacts_arbitrary_private_metadata():
+    event = SimpleNamespace(
+        phase="tool", operation="search_places", status="SUCCEEDED",
+        duration_ms=23, token_usage=7, error_code=None, created_at=None,
+        metadata_json={
+            "query": "私人搜索词",
+            "place_name": "私人地点",
+            "decision_summary": "包含上下文的自由文本",
+            "raw_prompt": "不要导出",
+            "route_source": "amap",
+            "execution_metrics": {"tool_attempts": 2, "total_tokens": 7, "private": 1},
+            "transitions": [{"tool": "search_places", "status": "VERIFIED", "latency_ms": 23,
+                             "input_data": {"keyword": "私人搜索词"}}],
+        },
+    )
+
+    exported = redact_advisor_event(event)
+    serialized = str(exported)
+    assert "私人搜索词" not in serialized
+    assert "私人地点" not in serialized
+    assert "包含上下文" not in serialized
+    assert "raw_prompt" not in serialized
+    assert exported["metadata"]["route_source"] == "amap"
+    assert exported["metadata"]["transitions"] == [{
+        "tool": "search_places", "status": "VERIFIED", "latency_ms": 23,
+    }]
 
 
 def test_combined_turn_trace_keeps_each_executed_stage_and_transition_order():
