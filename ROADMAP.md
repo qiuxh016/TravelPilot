@@ -56,6 +56,8 @@ The completed roadmap above remains closed for its local-scope acceptance criter
 
 **Execution record (2026-10-23, constraint-negotiation recheck):** Re-ran the 9-scenario deterministic negotiation comparator and route-evidence/API regression slice: **65 tests passed**. The bounded negotiator found repairs in **5/5** repairable scenarios versus **4/5** for the single-change diagnostic, produced **0** hard-invariant violations, rejected an out-of-trip activity, and returned no alternative when route duration was unknown. The opening-hours and meal-window fixtures were included. No real provider/model call, database write, or formal-plan mutation was used. Synthetic results do not measure actual venue-hour accuracy or user preference.
 
+**Execution record (2026-10-23, negotiation and observability acceptance rerun):** Re-ran `python -m tests.evaluation.constraint_negotiation_eval` and the negotiation, route-evidence, scheduling, cost-estimate, trace-redaction, progress, and turn-report tests: **72 passed**. The 9-scenario comparator again found feasible alternatives in **5/5** repairable cases versus **4/5** for the single-change diagnostic, with **0** hard-invariant violations; mean/max solver time was **1.12/4.641 ms** on this run. Local synthetic evidence only; no model/provider calls, database writes, or formal itinerary changes.
+
 ### P1 — Itinerary constraint negotiation
 
 1. Represent hard constraints (fixed booking, trip dates, explicit “must” requirements) separately from adjustable preferences (pace, optional stops, preferred return time). The agent must never relax a hard constraint on its own.
