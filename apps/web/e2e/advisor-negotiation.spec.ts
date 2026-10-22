@@ -37,6 +37,9 @@ test("顾问展示已验证的冲突方案并将选择同步到新草案", async
     created_at: now, updated_at: now, messages: [],
   };
   const draftRequests: Record<string, unknown>[] = [];
+  let latestSession = session;
+  let negotiationCount = 0;
+  let confirmationCount = 0;
 
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
@@ -50,26 +53,46 @@ test("顾问展示已验证的冲突方案并将选择同步到新草案", async
       llm_status: "CONFIGURED", model_name: "test-model", output_token_limit: 1200,
       upstream_status: "CHECKED_PER_REQUEST",
     } });
-    if (url.pathname === `/api/v1/advisor/sessions/${sessionId}` && request.method() === "GET") return route.fulfill({ json: session });
-    if (url.pathname === "/api/v1/advisor/sessions" && request.method() === "GET") return route.fulfill({ json: [session] });
-    if (url.pathname.endsWith("/negotiate") && request.method() === "POST") return route.fulfill({ json: {
-      draft_version: 1, status: "OPTIONS", conflicts: ["梅州学宫 与 江北老街 时间重叠"], notes: [], alternatives: [
+    if (url.pathname === `/api/v1/advisor/sessions/${sessionId}` && request.method() === "GET") return route.fulfill({ json: latestSession });
+    if (url.pathname === "/api/v1/advisor/sessions" && request.method() === "GET") return route.fulfill({ json: [latestSession] });
+    if (url.pathname.endsWith("/negotiate") && request.method() === "POST") {
+      negotiationCount += 1;
+      if (negotiationCount === 2) {
+        latestSession = {
+          ...latestSession,
+          draft_version: 3,
+          context: { ...latestSession.context, revision: 3 },
+          draft: { ...latestSession.draft, version: 3, context_revision: 3,
+            stops: [firstStop, { ...secondStop, start_time: "14:00:00" }, lunchStop] },
+        };
+      }
+      return route.fulfill({ json: {
+      draft_version: negotiationCount === 1 ? 1 : 2, status: "OPTIONS", conflicts: ["梅州学宫 与 江北老街 时间重叠"], notes: [], alternatives: [
         { id: "move-street", title: "调整时间或日期", summary: "将江北老街调整到 2026-11-03 12:30，保留其他安排", change_cost: 2,
           changes: [{ candidate_id: secondId, operation: "MOVE", day, start_time: "12:30:00" }] },
       ],
-    } });
+      } });
+    }
     if (url.pathname.endsWith("/draft") && request.method() === "POST") {
       const draftRequest = request.postDataJSON() as Record<string, unknown>;
       draftRequests.push(draftRequest);
+      if (draftRequest.expected_draft_version !== latestSession.draft?.version) {
+        return route.fulfill({ status: 409, json: { detail: "行程草案已被更新，请刷新当前安排后再试" } });
+      }
       const schedules = draftRequest.schedules as { candidate_id: string; day: string; start_time: string }[];
       const moved = schedules.find((item) => item.candidate_id === secondId)!;
       const lunch = schedules.find((item) => item.candidate_id === lunchId)!;
-      return route.fulfill({ json: {
-        ...session, draft_version: 2, context: { ...session.context, revision: 2, selected_candidate_ids: [firstId, secondId, lunchId, lodgingId] },
-        draft: { ...session.draft, version: 2, context_revision: 2, selected_candidate_ids: [firstId, secondId, lunchId, lodgingId],
+      latestSession = {
+        ...latestSession, draft_version: 2, context: { ...latestSession.context, revision: 2, selected_candidate_ids: [firstId, secondId, lunchId, lodgingId] },
+        draft: { ...latestSession.draft, version: 2, context_revision: 2, selected_candidate_ids: [firstId, secondId, lunchId, lodgingId],
         warnings: [],
           stops: [firstStop, { ...secondStop, start_time: `${moved.start_time}:00`, end_time: "13:30:00" }, { ...lunchStop, start_time: `${lunch.start_time}:00` }] },
-      } });
+      };
+      return route.fulfill({ json: latestSession });
+    }
+    if (url.pathname.endsWith("/confirm") && request.method() === "POST") {
+      confirmationCount += 1;
+      return route.fulfill({ json: { trip_id: "trip-1", plan_id: "plan-1", plan_version: 2, already_confirmed: false } });
     }
     if (url.pathname.endsWith("/progress")) return route.fulfill({ json: [] });
     return route.fulfill({ json: {} });
@@ -93,6 +116,14 @@ test("顾问展示已验证的冲突方案并将选择同步到新草案", async
   await expect(page.getByText("江北老街", { exact: true }).last()).toBeVisible();
   await expect(page.getByText("鑫丰特色餐饮", { exact: true }).last()).toBeVisible();
   await expect(page.getByText("已按你选的冲突调整方案重新核验")).toBeVisible();
+  await expect(page.locator(".advisor-confirm-bar")).not.toContainText("预览已过期");
+  await page.getByRole("button", { name: "检查并协商" }).click();
+  await expect.poll(() => negotiationCount).toBe(2);
+  await page.getByRole("button", { name: "采用并重新核验" }).click();
+  await expect(page.getByText("行程或旅行条件刚刚更新，已同步最新安排；请检查后再重新协商。未覆盖新版本。")).toBeVisible();
+  await expect(page.locator(".advisor-stop-list")).toContainText("14:00");
+  expect(draftRequests[1].expected_draft_version).toBe(2);
+  expect(confirmationCount).toBe(0);
   await expect(page.locator(".advisor-confirm-bar")).not.toContainText("预览已过期");
   if (process.env.TRAVELPILOT_QA_SCREENSHOT) {
     await page.locator(".advisor-stop-list").screenshot({ path: join(tmpdir(), "travelpilot-advisor-negotiation-after.png") });
