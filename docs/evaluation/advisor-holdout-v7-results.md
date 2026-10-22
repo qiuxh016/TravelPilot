@@ -28,7 +28,7 @@ The same model decisions were used for both arms, so action-selection scores are
 
 ## Failure audit
 
-Both arms missed `v7-meal-scope-05`, turn 1. The user supplied the destination, date, and request for local seafood near the coast. The model asked which coastal attraction they planned to visit instead of searching for seafood restaurants in the known destination. This was an unnecessary clarification and a task-progress failure. No other action missed its adjudicated safe-action set.
+Both arms missed `v7-meal-scope-05`, turn 1. The user supplied the destination, date, and request for local seafood near the coast. The model asked which coastal attraction they planned to visit instead of selecting the available food search. This is an unnecessary raw action and shows a model-level task-progress weakness. The production Advisor's higher-level MEAL search loop intercepts `ASK_USER` while an explicitly requested bounded meal search remains, then performs that search; the API regression suite now pins this exact mismatch pattern. Therefore this action-only miss does not by itself prove that the end user sees a stall. The v7 evaluator does not run the full high-level Advisor API flow, so product-level behavior still needs response capture and review. No other action missed its adjudicated safe-action set.
 
 In `v7-route-outage-11`, B3 safely stopped after the synthetic route provider timeout rather than treating unavailable route evidence as success.
 

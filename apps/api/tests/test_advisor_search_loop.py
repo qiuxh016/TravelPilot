@@ -239,18 +239,19 @@ async def test_meal_search_passes_meal_contract_and_exposes_only_read_tools(monk
 @pytest.mark.asyncio
 async def test_search_loop_completes_explicit_meal_lookup_before_optional_question(monkeypatch):
     searched = []
-    actions = iter([AgentAction(kind="ASK_USER", question="你更偏爱哪种口味？")])
+    actions = iter([AgentAction(kind="ASK_USER", question="你计划去宁德哪个海边景点？")])
 
     async def decide(_observation, _schemas, **_kwargs):
         return next(actions), SimpleNamespace(prompt_tokens=1, completion_tokens=1, total_tokens=2)
 
     monkeypatch.setattr("travelpilot_api.advisor.search_loop.decide_next_action", decide)
     result = await run_advisor_search_loop(
-        runtime=_runtime(searched), requests=[{"keyword": "餐饮服务"}], city="梅州",
-        user_goal="推荐午餐", task_type="MEAL", api_key="test", model="test",
+        runtime=_runtime(searched), requests=[{"keyword": "餐饮服务"}], city="宁德",
+        user_goal="7月3日下午想在宁德海边附近吃一顿本地特色海鲜", task_type="MEAL",
+        api_key="test", model="test",
     )
 
-    assert searched == [("餐饮服务", "梅州")]
+    assert searched == [("餐饮服务", "宁德")]
     assert len(result.results) == 1
     assert result.loop.status == "SUCCEEDED"
     assert result.pending_question is None

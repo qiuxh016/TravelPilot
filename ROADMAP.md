@@ -97,6 +97,8 @@ The corrective v7 evaluation protocol and preflight are documented at `docs/eval
 
 **Post-run compatibility and full regression (2026-10-23):** The first full-suite run found that applying the new exclusive local marker to every historical holdout interfered with existing v2 replay tests. Restricted the marker to v7 while retaining the pre-existing exposed-status rejection for all holdouts. The test now evaluates an isolated frozen copy, so it remains valid after v7 exposure. Current complete API/evaluation regression: **1,087 passed**, one existing Starlette/httpx deprecation warning; Ruff and diff checks pass. Current runner SHA-256: `d20ecbfa91c57ee0af1a8181506133449b979575f720452216d4b9d115a6478c`. This compatibility fix does not alter the v7 prompt/action path or the source SHA recorded for scoring.
 
+**Execution record (2026-10-23, v7 meal clarification follow-up):** The v7 raw action miss is not sufficient evidence of a user-visible stall: `search_loop` already suppresses an `ASK_USER` interruption for MEAL when an explicit authorized lookup remains. Strengthened that regression with the observed pattern (known Ningde/date/seafood request, model asks which attraction) and verified the product loop still searches the authorized meal category. This distinction is recorded in the v7 result audit. Targeted search-loop regression passed (17/17); full API/evaluation suite passed again (**1,087 passed**, one existing deprecation warning).
+
 ### Indicative six-week sequence
 
 | Week | Focus | Deliverable |
