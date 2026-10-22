@@ -124,6 +124,7 @@ class AdvisorCandidateScheduleState(BaseModel):
 class AdvisorSelectionUpdate(BaseModel):
     selected_candidate_ids: list[UUID] = Field(max_length=100)
     schedules: list[AdvisorCandidateScheduleState] = Field(default_factory=list, max_length=100)
+    expected_context_revision: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def validate_selection_state(self):

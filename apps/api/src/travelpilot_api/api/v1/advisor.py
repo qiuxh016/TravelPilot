@@ -79,6 +79,10 @@ async def update_session_selection(
     row = await owned_session(db, session_id, user.id, lock=True)
     if row.status != "ACTIVE":
         raise HTTPException(409, detail="已确认的会话不能继续修改")
+    current_context = row.context if isinstance(row.context, dict) else {}
+    current_revision = int(current_context.get("revision", 0))
+    if payload.expected_context_revision is not None and payload.expected_context_revision != current_revision:
+        raise HTTPException(409, detail="旅行选择已在其他窗口更新，请刷新后重试")
 
     candidates = {
         str(candidate.get("id")): candidate
@@ -104,7 +108,7 @@ async def update_session_selection(
             **({"start_time": item.start_time.strftime("%H:%M")} if item.start_time else {}),
         }
 
-    context = dict(row.context or {})
+    context = dict(current_context)
     previous_ids = list(dict.fromkeys(str(value) for value in context.get("selected_candidate_ids", [])))
     previous_schedules = context.get("candidate_schedules", {})
     if not isinstance(previous_schedules, dict):

@@ -302,8 +302,9 @@ export const updateAdvisorSelection = (
   sessionId: string,
   selected_candidate_ids: string[],
   schedules: { candidate_id: string; day?: string; start_time?: string }[],
+  expected_context_revision?: number,
 ) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/selection`, {
-  method: "PATCH", body: JSON.stringify({ selected_candidate_ids, schedules }),
+  method: "PATCH", body: JSON.stringify({ selected_candidate_ids, schedules, expected_context_revision }),
 });
 export const getAdvisorSession = (sessionId: string) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}`);
 export const updateAdvisorChecklistDecision = (sessionId: string, item_key: string, decision: "LATER" | "NOT_NEEDED" | "RESET", draft_version: number) => request<AdvisorSession>(`/api/v1/advisor/sessions/${sessionId}/checklist`, { method: "PATCH", body: JSON.stringify({ item_key, decision, draft_version }) });

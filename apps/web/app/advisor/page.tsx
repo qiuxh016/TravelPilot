@@ -541,6 +541,7 @@ export default function AdvisorPage() {
   const autoPreviewTimerRef = useRef<number | null>(null);
   const userMessagePendingRef = useRef(false);
   const selectionSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const selectionContextRevisionRef = useRef<{ sessionId: string; revision: number } | null>(null);
   const [selectionSyncStatus, setSelectionSyncStatus] = useState<"SAVED" | "SAVING" | "FAILED">("SAVED");
   const progressAbortRef = useRef<AbortController | null>(null);
 
@@ -560,16 +561,38 @@ export default function AdvisorPage() {
     });
     setSelectionSyncStatus("SAVING");
     const request = selectionSaveQueueRef.current.catch(() => undefined).then(async () => {
-      return await updateAdvisorSelection(session.id, selectedIds, schedulesToSave);
+      const expectedRevision = selectionContextRevisionRef.current?.sessionId === session.id
+        ? selectionContextRevisionRef.current.revision
+        : session.context?.revision;
+      try {
+        const updated = await updateAdvisorSelection(session.id, selectedIds, schedulesToSave, expectedRevision);
+        selectionContextRevisionRef.current = {
+          sessionId: updated.id,
+          revision: updated.context?.revision ?? expectedRevision ?? 0,
+        };
+        return updated;
+      } catch (reason) {
+        if (!(reason instanceof ApiError) || reason.status !== 409) throw reason;
+        const latest = await getAdvisorSession(session.id);
+        selectionContextRevisionRef.current = {
+          sessionId: latest.id,
+          revision: latest.context?.revision ?? 0,
+        };
+        setActive(latest);
+        setSelected(latest.context?.selected_candidate_ids ?? latest.draft?.selected_candidate_ids ?? []);
+        setSchedules(schedulesForSession(latest));
+        setSessions((current) => [latest, ...current.filter((item) => item.id !== latest.id)]);
+        throw new Error("旅行选择已在其他窗口更新；已同步最新安排，本次更改未保存，请检查后再选一次。");
+      }
     });
-    const queuedRequest = request.then(() => undefined);
+    const queuedRequest = request.then(() => undefined, () => undefined);
     selectionSaveQueueRef.current = queuedRequest;
     void request.then(() => {
       if (active?.id === session.id && selectionSaveQueueRef.current === queuedRequest) setSelectionSyncStatus("SAVED");
     }).catch((reason) => {
       if (active?.id === session.id && selectionSaveQueueRef.current === queuedRequest) {
         setSelectionSyncStatus("FAILED");
-        setError(`选择尚未同步到会话，稍后重试：${(reason as Error).message}`);
+        setError(`选择尚未同步到会话：${(reason as Error).message}`);
       }
     });
     return request;

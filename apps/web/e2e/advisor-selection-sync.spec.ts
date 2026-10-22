@@ -42,6 +42,7 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
     candidates,
     context: {
       revision: 1, selected_candidate_ids: [], current_plan: null, confirmed_memories: [],
+      candidate_schedules: {},
       planning_inputs: { origin: "", companions: [], hard_constraints: [] },
     },
     draft: {
@@ -99,8 +100,10 @@ test("用户选择餐饮和住宿后右侧缺项即时同步", async ({ page }, 
       const body = request.postDataJSON() as {
         selected_candidate_ids: string[];
         schedules: { candidate_id: string; day?: string; start_time?: string }[];
+        expected_context_revision?: number;
       };
       const current = persistedSession as typeof session;
+      expect(body.expected_context_revision).toBe(current.context.revision);
       const schedules = Object.fromEntries(body.schedules.map(({ candidate_id, ...schedule }) => [candidate_id, schedule]));
       const changed = JSON.stringify(current.context.selected_candidate_ids ?? []) !== JSON.stringify(body.selected_candidate_ids)
         || JSON.stringify(current.context.candidate_schedules ?? {}) !== JSON.stringify(schedules);
