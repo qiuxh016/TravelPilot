@@ -196,7 +196,9 @@ def validate_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
             or not set(defaults) <= ids
         ):
             raise ValueError("holdout reference datasets and default case selection must be valid")
-        allowed_statuses = {"FROZEN_NOT_SCORED"}
+        # EXPOSED datasets remain schema-valid for audit and future overlap
+        # checks, but live evaluation runners must refuse to score them again.
+        allowed_statuses = {"FROZEN_NOT_SCORED", "EXPOSED"}
         if dataset.get("dataset_id") == "advisor_multiturn_holdout_v5":
             # Scripted baselines may be replayed locally before the first live
             # model score; that result must remain explicitly non-live.

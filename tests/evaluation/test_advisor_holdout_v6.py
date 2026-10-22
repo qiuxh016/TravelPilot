@@ -1,6 +1,9 @@
 import json
 from pathlib import Path
 
+import pytest
+
+from tests.evaluation import advisor_multiturn_live_eval
 from tests.evaluation.advisor_multiturn_contracts import (
     load_holdout_references,
     validate_dataset,
@@ -12,12 +15,13 @@ from tests.evaluation.advisor_unseen_multiturn_eval import _validate_fixture_evi
 DATASET_PATH = Path(__file__).parent / "cases" / "advisor_multiturn_holdout_v6.json"
 
 
-def test_v6_holdout_is_frozen_and_exactly_separated_from_references():
+def test_v6_holdout_is_exposed_and_remains_exactly_auditable():
     dataset = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
     report = validate_dataset(dataset)
     references = load_holdout_references(dataset, cases_directory=DATASET_PATH.parent)
     separation = validate_holdout_separation(dataset, references)
 
+    assert report["status"] == "EXPOSED"
     assert report["case_count"] == 20
     assert report["turn_count"] == 40
     assert separation["case_id_overlap_count"] == 0
@@ -57,3 +61,20 @@ def test_v6_route_and_schedule_fixtures_are_grounded_before_live_scoring():
             }, context)
             assert len(set(ids)) == len(ids)
             assert valid, (case["id"], errors)
+
+
+@pytest.mark.asyncio
+async def test_live_runner_refuses_to_rescore_exposed_v6_holdout(tmp_path, monkeypatch):
+    monkeypatch.setattr(advisor_multiturn_live_eval.settings, "llm_api_key", "test-key")
+    monkeypatch.setattr(advisor_multiturn_live_eval.settings, "llm_model", "test-model")
+    monkeypatch.setattr(
+        advisor_multiturn_live_eval.settings,
+        "llm_base_url",
+        "https://example.test/v1",
+    )
+    dataset = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
+    path = tmp_path / "exposed.json"
+    path.write_text(json.dumps(dataset), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="already been exposed"):
+        await advisor_multiturn_live_eval.run_live(dataset_path=path)

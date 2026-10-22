@@ -1,7 +1,7 @@
 {
   "dataset_id": "advisor_multiturn_holdout_v6",
   "version": 6,
-  "status": "FROZEN_NOT_SCORED",
+  "status": "EXPOSED",
   "provider_mode": "synthetic_contract",
   "frozen_before_scoring": true,
   "scope": "20 newly authored two-turn tasks covering context continuation, correction, schedule constraints, meals, lodging, transit, weather, preparation and open-ended discovery.",

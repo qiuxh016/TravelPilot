@@ -479,6 +479,8 @@ async def run_live(
     is_holdout = _is_holdout_dataset(dataset.get("dataset_id"))
     if is_holdout:
         validate_dataset(dataset)
+        if dataset.get("status") != "FROZEN_NOT_SCORED":
+            raise ValueError("this holdout has already been exposed and cannot be rescored")
         references = load_holdout_references(dataset, cases_directory=dataset_path.parent)
         holdout_separation = validate_holdout_separation(dataset, references)
     if not case_ids or len(case_ids) > 10 or len(set(case_ids)) != len(case_ids):

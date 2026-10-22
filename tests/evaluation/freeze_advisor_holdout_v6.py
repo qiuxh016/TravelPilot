@@ -176,6 +176,10 @@ def build_dataset() -> dict[str, Any]:
 
 
 def main() -> None:
+    if OUTPUT.exists():
+        existing = json.loads(OUTPUT.read_text(encoding="utf-8"))
+        if existing.get("status") == "EXPOSED":
+            raise SystemExit("refusing to replace an exposed holdout; freeze a new dataset version")
     dataset = build_dataset()
     OUTPUT.write_text(json.dumps(dataset, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     digest = hashlib.sha256(json.dumps(dataset, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
