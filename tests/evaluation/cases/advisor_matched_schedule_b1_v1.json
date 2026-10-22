@@ -1,0 +1,108 @@
+{
+  "dataset_id": "advisor_matched_schedule_b1_v1",
+  "status": "FROZEN_FOR_PREAUTHORIZATION",
+  "provider_mode": "synthetic_product_integration",
+  "created_at": "2026-10-23",
+  "arms": {
+    "B1": "0c4a8998896bc5b27877ff9f49cfbf77ec0128d7",
+    "B2": "current production constrained Agent Loop",
+    "B3": "current production constrained Agent Loop with Verifier/Recovery"
+  },
+  "case_count": 4,
+  "turn_count": 8,
+  "overlap_review": {
+    "exact_prompt_reuse": "none found in the existing evaluation case JSON files or registered live product prompts",
+    "semantic_boundary": "These tasks intentionally remain within the legacy schedule workflow and therefore overlap the broad schedule capability family tested before. They are matched diagnostics, not a claim of semantic independence or a new blind generalization holdout.",
+    "reviewed_dimensions": ["different cities and saved POIs", "meal-window preservation", "fixed appointment preservation", "daily capacity", "explicit day correction"]
+  },
+  "cases": [
+    {
+      "id": "matched-schedule-fuzhou-lunch",
+      "state": {
+        "destination": "福州",
+        "trip_dates": ["2027-04-12", "2027-04-13"],
+        "pace_level": 2,
+        "saved_places": [
+          {"id": "fz-a", "name": "三坊七巷", "latitude": 26.086, "longitude": 119.299},
+          {"id": "fz-b", "name": "福建博物院", "latitude": 26.106, "longitude": 119.292},
+          {"id": "fz-c", "name": "西湖公园", "latitude": 26.104, "longitude": 119.291}
+        ],
+        "hard_constraints": ["每天留出至少45分钟午餐时间"]
+      },
+      "turns": [
+        "请把我收藏的三个地点分到这两天，节奏放慢一些，每天预留午餐。先给我时间草案。",
+        "福建博物院放到第二天，其他地点也保留，午餐时间不要挤掉。"
+      ],
+      "acceptance": ["all_saved_places_preserved", "lunch_break_preserved", "second_turn_revises_pending_schedule"]
+    },
+    {
+      "id": "matched-schedule-suzhou-fixed-appointment",
+      "state": {
+        "destination": "苏州",
+        "trip_dates": ["2027-05-20", "2027-05-20"],
+        "pace_level": 2,
+        "saved_places": [
+          {"id": "sz-a", "name": "拙政园", "latitude": 31.324, "longitude": 120.63},
+          {"id": "sz-b", "name": "苏州博物馆", "latitude": 31.324, "longitude": 120.63}
+        ],
+        "hard_constraints": ["15:00在平江路有固定预约", "固定预约不得移动"]
+      },
+      "turns": [
+        "把拙政园和苏州博物馆安排在预约前后，下午三点的平江路预约不能改，先列待确认时间。",
+        "博物馆安排在上午，其他部分照旧；不要改我的预约。"
+      ],
+      "acceptance": ["all_saved_places_preserved", "fixed_appointment_preserved", "second_turn_keeps_first_turn_constraints"]
+    },
+    {
+      "id": "matched-schedule-luoyang-day-capacity",
+      "state": {
+        "destination": "洛阳",
+        "trip_dates": ["2027-06-02", "2027-06-03"],
+        "pace_level": 1,
+        "saved_places": [
+          {"id": "ly-a", "name": "洛阳博物馆", "latitude": 34.65, "longitude": 112.41},
+          {"id": "ly-b", "name": "隋唐城遗址植物园", "latitude": 34.65, "longitude": 112.42},
+          {"id": "ly-c", "name": "洛邑古城", "latitude": 34.68, "longitude": 112.49}
+        ],
+        "hard_constraints": ["每天最多安排两个游览地点"]
+      },
+      "turns": [
+        "我这两天只想轻松逛逛，把收藏的三个地方分两天安排，每天最多两个点。",
+        "第二天上午先留空，古城放下午；其他安排尽量不动。"
+      ],
+      "acceptance": ["all_saved_places_preserved", "daily_place_limit_preserved", "second_day_morning_left_free"]
+    },
+    {
+      "id": "matched-schedule-yangzhou-context-correction",
+      "state": {
+        "destination": "扬州",
+        "trip_dates": ["2027-07-10", "2027-07-11"],
+        "pace_level": 3,
+        "saved_places": [
+          {"id": "yz-a", "name": "瘦西湖", "latitude": 32.4, "longitude": 119.42},
+          {"id": "yz-b", "name": "大明寺", "latitude": 32.41, "longitude": 119.42},
+          {"id": "yz-c", "name": "东关街", "latitude": 32.39, "longitude": 119.45}
+        ],
+        "hard_constraints": ["东关街必须安排在第一天"]
+      },
+      "turns": [
+        "请按两天排一下已收藏的地点，东关街第一天去，先看待确认草案。",
+        "我刚才说的第一天去东关街要保留，瘦西湖放第二天就好。"
+      ],
+      "acceptance": ["all_saved_places_preserved", "explicit_day_constraint_preserved", "second_turn_resolves_reference_without_reset"]
+    }
+  ],
+  "run_limits": {
+    "api_turns_max": 24,
+    "provider_requests_max": 48,
+    "completion_tokens_per_api_turn_max": 512,
+    "completion_tokens_total_max": 12288,
+    "formal_itinerary_writes": 0,
+    "maps_weather_mode": "local synthetic fixtures only"
+  },
+  "limitations": [
+    "Four schedule cases are diagnostic only, not a representative sample or significance test.",
+    "A case is not comparable if the pinned fixed workflow cannot represent the same state or constraint.",
+    "The dataset has not been run against any model arm and requires local overlap and startup preflight before authorization."
+  ]
+}

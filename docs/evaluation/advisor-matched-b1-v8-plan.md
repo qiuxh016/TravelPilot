@@ -1,7 +1,7 @@
 # Matched fixed-workflow baseline v8 plan
 
 Updated: 2026-10-23  
-Status: protocol prepared; not authorized or run.
+Status: protocol and four-case matched diagnostic set prepared; exact-prompt check passes; legacy-service startup preflight incomplete; not authorized or run.
 
 ## Purpose
 
@@ -9,7 +9,7 @@ The v7 action holdout has been exposed and cannot be reused. The existing fixed-
 
 ## Matched design
 
-- Freeze four newly authored two-turn schedule tasks after checking exact and semantic overlap against v1-v7 holdouts, product-response prompts, and earlier exposed task suites.
+- Freeze four newly authored two-turn schedule tasks after checking exact and semantic overlap against v1-v7 holdouts, product-response prompts, and earlier exposed task suites. The current case file is `tests/evaluation/cases/advisor_matched_schedule_b1_v1.json`; it is explicitly a matched diagnostic set, not a claim of semantic independence from prior schedule-task families.
 - For each task, give B1, B2, and B3 the same trip dates, destination, pace, saved-place IDs and coordinates, user turns, and deterministic map observations. B1 is the fixed workflow at the pinned revision; B2 is the current production Agent Loop; B3 is the same current loop with the production verifier/recovery path.
 - Run each arm in an isolated disposable account/session. Fake Maps and local route fixtures only; no live Maps/weather, personal trip data, or formal itinerary writes. Keep model, model settings, user-visible API path, and per-turn context identical where the arm supports them. Record a non-comparable result if the legacy arm cannot represent a state or constraint; do not fill gaps with a scripted B1 score.
 - Evaluate completion of the requested schedule edit, inclusion of all saved places, date/time consistency, hard-constraint preservation, correct route-evidence handling, no unconfirmed write, and reply clarity. Report user-facing task outcomes separately from intermediate action choices and independent human ratings.
@@ -28,7 +28,7 @@ The run must not begin until the fresh case file, semantic-overlap review, basel
 
 ## Required local preflight before seeking run approval
 
-1. Implement a frozen four-case dataset and a validator for both turns, state carryover, map fixture coordinates, and expected outcome invariants.
+1. Implement a frozen four-case dataset and a validator for both turns, state carryover, map fixture coordinates, expected outcome invariants, and exact prompt non-reuse. **Prepared locally:** the dataset test checks four two-turn cases, coordinates, acceptance invariants, strict run limits, and exact prompt overlap against prior case JSON and registered product scenarios. It does not prove semantic independence.
 2. Prove the pinned B1 source can be launched against an isolated schema/database and can execute the supported schedule cases without modifying the current checkout or production data.
 3. Run the same cases against B2/B3 with a loopback model stub; validate request/token ceilings, synthetic provider isolation, formal-write prevention, temporary-account cleanup, and full response capture.
 4. Fail closed if the B1/B2/B3 inputs or state differ, a provider is not local, cleanup fails, or any budget ceiling is missing.
