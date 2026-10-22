@@ -182,7 +182,11 @@ async def run_constrained_loop(
         try:
             result = await runtime.call(action.tool, action.arguments)
         except ToolFailure as exc:
-            transitions.append({"tool": action.tool, "status": "FAILED", "error": exc.code})
+            call = runtime.calls[-1] if runtime.calls else {}
+            transitions.append({
+                "tool": action.tool, "status": "FAILED", "error": exc.code,
+                "latency_ms": max(0, int(call.get("latency_ms", 0))),
+            })
             await emit_checkpoint(state="FAILED", transition=decision_number, tool=action.tool, error=exc.code)
             if continue_on_tool_failure:
                 observation[f"{action.tool}_failure"] = {"status": "FAILED", "error": exc.code}
@@ -192,7 +196,11 @@ async def run_constrained_loop(
                 continue
             return LoopResult("FAILED", observation, transitions, exc.code)
         if not await verifier(action.tool, result):
-            transitions.append({"tool": action.tool, "status": "REJECTED", "error": "VERIFICATION_FAILED"})
+            call = runtime.calls[-1] if runtime.calls else {}
+            transitions.append({
+                "tool": action.tool, "status": "REJECTED", "error": "VERIFICATION_FAILED",
+                "latency_ms": max(0, int(call.get("latency_ms", 0))),
+            })
             await emit_checkpoint(state="REJECTED", transition=decision_number,
                                   tool=action.tool, error="VERIFICATION_FAILED")
             if continue_on_verifier_failure:
@@ -204,7 +212,11 @@ async def run_constrained_loop(
                 continue
             return LoopResult("REJECTED", observation, transitions, "VERIFICATION_FAILED")
         observation[action.tool] = result
-        transitions.append({"tool": action.tool, "status": "VERIFIED"})
+        call = runtime.calls[-1] if runtime.calls else {}
+        transitions.append({
+            "tool": action.tool, "status": "VERIFIED",
+            "latency_ms": max(0, int(call.get("latency_ms", 0))),
+        })
         await emit_checkpoint(state="VERIFIED", transition=decision_number,
                               tool=action.tool, observation_keys=sorted(observation))
     await emit_checkpoint(state="STEP_LIMIT", transition=max_decisions)

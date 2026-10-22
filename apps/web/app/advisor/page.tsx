@@ -22,9 +22,10 @@ type AgentTrace = {
   status?: string;
   route_evidence?: string;
   route_source?: string | null;
-  transitions?: Array<{ tool?: string; status?: string; error?: string; stage?: string }>;
+  transitions?: Array<{ tool?: string; status?: string; error?: string; latency_ms?: number; stage?: string }>;
   stage_statuses?: Array<{ stage?: string; status?: string }>;
-  execution_metrics?: { logical_steps?: number; tool_attempts?: number; output_tokens?: number };
+  execution_metrics?: { logical_steps?: number; tool_attempts?: number; retries?: number; input_tokens?: number; output_tokens?: number; total_tokens?: number };
+  tool_duration_ms?: number;
   recovery?: { status?: string; interrupted_stage?: string | null; completed_stages?: string[] };
   turn_orchestration?: {
     order?: string[];
@@ -2046,13 +2047,17 @@ export default function AdvisorPage() {
                         <strong>本轮处理阶段</strong>
                         <span>{trace.stage_statuses.map((stage) => `${stage.stage === "SEARCH_WEATHER" ? "地点与天气" : stage.stage === "ROUTE" ? "路线" : stage.stage === "SCHEDULE" ? "行程安排" : stage.stage}：${advisorStageStatusLabel(stage.status)}`).join(" · ")}</span>
                       </li>}
+                      {((trace.execution_metrics && Object.keys(trace.execution_metrics).length > 0) || typeof trace.tool_duration_ms === "number") && <li>
+                        <strong>本轮运行概况</strong>
+                        <span>{typeof trace.tool_duration_ms === "number" ? `工具耗时 ${trace.tool_duration_ms} 毫秒` : ""}{trace.execution_metrics?.tool_attempts !== undefined ? `${typeof trace.tool_duration_ms === "number" ? " · " : ""}工具调用 ${trace.execution_metrics.tool_attempts} 次` : ""}{trace.execution_metrics?.retries ? ` · 重试 ${trace.execution_metrics.retries} 次` : ""}{trace.execution_metrics?.total_tokens !== undefined ? ` · 模型 token ${trace.execution_metrics.total_tokens}` : trace.execution_metrics?.output_tokens !== undefined ? ` · 输出 token ${trace.execution_metrics.output_tokens}` : ""}</span>
+                      </li>}
                       {evidenceSummary && <li>
                         <strong>地点证据</strong>
                         <span>{evidenceSummary.total} 个本轮候选{evidenceSummary.providers.length ? ` · ${evidenceSummary.providers.join("、")}` : ""} · {evidenceSummary.verified ? `${evidenceSummary.verified} 个已核验` : "无真实核验结果"}{evidenceSummary.simulated ? ` · ${evidenceSummary.simulated} 个模拟结果` : ""}。候选只代表地图检索结果，不代表全网热度或营业状态。</span>
                       </li>}
                       {transitions.map((step, index) => <li key={`${step.tool}-${index}`}>
                           <strong>{step.stage === "SEARCH_WEATHER" ? "地点与天气 · " : step.stage === "ROUTE" ? "路线 · " : step.stage === "SCHEDULE" ? "行程安排 · " : ""}{step.tool === "get_trip_weather" ? "天气预报" : step.tool === "get_distance_matrix" ? "行程交通核验" : step.tool === "get_trip_route" ? "两地路线查询" : step.tool === "build_schedule_draft" ? "确定性排程器" : step.tool === "search_places" ? "地点搜索" : step.tool === "search_destination_places" ? "目的地探索" : "信息检查"}</strong>
-                          <span>{step.status === "VERIFIED" ? step.tool === "build_schedule_draft" ? "草案通过结构校验" : "已完成核对" : step.status === "FAILED" ? "暂时失败，可调整条件后重试" : step.status === "REJECTED" ? "信息不完整，需要你确认" : "处理中"}</span>
+                          <span>{step.status === "VERIFIED" ? step.tool === "build_schedule_draft" ? "草案通过结构校验" : "已完成核对" : step.status === "FAILED" ? `暂时失败${step.error ? `（${step.error}）` : ""}，可调整条件后重试` : step.status === "REJECTED" ? `信息不完整，需要你确认${step.error ? `（${step.error}）` : ""}` : "处理中"}{typeof step.latency_ms === "number" ? ` · ${step.latency_ms} 毫秒` : ""}</span>
                       </li>)}
                       <li><strong>下一步</strong><span>{trace.status === "NEEDS_USER_INPUT" ? "请回答顾问提出的问题" : routeUnavailable ? "路线暂未核实，安排前请留意交通时间" : "你可以选择地点并检查安排；确认后才会保存"}</span></li>
                     </ol>

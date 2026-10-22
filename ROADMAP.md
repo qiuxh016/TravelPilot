@@ -73,6 +73,8 @@ The completed roadmap above remains closed for its local-scope acceptance criter
 
 **Exit gate:** a clean setup can run the end-to-end demo; the user can understand what the agent observed, proposed, changed, and saved; failure traces are redacted; account/trip isolation and confirmation semantics are verified. No production-operations claim is made from a local or controlled demo.
 
+**Execution record (2026-10-22, task-level progress observability):** The merged Advisor trace now aggregates bounded per-stage logical steps, tool attempts, retries, and model token counts; tool transitions include measured latency for verified, rejected, and failed calls. The collapsed progress card presents a concise turn summary and safe failure codes alongside each step. It does not expose raw observations, queries, place names, or hidden reasoning. Targeted trace/report/runtime/evaluation regression: **37 passed**; TypeScript check and `git diff --check` passed. Model cost pricing and plan-version correlation remain outside this UI slice and still need an explicit data-source/UI design before the productization gate can close.
+
 ### Indicative six-week sequence
 
 | Week | Focus | Deliverable |
