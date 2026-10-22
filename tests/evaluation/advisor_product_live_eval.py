@@ -1010,6 +1010,11 @@ def _turn_metrics(
         ] if isinstance(payload.get("recommendations"), list) else [],
         "destination_search_count": payload.get("search_count"),
         "destination_failed_search_count": payload.get("failed_search_count"),
+        "destination_agent_trace": {
+            key: trace.get(key)
+            for key in ("status", "decision_source", "decision_summary", "transitions")
+            if key in trace
+        } if payload.get("event") == "DESTINATION_RECOMMENDATIONS" else None,
         "weather_evidence": _bounded_weather_evidence(payload.get("weather_forecast")),
         "route_evidence": _bounded_route_evidence(payload.get("transport_route")),
         "stage_statuses": [

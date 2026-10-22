@@ -205,10 +205,25 @@ test("现有旅行 Agent 主动生成草案并等待用户确认", async ({ page
     expect(bookingAssistant?.payload?.unsupported_action_code).toBe("LODGING_BOOKING_UNAVAILABLE");
     expect(bookingAssistant?.payload?.tool_calls).toEqual([]);
 
-    await page.locator("#advisor-message").fill("我喜欢轻松一点，也想去博物馆");
+    const memoryMessage = "我喜欢轻松一点，也想去博物馆";
+    const memoryResponsePromise = page.waitForResponse((response) =>
+      response.url().includes("/api/v1/advisor/sessions/")
+      && response.url().endsWith("/messages")
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.content === memoryMessage,
+    );
+    await page.locator("#advisor-message").fill(memoryMessage);
     await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.getByText("我记下了你提到的旅行偏好，后续建议会结合这段对话和当前旅行信息。"))
-      .toBeVisible({ timeout: 30_000 });
+    const memoryResponse = await memoryResponsePromise;
+    expect(memoryResponse.ok(), await memoryResponse.text()).toBeTruthy();
+    const memorySession = await memoryResponse.json() as {
+      messages: Array<{ role: string; content: string; payload: Record<string, unknown> | null }>;
+    };
+    const memoryAssistant = [...memorySession.messages].reverse().find((item) => item.role === "assistant");
+    expect(memoryAssistant?.content).toContain("你喜欢轻松节奏的偏好");
+    expect(memoryAssistant?.payload?.memory_suggestion).toEqual(expect.objectContaining({
+      category: "PACE", text: "偏好轻松节奏", evidence: "我喜欢轻松一点",
+    }));
     const modelMemorySuggestion = page.locator('[aria-label="顾问提出的偏好记忆建议"]').last();
     await expect(modelMemorySuggestion).toContainText("偏好轻松节奏");
     await expect(modelMemorySuggestion).toContainText("我喜欢轻松一点");

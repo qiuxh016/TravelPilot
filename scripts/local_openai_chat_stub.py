@@ -120,11 +120,11 @@ class Handler(BaseHTTPRequestHandler):
             type(self).agent_decisions += 1
             if "discover_destination_from_live_map_evidence" in user:
                 try:
-                    prompt = ast.literal_eval(user)
+                    prompt = json.loads(user)
                     observation = prompt.get("observation", prompt)
                     remaining = observation.get("remaining_search_pairs", [])
                     observed = observation.get("observed_searches", [])
-                except (SyntaxError, ValueError, AttributeError):
+                except (TypeError, ValueError, AttributeError):
                     remaining, observed = [], []
                 if not observed and remaining:
                     selected = remaining[0]

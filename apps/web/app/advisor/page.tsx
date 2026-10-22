@@ -561,9 +561,17 @@ export default function AdvisorPage() {
     });
     setSelectionSyncStatus("SAVING");
     const request = selectionSaveQueueRef.current.catch(() => undefined).then(async () => {
-      const expectedRevision = selectionContextRevisionRef.current?.sessionId === session.id
+      const savedRevision = selectionContextRevisionRef.current?.sessionId === session.id
         ? selectionContextRevisionRef.current.revision
-        : session.context?.revision;
+        : null;
+      // Advisor replies and draft updates can advance the session context after
+      // the last selection save. Prefer the newest revision already present in
+      // this session object while retaining the queued-save revision for rapid
+      // consecutive edits that still hold an older React snapshot.
+      const expectedRevision = Math.max(
+        savedRevision ?? 0,
+        session.context?.revision ?? 0,
+      );
       try {
         const updated = await updateAdvisorSelection(session.id, selectedIds, schedulesToSave, expectedRevision);
         selectionContextRevisionRef.current = {
@@ -578,11 +586,40 @@ export default function AdvisorPage() {
           sessionId: latest.id,
           revision: latest.context?.revision ?? 0,
         };
+        const latestCandidateIds = new Set(latest.candidates.map((candidate) => candidate.id));
+        const rebasedSelectedIds = selectedIds.filter((candidateId) => latestCandidateIds.has(candidateId));
+        const rebasedSchedules = schedulesToSave.filter((schedule) => latestCandidateIds.has(schedule.candidate_id));
+        try {
+          // A context refresh can invalidate the revision while the user's
+          // selected places and times are still valid. Reapply that intent
+          // once against the fresh revision instead of replacing it with the
+          // older server snapshot and losing the user's latest interaction.
+          const updated = await updateAdvisorSelection(
+            session.id,
+            rebasedSelectedIds,
+            rebasedSchedules,
+            latest.context?.revision ?? 0,
+          );
+          selectionContextRevisionRef.current = {
+            sessionId: updated.id,
+            revision: updated.context?.revision ?? latest.context?.revision ?? 0,
+          };
+          setActive(updated);
+          setSelected(rebasedSelectedIds);
+          setSchedules((current) => ({ ...current, ...schedulesForSession(updated) }));
+          setSessions((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
+          if (rebasedSelectedIds.length !== selectedIds.length) {
+            setNotice("旅行内容已更新；仍有效的地点选择已保留，已移除失效地点。");
+          }
+          return updated;
+        } catch (retryReason) {
+          if (!(retryReason instanceof ApiError) || retryReason.status !== 409) throw retryReason;
+        }
         setActive(latest);
-        setSelected(latest.context?.selected_candidate_ids ?? latest.draft?.selected_candidate_ids ?? []);
-        setSchedules(schedulesForSession(latest));
+        setSelected(rebasedSelectedIds);
+        setSchedules((current) => ({ ...current, ...schedulesForSession(latest) }));
         setSessions((current) => [latest, ...current.filter((item) => item.id !== latest.id)]);
-        throw new Error("旅行选择已在其他窗口更新；已同步最新安排，本次更改未保存，请检查后再选一次。");
+        throw new Error("旅行安排刚刚又有更新；你的选择已保留在页面，请稍后再保存一次。");
       }
     });
     const queuedRequest = request.then(() => undefined, () => undefined);
