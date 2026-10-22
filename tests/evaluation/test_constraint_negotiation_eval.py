@@ -5,7 +5,7 @@ def test_constraint_negotiation_synthetic_comparison_covers_hard_cases():
     report = run_evaluation()
 
     assert report["suite"] == "constraint_negotiation_synthetic_v2"
-    assert report["scenario_count"] == 9
+    assert report["scenario_count"] == 10
     assert report["baselines"]["bounded_negotiator_solutions"] == 5
     assert report["baselines"]["single_change_solutions"] == 4
     assert report["hard_invariant_violations"] == 0

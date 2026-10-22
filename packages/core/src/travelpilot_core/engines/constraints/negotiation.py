@@ -129,7 +129,9 @@ def negotiate_schedule(
     ))
     by_id = {item.id: item for item in original}
     movable = [
-        by_id[item_id] for item_id in conflict_ids if item_id in by_id and not by_id[item_id].fixed
+        by_id[item_id]
+        for item_id in conflict_ids
+        if item_id in by_id and not by_id[item_id].fixed and not by_id[item_id].required
     ]
     alternatives: dict[tuple[tuple[str, date, int], ...], NegotiationAlternative] = {}
     variants_by_id: dict[str, list[NegotiationActivity | None]] = {}

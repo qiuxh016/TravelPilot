@@ -187,6 +187,29 @@ def test_optional_removal_is_offered_only_for_optional_nonrequired_activity():
     assert [item.id for item in removals[0].activities] == ["fixed"]
 
 
+def test_required_nonfixed_activity_is_not_moved_to_hide_an_opening_conflict():
+    required = activity(
+        "required-stop",
+        DAY_1,
+        9 * 60,
+        90,
+        required=True,
+        opens_at=11 * 60,
+        closes_at=17 * 60,
+    )
+
+    result = negotiate_schedule(
+        [required],
+        start_date=DAY_1,
+        end_date=DAY_1,
+        travel_minutes={},
+    )
+
+    assert not result.feasible
+    assert result.conflicts[0].code == "NOT_OPEN"
+    assert result.alternatives == ()
+
+
 def test_closed_at_start_conflict_gets_only_opening_hour_valid_alternative():
     museum = activity(
         "museum",

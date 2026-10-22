@@ -40,6 +40,9 @@ def _scenario_data():
         _activity("ticketed-show", 19 * 60, 90, fixed=True, required=True),
         _activity("optional-walk", 18 * 60, 120, optional=True, priority=2),
     ]
+    required_not_fixed = [
+        _activity("required-stop", 9 * 60, 90, required=True, opens_at=11 * 60, closes_at=17 * 60),
+    ]
     lunch = [_activity("lunch", 15 * 60, 60, category="LUNCH", opens_at=9 * 60, closes_at=20 * 60)]
     closed = [_activity("museum", 9 * 60, 90, opens_at=11 * 60, closes_at=17 * 60)]
     unknown_route = [_activity("first", 9 * 60, 60), _activity("second", 12 * 60, 60)]
@@ -54,6 +57,7 @@ def _scenario_data():
             ("ticketed-show", "optional-walk"): 0,
             ("optional-walk", "ticketed-show"): 0,
         }, True),
+        ("required_not_fixed", required_not_fixed, {}, False),
         ("meal_window", lunch, {}, True),
         ("opening_hours", closed, {}, True),
         ("unknown_route", unknown_route, {}, False),
