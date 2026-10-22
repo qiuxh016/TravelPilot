@@ -1,6 +1,6 @@
 # TravelPilot Roadmap
 
-Updated: 2026-10-22
+Updated: 2026-10-23
 
 Current next-agent plan status (2026-10-21): **W0–W6 complete for local scope.** W4 added an in-Advisor What-if dialog with per-day preview, PlanDiff/warnings, and explicit confirmation before formal writes. W5 reran the 40-case B1/B2/B3 comparison, 60-case/129-turn scripted and Runtime replays, and the authenticated 18-scenario/22-turn local product suite. W6 reconciled the README and roadmap; the full API/evaluation suite passed **998 tests** with Python UTF-8 mode. No new live-model or external-provider calls were made. Local evaluation limits and reproduction commands: `docs/evaluation/local-agent-eval-2026-10-21.md`.
 
@@ -98,6 +98,8 @@ The corrective v7 evaluation protocol and preflight are documented at `docs/eval
 **Post-run compatibility and full regression (2026-10-23):** The first full-suite run found that applying the new exclusive local marker to every historical holdout interfered with existing v2 replay tests. Restricted the marker to v7 while retaining the pre-existing exposed-status rejection for all holdouts. The test now evaluates an isolated frozen copy, so it remains valid after v7 exposure. Current complete API/evaluation regression: **1,087 passed**, one existing Starlette/httpx deprecation warning; Ruff and diff checks pass. Current runner SHA-256: `d20ecbfa91c57ee0af1a8181506133449b979575f720452216d4b9d115a6478c`. This compatibility fix does not alter the v7 prompt/action path or the source SHA recorded for scoring.
 
 **Execution record (2026-10-23, v7 meal clarification follow-up):** The v7 raw action miss is not sufficient evidence of a user-visible stall: `search_loop` already suppresses an `ASK_USER` interruption for MEAL when an explicit authorized lookup remains. Strengthened that regression with the observed pattern (known Ningde/date/seafood request, model asks which attraction) and verified the product loop still searches the authorized meal category. This distinction is recorded in the v7 result audit. Targeted search-loop regression passed (17/17); full API/evaluation suite passed again (**1,087 passed**, one existing deprecation warning).
+
+**Execution record (2026-10-23, full Advisor reply-quality protocol):** Prepared a separate 16-scenario / 20-user-turn authenticated API product-response evaluation, covering planning, follow-ups, scope control, route/weather evidence and fixture failures. The case manifest fingerprints every prompt and verifies against current source. A loopback-only proxy is pinned to `api.deepseek.com`, clamps each upstream request to 512 output tokens, and enforces 120 requests plus a 10,240 requested-token ceiling; the runner refuses a used, wrong-origin, or undersized proxy. Fake Maps and synthetic weather remain mandatory, temporary accounts are deleted, and formal writes are blocked. Protocol/harness tests: **265 passed**; Ruff passed. Commit `ae10502` is pushed. This stage makes no live-model quality claim: the v7 approval covered action selection only, so product-response capture needs separate authorization. Human blind review remains a further completion gate.
 
 ### Indicative six-week sequence
 
