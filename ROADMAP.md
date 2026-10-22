@@ -40,6 +40,8 @@ The completed roadmap above remains closed for its local-scope acceptance criter
 
 **Execution record (2026-10-22, action-contract prompt refinement):** Based on v5's repeated non-JSON outputs, the action selector now requests the smallest valid envelope: tool calls omit prose, questions contain one concise question, and finish summaries are capped at 80 characters. A regression assertion pins this contract. The targeted token-budget suite passed 22 tests and Ruff passed. This change happened after v5 scoring; its effect is not yet measured and must be checked on a new, unexposed set. Commit `941ef11` is pushed.
 
+**Execution record (2026-10-22, browser environment check):** Browser plugin was unavailable, so regular Playwright was used. At `http://localhost:3001`, the page resolved to the TravelPilot login screen; clicking “创建新账户” rendered the registration form. Empty submission was blocked by required-field validation with zero API requests. At 390px, document and body widths were both 390px; no unrelated console errors were observed. The current API `/health` returns 200, but its `.env` database target is loopback PostgreSQL:5432, which is not listening; Docker service is stopped. Therefore the authenticated itinerary/negotiation browser flow could not be run, and no account or travel data was created. Retest the full runbook after local PostgreSQL/Redis are available.
+
 ### P1 — Itinerary constraint negotiation
 
 1. Represent hard constraints (fixed booking, trip dates, explicit “must” requirements) separately from adjustable preferences (pace, optional stops, preferred return time). The agent must never relax a hard constraint on its own.
