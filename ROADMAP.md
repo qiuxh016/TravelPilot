@@ -103,6 +103,8 @@ The corrective v7 evaluation protocol and preflight are documented at `docs/eval
 
 **Execution record (2026-10-23, local negotiation UI and evidence regression):** Re-ran the deterministic negotiation, route-evidence, API route-validation, scheduling, and stale-evidence suites (**55 passed**) with Ruff. Desktop Chromium and Pixel 7 Playwright passed the conflict-option selection, stale-version resynchronization, preservation of confirmed lunch/lodging, What-if discard/confirm, and direct confirmed-write flows (**5/5 each viewport**). These are local fixtures and mocked API responses; no real model, map/weather provider, or formal trip was used. The local negotiation interaction and route/opening-hours guards are revalidated; real user preference ratings remain outstanding.
 
+**Execution record (2026-10-23, full local regression):** With model credentials blank and Fake Maps/Weather selected, the complete API/evaluation suite passed **1,096 tests** (one existing Starlette/httpx deprecation warning). Web TypeScript and the optimized Next.js production build passed. Stage-scoped Ruff passed; repository-wide Ruff still reports 14 findings in existing source/test/migration files and is not represented as clean. Desktop negotiation screenshots are saved outside the repository under `%TEMP%\travelpilot-advisor-negotiation-*.png`. This verifies the local demo surface, not independent user preference ratings, unseen product-response quality, or deferred production operations.
+
 ### Indicative six-week sequence
 
 | Week | Focus | Deliverable |
