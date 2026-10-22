@@ -79,6 +79,8 @@ The completed roadmap above remains closed for its local-scope acceptance criter
 
 **Execution record (2026-10-22, full local regression):** Full API/evaluation suite passed **1,073 tests** after updating the failed-tool trace assertion for the new measured-latency field. Ruff, TypeScript, and Next.js production build passed. One existing Starlette/httpx deprecation warning remains. No live-model or external map/weather calls were made in this verification.
 
+**Execution record (2026-10-22, v6 holdout preflight):** Authored and froze 20 new two-turn cases (40 turns), with route IDs and schedule coordinates grounded in synthetic fixtures. Exact separation against 11 historical sets is 0 case-ID and 0 normalized-prompt overlaps; fixture preflight passed and the focused contract/preflight suite passed **12 tests**. Canonical hash: `a8a6aa794ca3ab21e22c0e60edf0e20c8ee92aacf8c966985ebc7ad30bd58d67`. No model/provider or trip-data calls were made. A v6 B2/B3 action run would still be diagnostic only: the runner has no matched production fixed-workflow B1 and does not capture product replies. The prior v5 authorization cannot be reused; response capture and independent blind ratings remain separate protocol work. Details: `docs/evaluation/advisor-holdout-v6-preflight.md`.
+
 ### Indicative six-week sequence
 
 | Week | Focus | Deliverable |
