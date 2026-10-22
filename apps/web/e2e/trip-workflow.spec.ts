@@ -1,16 +1,18 @@
 import { expect, test } from "@playwright/test";
 
+const api = process.env.TRAVELPILOT_E2E_API_URL ?? "http://localhost:8000";
+
 test("用户可以创建旅行并进入详情页", async ({ page, request }) => {
   const email = `e2e-${Date.now()}@example.invalid`;
   const password = "travelpilot-test-2026";
-  const auth = await request.post("http://localhost:8000/api/v1/auth/register", {
+  const auth = await request.post(`${api}/api/v1/auth/register`, {
     data: { email, password },
   });
   expect(auth.ok()).toBeTruthy();
-  const mailbox = await request.get(`http://localhost:8000/api/v1/auth/dev-mailbox/${email}`);
+  const mailbox = await request.get(`${api}/api/v1/auth/dev-mailbox/${email}`);
   const verifyToken = new URL((await mailbox.json()).link).searchParams.get("token")!;
-  expect((await request.post("http://localhost:8000/api/v1/auth/verify-email", { data: { token: verifyToken } })).ok()).toBeTruthy();
-  const login = await request.post("http://localhost:8000/api/v1/auth/login", { data: { email, password } });
+  expect((await request.post(`${api}/api/v1/auth/verify-email`, { data: { token: verifyToken } })).ok()).toBeTruthy();
+  const login = await request.post(`${api}/api/v1/auth/login`, { data: { email, password } });
   expect(login.ok()).toBeTruthy();
   expect(await login.json()).not.toHaveProperty("access_token");
   const state = await request.storageState();
@@ -48,5 +50,5 @@ test("用户可以创建旅行并进入详情页", async ({ page, request }) => 
     page.getByRole("heading", { name: "成都" }),
   ).toBeVisible();
   const csrf = state.cookies.find((cookie) => cookie.name === "travelpilot_csrf")?.value ?? "";
-  await request.delete("http://localhost:8000/api/v1/account", { headers: { "X-CSRF-Token": csrf } });
+  await request.delete(`${api}/api/v1/account`, { headers: { "X-CSRF-Token": csrf } });
 });
