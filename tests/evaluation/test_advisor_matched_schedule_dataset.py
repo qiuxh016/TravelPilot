@@ -3,6 +3,7 @@ import math
 import unicodedata
 from pathlib import Path
 
+from tests.evaluation.advisor_matched_schedule_runtime_preflight import evaluate_local_stub
 from tests.evaluation.advisor_product_live_eval import SCENARIOS
 
 DATASET = Path(__file__).parent / "cases" / "advisor_matched_schedule_b1_v1.json"
@@ -92,3 +93,29 @@ def test_matched_baseline_budget_is_bounded_and_forbids_formal_writes():
     assert limits["completion_tokens_total_max"] == 12288
     assert limits["formal_itinerary_writes"] == 0
     assert limits["maps_weather_mode"] == "local synthetic fixtures only"
+
+
+def test_matched_b2_b3_runtime_preflight_uses_only_local_stub_and_matches_actions():
+    report = evaluate_local_stub()
+
+    assert report["provider_mode"] == "LOOPBACK_STUB_AND_SYNTHETIC_TOOLS"
+    assert report["requests_used"] == 20
+    assert report["output_tokens_reported"] == 200
+    assert report["per_request_output_cap"] == 128
+    assert report["requests_used"] <= report["request_cap"] == 48
+    assert report["output_tokens_reported"] <= report["aggregate_output_token_cap"] == 12288
+    assert report["formal_writes"] == 0
+    assert len(report["cases"]) == 4
+    for case in report["cases"]:
+        assert case["matched_action_path"] is True
+        assert case["arms"]["B2_AGENT_LOOP"]["actions"] == [
+            "get_distance_matrix",
+            "build_schedule_draft",
+        ]
+        assert case["arms"]["B3_VERIFIER_RECOVERY"]["actions"] == [
+            "get_distance_matrix",
+            "build_schedule_draft",
+        ]
+        for arm in case["arms"].values():
+            assert arm["formal_writes"] == 0
+            assert all(turn["formal_write"] is False for turn in arm["turns"])
