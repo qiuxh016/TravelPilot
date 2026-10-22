@@ -6,6 +6,7 @@ from typing import Any
 _METRIC_KEYS = {
     "logical_steps", "tool_attempts", "retries", "input_tokens",
     "output_tokens", "total_tokens", "output_token_budget",
+    "estimated_cost_microusd",
 }
 _SAFE_METADATA_KEYS = {
     "result_count", "forecast_day_count", "forecast_status",

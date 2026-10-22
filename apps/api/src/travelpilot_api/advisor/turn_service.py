@@ -37,6 +37,7 @@ from travelpilot_api.advisor.conversation import (
     recent_conversation_context,
     recent_verified_candidate_context,
 )
+from travelpilot_api.advisor.costs import estimate_cost_microusd
 from travelpilot_api.advisor.destination_discovery import run_destination_discovery
 from travelpilot_api.advisor.destination_service import (
     resume_destination_recommendation,
@@ -1810,8 +1811,27 @@ async def execute_advisor_turn(
     )
     agent_trace = turn_report["agent_trace"]
     if agent_trace is not None:
+        current_plan = context.get("current_plan")
+        plan_version = current_plan.get("version") if isinstance(current_plan, dict) else None
+        estimated_cost = estimate_cost_microusd(
+            input_tokens=llm_input_tokens,
+            output_tokens=llm_output_tokens,
+            input_rate_per_million=settings.llm_input_cost_per_million_usd,
+            output_rate_per_million=settings.llm_output_cost_per_million_usd,
+        )
+        existing_metrics = agent_trace.get("execution_metrics")
+        merged_metrics = dict(existing_metrics) if isinstance(existing_metrics, dict) else {}
+        merged_metrics.update({
+            "input_tokens": llm_input_tokens,
+            "output_tokens": llm_output_tokens,
+            "total_tokens": llm_total_tokens,
+        })
+        if estimated_cost is not None:
+            merged_metrics["estimated_cost_microusd"] = estimated_cost
         agent_trace = {
             **agent_trace,
+            "execution_metrics": merged_metrics,
+            **({"plan_version": plan_version} if isinstance(plan_version, int) and not isinstance(plan_version, bool) else {}),
             "evidence_reuse": {
                 "weather": reused_weather_evidence,
                 "route": reused_route_evidence,
@@ -2162,6 +2182,7 @@ async def execute_advisor_turn(
                     "decision_summary": agent_trace.get("decision_summary"),
                     "route_evidence": agent_trace.get("route_evidence"),
                     "route_source": agent_trace.get("route_source"),
+                    "plan_version": agent_trace.get("plan_version"),
                     "transitions": agent_trace.get("transitions", []),
                     "execution_metrics": agent_trace.get("execution_metrics", transport_result.runtime.execution_metrics if transport_result else search_runtime.execution_metrics if search_loop_result else {}),
                 },

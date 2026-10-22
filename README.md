@@ -45,4 +45,4 @@ pnpm --dir apps/web dev
 
 打开 Web 时以 Next.js 启动日志显示的地址为准（默认 `http://localhost:3000`；若端口被占用会自动选择其他端口）。API 文档：<http://localhost:8000/docs>。
 
-本地开发环境的邮箱验证链接可从 `http://localhost:8000/api/v1/auth/dev-mailbox/{邮箱}` 查看。高德地图和文本模型为可选服务，在 `.env` 配置 `MAPS_PROVIDER=amap`、`AMAP_API_KEY`、`LLM_API_KEY`、`LLM_MODEL` 等变量即可。高德 Key 应创建为“Web 服务”类型。生产环境需将 `WEB_ALLOWED_ORIGINS` 设为精确的 HTTPS 前端源；若 Web 与 API 使用不同子域名，还需将 `SESSION_COOKIE_DOMAIN` 设为共同父域。不要提交 `.env` 或真实凭据。
+本地开发环境的邮箱验证链接可从 `http://localhost:8000/api/v1/auth/dev-mailbox/{邮箱}` 查看。高德地图和文本模型为可选服务，在 `.env` 配置 `MAPS_PROVIDER=amap`、`AMAP_API_KEY`、`LLM_API_KEY`、`LLM_MODEL` 等变量即可。若希望顾问显示模型费用估算，可按当前供应商和模型价格设置 `LLM_INPUT_COST_PER_MILLION_USD` 与 `LLM_OUTPUT_COST_PER_MILLION_USD`；两项都留空时只显示 token 用量，不猜测价格。高德 Key 应创建为“Web 服务”类型。生产环境需将 `WEB_ALLOWED_ORIGINS` 设为精确的 HTTPS 前端源；若 Web 与 API 使用不同子域名，还需将 `SESSION_COOKIE_DOMAIN` 设为共同父域。不要提交 `.env` 或真实凭据。

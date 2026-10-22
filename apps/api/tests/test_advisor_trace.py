@@ -14,7 +14,7 @@ def test_diagnostics_export_redacts_arbitrary_private_metadata():
             "decision_summary": "包含上下文的自由文本",
             "raw_prompt": "不要导出",
             "route_source": "amap",
-            "execution_metrics": {"tool_attempts": 2, "total_tokens": 7, "private": 1},
+            "execution_metrics": {"tool_attempts": 2, "total_tokens": 7, "estimated_cost_microusd": 15, "private": 1},
             "transitions": [{"tool": "search_places", "status": "VERIFIED", "latency_ms": 23,
                              "input_data": {"keyword": "私人搜索词"}}],
         },
@@ -27,6 +27,7 @@ def test_diagnostics_export_redacts_arbitrary_private_metadata():
     assert "包含上下文" not in serialized
     assert "raw_prompt" not in serialized
     assert exported["metadata"]["route_source"] == "amap"
+    assert exported["metadata"]["execution_metrics"]["estimated_cost_microusd"] == 15
     assert exported["metadata"]["transitions"] == [{
         "tool": "search_places", "status": "VERIFIED", "latency_ms": 23,
     }]
@@ -41,13 +42,13 @@ def test_combined_turn_trace_keeps_each_executed_stage_and_transition_order():
                 {"tool": "get_trip_weather", "status": "VERIFIED", "latency_ms": 12},
                 {"tool": "search_places", "status": "VERIFIED", "latency_ms": 18},
             ],
-            "execution_metrics": {"logical_steps": 2, "tool_attempts": 2, "retries": 1, "total_tokens": 40},
+            "execution_metrics": {"logical_steps": 2, "tool_attempts": 2, "retries": 1, "total_tokens": 40, "estimated_cost_microusd": 12},
         }),
         ("ROUTE", {
             "status": "SUCCEEDED", "decision_source": "RULE",
             "decision_summary": "路线已核验",
             "transitions": [{"tool": "get_trip_route", "status": "VERIFIED", "latency_ms": 20}],
-            "execution_metrics": {"logical_steps": 1, "tool_attempts": 1, "retries": 0, "total_tokens": 15},
+            "execution_metrics": {"logical_steps": 1, "tool_attempts": 1, "retries": 0, "total_tokens": 15, "estimated_cost_microusd": 8},
         }),
         ("SCHEDULE", {
             "status": "NEEDS_USER_INPUT", "decision_source": "MODEL",
@@ -69,6 +70,7 @@ def test_combined_turn_trace_keeps_each_executed_stage_and_transition_order():
     ]
     assert trace["execution_metrics"] == {
         "logical_steps": 3, "tool_attempts": 3, "retries": 1, "total_tokens": 55,
+        "estimated_cost_microusd": 20,
     }
     assert trace["tool_duration_ms"] == 50
 

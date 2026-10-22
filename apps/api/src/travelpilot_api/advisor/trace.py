@@ -34,7 +34,7 @@ def combine_agent_traces(
         if isinstance(metrics, dict):
             for key in (
                 "logical_steps", "tool_attempts", "retries", "input_tokens",
-                "output_tokens", "total_tokens",
+                "output_tokens", "total_tokens", "estimated_cost_microusd",
             ):
                 value = metrics.get(key)
                 if isinstance(value, int) and not isinstance(value, bool) and value >= 0:

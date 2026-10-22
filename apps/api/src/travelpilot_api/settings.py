@@ -1,6 +1,7 @@
+from decimal import Decimal
 from urllib.parse import urlsplit
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,6 +38,10 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = ""
     llm_base_url: str = "https://api.openai.com/v1"
+    # Optional USD rates per million tokens. Leave unset when the provider's
+    # current price is unknown; the UI then reports tokens without guessing.
+    llm_input_cost_per_million_usd: Decimal | None = Field(default=None, ge=0)
+    llm_output_cost_per_million_usd: Decimal | None = Field(default=None, ge=0)
     # Caps generated tokens across extraction and response; prompt tokens are tracked separately.
     llm_max_tokens_per_turn: int = Field(default=1200, ge=128, le=8000)
     # Per-session generated-token allowance; users must explicitly extend it.
@@ -50,6 +55,15 @@ class Settings(BaseSettings):
     media_s3_access_key_id: str = ""
     media_s3_secret_access_key: str = ""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @field_validator(
+        "llm_input_cost_per_million_usd",
+        "llm_output_cost_per_million_usd",
+        mode="before",
+    )
+    @classmethod
+    def empty_cost_rate_means_unconfigured(cls, value):
+        return None if isinstance(value, str) and not value.strip() else value
 
     @property
     def cors_origins(self) -> list[str]:

@@ -22,9 +22,10 @@ type AgentTrace = {
   status?: string;
   route_evidence?: string;
   route_source?: string | null;
+  plan_version?: number;
   transitions?: Array<{ tool?: string; status?: string; error?: string; latency_ms?: number; stage?: string }>;
   stage_statuses?: Array<{ stage?: string; status?: string }>;
-  execution_metrics?: { logical_steps?: number; tool_attempts?: number; retries?: number; input_tokens?: number; output_tokens?: number; total_tokens?: number };
+  execution_metrics?: { logical_steps?: number; tool_attempts?: number; retries?: number; input_tokens?: number; output_tokens?: number; total_tokens?: number; estimated_cost_microusd?: number };
   tool_duration_ms?: number;
   recovery?: { status?: string; interrupted_stage?: string | null; completed_stages?: string[] };
   turn_orchestration?: {
@@ -2067,7 +2068,7 @@ export default function AdvisorPage() {
                       </li>}
                       {((trace.execution_metrics && Object.keys(trace.execution_metrics).length > 0) || typeof trace.tool_duration_ms === "number") && <li>
                         <strong>本轮运行概况</strong>
-                        <span>{typeof trace.tool_duration_ms === "number" ? `工具耗时 ${trace.tool_duration_ms} 毫秒` : ""}{trace.execution_metrics?.tool_attempts !== undefined ? `${typeof trace.tool_duration_ms === "number" ? " · " : ""}工具调用 ${trace.execution_metrics.tool_attempts} 次` : ""}{trace.execution_metrics?.retries ? ` · 重试 ${trace.execution_metrics.retries} 次` : ""}{trace.execution_metrics?.total_tokens !== undefined ? ` · 模型 token ${trace.execution_metrics.total_tokens}` : trace.execution_metrics?.output_tokens !== undefined ? ` · 输出 token ${trace.execution_metrics.output_tokens}` : ""}</span>
+                        <span>{typeof trace.tool_duration_ms === "number" ? `工具耗时 ${trace.tool_duration_ms} 毫秒` : ""}{trace.execution_metrics?.tool_attempts !== undefined ? `${typeof trace.tool_duration_ms === "number" ? " · " : ""}工具调用 ${trace.execution_metrics.tool_attempts} 次` : ""}{trace.execution_metrics?.retries ? ` · 重试 ${trace.execution_metrics.retries} 次` : ""}{trace.execution_metrics?.total_tokens !== undefined ? ` · 模型 token ${trace.execution_metrics.total_tokens}` : trace.execution_metrics?.output_tokens !== undefined ? ` · 输出 token ${trace.execution_metrics.output_tokens}` : ""}{trace.execution_metrics?.estimated_cost_microusd !== undefined ? ` · 估算费用 $${(trace.execution_metrics.estimated_cost_microusd / 1_000_000).toFixed(6)}` : ""}{trace.plan_version !== undefined ? ` · 行程版本 v${trace.plan_version}` : ""}</span>
                       </li>}
                       {evidenceSummary && <li>
                         <strong>地点证据</strong>
