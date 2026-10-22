@@ -118,6 +118,42 @@ async def test_live_multiturn_runner_rejects_budget_over_approved_per_request_ca
         await evaluation.run_live(case_ids=evaluation.ADDITIONAL_CASE_IDS, token_cap=129)
 
 
+@pytest.mark.asyncio
+async def test_v7_holdout_exposure_marker_blocks_a_second_scoring_attempt(monkeypatch, tmp_path):
+    monkeypatch.setattr(evaluation.settings, "llm_api_key", "test-key")
+    monkeypatch.setattr(evaluation.settings, "llm_model", "test-model")
+    monkeypatch.setattr(evaluation.settings, "llm_base_url", "https://example.test/v1")
+    marker = tmp_path / "v7.exposure.json"
+    monkeypatch.setattr(evaluation, "_holdout_exposure_marker", lambda _: marker)
+    calls = []
+
+    async def fake_decision(observation, schemas, **kwargs):
+        calls.append(observation)
+        return AgentAction(kind="ASK_USER", question="请补充信息"), SimpleNamespace(
+            prompt_tokens=1, completion_tokens=1, total_tokens=2,
+        )
+
+    monkeypatch.setattr(evaluation, "decide_next_action", fake_decision)
+    dataset_path = evaluation.ROOT / "tests/evaluation/cases/advisor_multiturn_holdout_v7.json"
+    case_id = "v7-context-carryover-01"
+    report = await evaluation.run_live(
+        dataset_path=dataset_path,
+        case_ids=(case_id,),
+        total_output_token_budget=512,
+    )
+
+    assert report["requests"] == 4
+    assert len(calls) == 4
+    assert evaluation.json.loads(marker.read_text(encoding="utf-8"))["status"] == "SCORED"
+    with pytest.raises(ValueError, match="already been exposed"):
+        await evaluation.run_live(
+            dataset_path=dataset_path,
+            case_ids=(case_id,),
+            total_output_token_budget=512,
+        )
+    assert len(calls) == 4
+
+
 def test_live_multiturn_selection_is_frozen_and_has_no_write_tools():
     dataset = evaluation.json.loads(evaluation.DATASET.read_text(encoding="utf-8"))
     selected = [case for case in dataset["cases"] if case["id"] in evaluation.CASE_IDS]

@@ -54,6 +54,10 @@ ADDITIONAL_CASE_IDS = (
     "cross-weather-accessibility-57",
 )
 
+
+def _holdout_exposure_marker(dataset_id: str) -> Path:
+    return ROOT / "tests/evaluation/results" / f".{dataset_id}.exposure.json"
+
 class _StrictArguments(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -631,9 +635,12 @@ async def run_live(
             raise ValueError("this holdout has already been exposed and cannot be rescored")
         references = load_holdout_references(dataset, cases_directory=dataset_path.parent)
         holdout_separation = validate_holdout_separation(dataset, references)
-    if not case_ids or len(case_ids) > 10 or len(set(case_ids)) != len(case_ids):
-        raise ValueError("select 1–10 distinct frozen case IDs per bounded run")
+    if not case_ids or len(case_ids) > 20 or len(set(case_ids)) != len(case_ids):
+        raise ValueError("select 1–20 distinct frozen case IDs per bounded run")
     requested_output_ceiling = len(case_ids) * 2 * len(VARIANTS) * token_cap
+    request_ceiling = len(case_ids) * 2 * len(VARIANTS)
+    if request_ceiling > 120:
+        raise ValueError("requested provider calls exceed the approved 120-request evaluation cap")
     if requested_output_ceiling > total_output_token_budget:
         raise ValueError(
             f"requested output ceiling {requested_output_ceiling} exceeds total budget "
@@ -649,6 +656,22 @@ async def run_live(
             raise ValueError(f"{case['id']} does not contain two Agent-owned turns")
         if any(set(turn["allowed_tools"]) - set(TOOL_SCHEMAS) for turn in agent_turns[:2]):
             raise ValueError(f"{case['id']} has a tool without a read-only evaluation schema")
+
+    exposure_marker = None
+    if is_holdout:
+        exposure_marker = _holdout_exposure_marker(dataset["dataset_id"])
+        exposure_marker.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with exposure_marker.open("x", encoding="utf-8") as handle:
+                json.dump({
+                    "dataset_id": dataset["dataset_id"],
+                    "dataset_sha256": hashlib.sha256(dataset_path.read_bytes()).hexdigest(),
+                    "status": "EXPOSED_RUN_IN_PROGRESS",
+                    "started_at_utc": datetime.now(UTC).isoformat(),
+                }, handle, ensure_ascii=False, indent=2)
+                handle.write("\n")
+        except FileExistsError as exc:
+            raise ValueError("this holdout has already been exposed to a scoring run") from exc
 
     groups: dict[str, list[dict[str, Any]]] = {}
     for variant in VARIANTS:
@@ -733,6 +756,15 @@ async def run_live(
             ),
             "runs": cases,
         }
+    if exposure_marker is not None:
+        exposure_marker.write_text(json.dumps({
+            "dataset_id": dataset["dataset_id"],
+            "dataset_sha256": digest,
+            "status": "SCORED",
+            "completed_at_utc": datetime.now(UTC).isoformat(),
+            "requests": request_ceiling,
+            "requested_output_token_ceiling": requested_output_ceiling,
+        }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {
         "evaluation_id": f"advisor_multiturn_live_{dataset['dataset_id']}",
         "provider_mode": "LIVE_MODEL_WITH_LOCAL_FIXTURE_OBSERVATIONS",
@@ -786,7 +818,7 @@ def main() -> None:
         "--case-id",
         action="append",
         dest="case_ids",
-        help="Frozen case ID to include; repeat up to ten times (default: original five)",
+        help="Frozen case ID to include; repeat up to twenty times (default: dataset selection)",
     )
     parser.add_argument(
         "--output-token-cap",

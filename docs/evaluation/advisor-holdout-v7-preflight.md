@@ -25,7 +25,7 @@ Updated: 2026-10-22
 | Input | SHA-256 |
 |---|---|
 | Dataset | `4575f6fdca381bd80283f319829aa2a64dc43a109ccf641dba642bba6acad87a` |
-| Live evaluator | `ef83cf9114f3aae0fc358add44de9e1e92029ce58ee09dde338b3f2ee1136271` |
+| Live evaluator | `7d3dc9dac5d124abfbd59f7783cb111f84118f762bac9088105d1db3693aa113` |
 | Multi-turn contract validator | `59e9b516eff0f7afe9796e08b2cca4ccf2e8640753600ea442b68d4f7cbf01fd` |
 | Production constrained loop | `908ddae699ba40768cd4ce2e6de39d62c886cc671926b15239455d22ef76640e` |
 | Production action planner | `7e957c1b6b358759ac5d6b923aaf9a38c377a002e5fe062f159aefc6a842166b` |
@@ -45,10 +45,10 @@ Commands from the repository root:
 ruff check tests/evaluation/advisor_multiturn_live_eval.py tests/evaluation/advisor_multiturn_contracts.py tests/evaluation/test_advisor_multiturn_live_eval.py tests/evaluation/test_advisor_multiturn_contracts.py
 ```
 
-Results: contract validation passed; **57 focused tests passed**; Ruff passed. A separate local fixture replay sent all 40 adjudicated actions through the B3 constrained runtime: 36 completed tool/finish transitions, 4 user-input transitions, 25 verified tool calls, and no loop failures. Dedicated tests cover production route evidence acceptance, production search/weather/matrix verification, and route-provider timeout safe-stop recovery. No model requests were sent in preflight.
+Results: contract validation passed; **58 focused tests passed**; Ruff passed. This includes a one-time exposure-marker regression: the marker is written before scoring and blocks a second attempt. A separate local fixture replay sent all 40 adjudicated actions through the B3 constrained runtime: 36 completed tool/finish transitions, 4 user-input transitions, 25 verified tool calls, and no loop failures. Dedicated tests cover production route evidence acceptance, production search/weather/matrix verification, and route-provider timeout safe-stop recovery. No model requests were sent in preflight.
 
 ## Authorized live run cap
 
-The user approved the v7 action evaluation: at most 120 provider requests, at most 128 output tokens per request, and at most 15,360 requested output tokens total. The primary paired run needs 80 requests (20 cases × 2 turns × 2 arms). It will run as two batches of 10 cases, each with a 5,120-token ceiling; aggregate ceiling 10,240. Stop if any run risks exceeding the approved request or token caps. Use only local synthetic Maps/weather observations. Do not read personal trip data or perform formal writes.
+The user approved the v7 action evaluation: at most 120 provider requests, at most 128 output tokens per request, and at most 15,360 requested output tokens total. The primary paired run evaluates all 20 cases in one invocation: 80 requests (20 cases × 2 turns × 2 arms), with a 10,240-token requested ceiling. The runner rejects larger selections or budgets and creates an exclusive local exposure marker before the first model call; the marker blocks any later scoring attempt in the same checkout. Stop if any run risks exceeding the approved request or token caps. Use only local synthetic Maps/weather observations. Do not read personal trip data or perform formal writes.
 
-The set remains `FROZEN_NOT_SCORED` until the first live batch starts; then mark it `EXPOSED` and refuse every later scoring attempt. Preserve raw result files locally and publish only the aggregate report and failure audit.
+The tracked set remains `FROZEN_NOT_SCORED` until the run starts; after scoring, update the tracked status to `EXPOSED` and refuse every later scoring attempt. Preserve raw result files locally and publish only the aggregate report and failure audit.
