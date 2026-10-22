@@ -15,6 +15,7 @@ from tests.evaluation.advisor_multiturn_contracts import (
 CASES = Path(__file__).parent / "cases"
 HOLDOUT_PATH = CASES / "advisor_multiturn_holdout_v1.json"
 GROUNDED_HOLDOUT_V2_PATH = CASES / "advisor_multiturn_holdout_v2.json"
+GROUNDED_HOLDOUT_V5_PATH = CASES / "advisor_multiturn_holdout_v5.json"
 
 
 def _holdout():
@@ -60,6 +61,32 @@ def test_grounded_holdout_v2_is_frozen_disjoint_and_supplies_tool_context():
         route["selected_origin_id"],
         "destination-panda",
     }
+
+
+def test_grounded_holdout_v5_is_frozen_disjoint_and_all_route_evidence_is_complete():
+    from tests.evaluation.advisor_unseen_multiturn_eval import _validate_fixture_evidence
+
+    dataset = json.loads(GROUNDED_HOLDOUT_V5_PATH.read_text(encoding="utf-8"))
+    validated = validate_dataset(dataset)
+    references = load_holdout_references(dataset, cases_directory=CASES)
+    separation = validate_holdout_separation(dataset, references)
+
+    assert dataset["dataset_id"] == "advisor_multiturn_holdout_v5"
+    assert dataset["status"] == "FROZEN_NOT_LIVE_SCORED"
+    assert validated["case_count"] == 20
+    assert validated["turn_count"] == 40
+    assert separation["exact_normalized_prompt_overlap_count"] == 0
+    assert separation["case_id_overlap_count"] == 0
+    _validate_fixture_evidence(dataset)
+
+    for case in dataset["cases"]:
+        if any("get_trip_route" in turn["allowed_tools"] for turn in case["turns"]):
+            state = case["initial_state"]
+            places = {place["id"]: place for place in state["known_places"]}
+            assert len(places) >= 2
+            for key in ("selected_origin_id", "selected_destination_id"):
+                if key in state:
+                    assert state[key] in places
 
 
 def test_grounded_holdout_v2_runs_through_action_and_tool_schema_checks(monkeypatch):

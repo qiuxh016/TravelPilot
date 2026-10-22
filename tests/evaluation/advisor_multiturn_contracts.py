@@ -196,8 +196,13 @@ def validate_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
             or not set(defaults) <= ids
         ):
             raise ValueError("holdout reference datasets and default case selection must be valid")
-        if dataset.get("status") != "FROZEN_NOT_SCORED":
-            raise ValueError("holdout must remain frozen until its first scoring run")
+        allowed_statuses = {"FROZEN_NOT_SCORED"}
+        if dataset.get("dataset_id") == "advisor_multiturn_holdout_v5":
+            # Scripted baselines may be replayed locally before the first live
+            # model score; that result must remain explicitly non-live.
+            allowed_statuses.add("FROZEN_NOT_LIVE_SCORED")
+        if dataset.get("status") not in allowed_statuses:
+            raise ValueError("holdout must remain frozen until its first live scoring run")
 
     digest = hashlib.sha256(
         json.dumps(dataset, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
