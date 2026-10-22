@@ -16,11 +16,15 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from travelpilot_api.advisor.route_query import RouteQueryInput
+from travelpilot_api.advisor.route_query import RouteQueryInput, _verified_route
+from travelpilot_api.advisor.search_loop import _verified_search_result
+from travelpilot_api.advisor.weather_evidence import valid_weather_evidence
 from travelpilot_api.settings import settings
+from travelpilot_core.agents.loop import AgentAction, run_constrained_loop
 from travelpilot_core.agents.planner import PlannerDecisionFailure, decide_next_action
+from travelpilot_core.agents.runtime import AgentRuntime
 from travelpilot_core.agents.verifiers import verify_distance_matrix
-from travelpilot_core.ports.tools import ToolFailure
+from travelpilot_core.ports.tools import ToolFailure, ToolSpec
 
 from tests.evaluation.advisor_multiturn_contracts import (
     _is_holdout_dataset,
@@ -40,7 +44,7 @@ CASE_IDS = (
     "meal-gap-ask-choice-06",
     "weather-ask-dates-08",
 )
-VARIANTS = ("B2_AGENT_LOOP", "B3_PROMPT_POLICY_ONLY")
+VARIANTS = ("B2_AGENT_LOOP", "B3_VERIFIED_RECOVERY_LOOP")
 TOKEN_CAP = 128
 ADDITIONAL_CASE_IDS = (
     "schedule-missing-dates-03",
@@ -163,7 +167,9 @@ ASK_OR_DISCLOSE_ACTIONS = {
 }
 
 
-def _fixture_observation(tool: str, case: dict[str, Any]) -> dict[str, Any]:
+def _fixture_observation(
+    tool: str, case: dict[str, Any], arguments: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Return a clearly synthetic read-only result for the next decision."""
     state = case.get("initial_state", {})
     if (
@@ -178,18 +184,32 @@ def _fixture_observation(tool: str, case: dict[str, Any]) -> dict[str, Any]:
         }
     if tool == "search_places":
         return {
-            "status": "VERIFIED_FIXTURE",
+            "status": "SIMULATED",
             "places": [
-                {"name": "评测地点甲", "category": "FIXTURE", "provider": "LOCAL_FIXTURE"},
-                {"name": "评测地点乙", "category": "FIXTURE", "provider": "LOCAL_FIXTURE"},
+                {"provider_id": "fixture-place-a", "name": "评测地点甲", "latitude": 30.1,
+                 "longitude": 104.1, "provider": "fake"},
+                {"provider_id": "fixture-place-b", "name": "评测地点乙", "latitude": 30.2,
+                 "longitude": 104.2, "provider": "fake"},
             ],
         }
     if tool == "get_trip_weather":
+        dates = state.get("trip_dates")
+        if not isinstance(dates, list) or not dates:
+            dates = ["2026-11-02"]
         return {
-            "status": "AVAILABLE_FIXTURE",
+            "status": "AVAILABLE",
             "source": "LOCAL_FIXTURE",
+            "city": state.get("destination", "评测城市"),
+            "fetched_at": "2027-01-01T00:00:00+00:00",
             "days": [
-                {"date": "2026-11-02", "description": "多云", "precipitation_probability_max": 20},
+                {
+                    "date": day,
+                    "description": "多云",
+                    "precipitation_probability_max": 20,
+                    "temperature_min_c": 16,
+                    "temperature_max_c": 23,
+                }
+                for day in dates[:7]
             ],
         }
     if tool == "get_distance_matrix":
@@ -206,9 +226,34 @@ def _fixture_observation(tool: str, case: dict[str, Any]) -> dict[str, Any]:
             "durations_min": durations,
         }
     if tool == "get_trip_route":
+        args = arguments or {}
+        places = state.get("known_places", [])
+        by_id = {place.get("id"): place for place in places if isinstance(place, dict)}
+        origin = by_id.get(args.get("origin_place_id"))
+        destination = by_id.get(args.get("destination_place_id"))
+        if origin and destination and all(key in point for point in (origin, destination)
+                                         for key in ("latitude", "longitude")):
+            points = [
+                [float(origin["latitude"]), float(origin["longitude"])],
+                [float(destination["latitude"]), float(destination["longitude"])],
+            ]
+            return {
+                "status": "SIMULATED", "duration_min": 18, "distance_m": 1200,
+                "source": "Local simulated maps", "origin_place_id": args.get("origin_place_id"),
+                "destination_place_id": args.get("destination_place_id"),
+                "mode": args.get("mode"), "points": points, "polyline": points,
+                "retrieved_at": "2027-01-01T00:00:00+00:00",
+            }
         return {"status": "VERIFIED_FIXTURE", "duration_min": 18, "source": "LOCAL_FIXTURE"}
     if tool == "build_schedule_draft":
-        return {"status": "DRAFT_FIXTURE", "formal_write": False}
+        places = state.get("saved_place_details", [])
+        candidate_ids = [str(place.get("id", f"fixture-{index}"))
+                         for index, place in enumerate(places)]
+        return {
+            "feasible": True, "candidate_ids": candidate_ids,
+            "schedules": [{"candidate_id": value} for value in candidate_ids],
+            "source": "LOCAL_FIXTURE", "formal_write": False,
+        }
     return {"status": "NO_RESULT", "source": "LOCAL_FIXTURE"}
 
 
@@ -265,25 +310,124 @@ def _allowed_tool_schemas(
 
 
 def _expected_match(turn: dict[str, Any], action: dict[str, Any]) -> bool | None:
-    expected = turn["expected_action"]
-    if expected in UNSCORABLE_EXPECTED_ACTIONS:
+    expected_values = turn.get("acceptable_actions", [turn["expected_action"]])
+    if not isinstance(expected_values, list) or not expected_values:
+        return False
+    if all(expected in UNSCORABLE_EXPECTED_ACTIONS for expected in expected_values):
         return None
-    if expected == "FINISH":
-        return action.get("kind") == "FINISH"
-    if expected.startswith("ASK_USER") and expected not in ASK_OR_DISCLOSE_ACTIONS:
-        return action.get("kind") == "ASK_USER" and bool(
-            action.get("question") or action.get("summary")
-        )
-    if expected in ASK_OR_DISCLOSE_ACTIONS:
-        # FINISH is a valid safe outcome when it clearly explains an evidence
-        # gap; the action contract has no separate "report limitation" enum.
-        return action.get("kind") in {"ASK_USER", "FINISH"} and bool(
-            action.get("question") or action.get("summary")
-        )
-    expected_tool = EXPECTED_TOOL.get(expected)
-    if expected_tool:
-        return action.get("kind") == "CALL_TOOL" and action.get("tool") == expected_tool
+    for expected in expected_values:
+        if expected == "FINISH" and action.get("kind") == "FINISH":
+            return True
+        has_text = bool(action.get("question") or action.get("summary"))
+        if (
+            expected.startswith("ASK_USER") and expected not in ASK_OR_DISCLOSE_ACTIONS
+            and action.get("kind") == "ASK_USER" and has_text
+        ):
+            return True
+        if expected in ASK_OR_DISCLOSE_ACTIONS and action.get("kind") in {"ASK_USER", "FINISH"} and has_text:
+            return True
+        expected_tool = EXPECTED_TOOL.get(expected)
+        if expected_tool and action.get("kind") == "CALL_TOOL" and action.get("tool") == expected_tool:
+            return True
     return False
+
+
+async def _run_verified_loop(action: AgentAction, case: dict[str, Any], allowed: list[str]) -> dict[str, Any]:
+    """Execute B3 actions with the production loop, evidence verifier and safe recovery."""
+    calls: list[str] = []
+    checkpoints: list[dict[str, Any]] = []
+    tools = []
+    for name in allowed:
+        async def handler(args: BaseModel, tool_name: str = name) -> dict[str, Any]:
+            calls.append(tool_name)
+            fixture = _fixture_observation(tool_name, case)
+            if fixture.get("status") == "FAILED_FIXTURE":
+                raise ToolFailure(str(fixture.get("error_code", "FIXTURE_FAILURE")))
+            if tool_name == "get_trip_route":
+                context_places = case.get("initial_state", {}).get("known_places", [])
+                by_id = {place.get("id"): place for place in context_places if isinstance(place, dict)}
+                route_args = args.model_dump()
+                origin = by_id.get(route_args["origin_place_id"])
+                destination = by_id.get(route_args["destination_place_id"])
+                if not origin or not destination:
+                    return {"status": "MALFORMED_FIXTURE", "source": "LOCAL_FIXTURE"}
+                points = [
+                    [float(origin["latitude"]), float(origin["longitude"])],
+                    [float(destination["latitude"]), float(destination["longitude"])],
+                ]
+                fixture = {
+                    "status": "SIMULATED", "source": "Local simulated maps",
+                    "origin_place_id": route_args["origin_place_id"],
+                    "destination_place_id": route_args["destination_place_id"],
+                    "mode": route_args["mode"], "distance_m": 1200, "duration_min": 18,
+                    "points": points, "polyline": points,
+                    "retrieved_at": "2027-01-01T00:00:00+00:00",
+                }
+            return fixture
+        tools.append(ToolSpec(name, TOOL_ARGUMENT_MODELS[name], handler, retry_limit=0))
+
+    async def trace(_event: dict[str, Any]) -> None:
+        return None
+
+    async def checkpoint(event: dict[str, Any]) -> None:
+        checkpoints.append(event)
+
+    async def verifier(name: str, output: dict[str, Any]) -> bool:
+        if output.get("source") not in {None, "LOCAL_FIXTURE", "Local simulated maps"}:
+            return False
+        if name == "get_distance_matrix":
+            return verify_distance_matrix(output, _expected_schedule_stop_count(case))
+        if name == "search_places":
+            return _verified_search_result(output)
+        if name == "get_trip_weather":
+            return valid_weather_evidence(output, expected_source="LOCAL_FIXTURE")
+        if name == "get_trip_route":
+            known = case.get("initial_state", {}).get("known_places", [])
+            approved = {
+                place.get("id"): place for place in known
+                if isinstance(place, dict) and place.get("id")
+            }
+            return _verified_route(output, approved)
+        if name == "build_schedule_draft":
+            schedules = output.get("schedules")
+            expected_ids = output.get("candidate_ids")
+            actual_ids = [item.get("candidate_id") for item in schedules or []
+                          if isinstance(item, dict)]
+            return (
+                output.get("feasible") is True and isinstance(schedules, list)
+                and isinstance(expected_ids, list) and len(actual_ids) == len(expected_ids)
+                and set(actual_ids) == set(expected_ids) and output.get("formal_write") is False
+            )
+        return False
+
+    async def policy(observation: dict[str, Any], _allowed: list[str]) -> AgentAction:
+        if any(key.endswith(("_failure", "_verification_failure")) for key in observation):
+            return AgentAction(kind="FINISH", summary="本地证据未通过校验，安全停止且不重复调用。")
+        if calls:
+            return AgentAction(kind="FINISH", summary="本地工具结果已校验；没有写入正式行程。")
+        return action
+
+    async def recover(observation: dict[str, Any], _allowed: list[str], _decision: int):
+        if any(key.endswith(("_failure", "_verification_failure")) for key in observation):
+            return AgentAction(kind="FINISH", summary="读取失败或证据无效，停止重试并保留安全状态。")
+        return None
+
+    runtime = AgentRuntime(tools, trace, max_steps=1, max_attempts=1, token_budget=0)
+    result = await run_constrained_loop(
+        runtime=runtime, policy=policy, verifier=verifier, checkpoint=checkpoint,
+        initial_observation={"evaluation_fixture": True}, max_decisions=2,
+        allowed_tool_names=set(allowed), continue_on_tool_failure=True,
+        continue_on_verifier_failure=True, recover_decision=recover,
+    )
+    failure_seen = any(item.get("state") in {"FAILED", "REJECTED"} for item in checkpoints)
+    return {"loop_status": result.status, "loop_error": result.error,
+            "tool_calls": calls, "checkpoints": checkpoints,
+            "verified_tool_count": sum(item.get("status") == "VERIFIED" for item in result.transitions),
+            "safe_stop": failure_seen and result.status == "SUCCEEDED",
+            "observations": {
+                key: value for key, value in result.observation.items()
+                if key in allowed or key.endswith(("_failure", "_verification_failure"))
+            }}
 
 
 def rescore_report(report: dict[str, Any]) -> dict[str, Any]:
@@ -307,18 +451,16 @@ def rescore_report(report: dict[str, Any]) -> dict[str, Any]:
                     turn["tool_arguments_valid"] = arguments_valid
                     turn["argument_validation_errors"] = errors
                     turn["action_valid"] = bool(turn.get("action_valid", True)) and arguments_valid
-                turn["expected_action_match"] = _expected_match(
-                    {"expected_action": turn.get("expected_action")},
-                    action,
-                )
-                if not turn.get("action_valid", True) and turn.get("expected_action") in EXPECTED_TOOL:
+                turn["expected_action_match"] = _expected_match(turn, action)
+                expected_values = turn.get("acceptable_actions", [turn.get("expected_action")])
+                if not turn.get("action_valid", True) and any(value in EXPECTED_TOOL for value in expected_values):
                     turn["expected_action_match"] = False
             matches = [turn.get("expected_action_match") for turn in case.get("turns", [])]
-            case["task_scoreable"] = all(match is not None for match in matches)
-            case["task_all_turns_matched"] = all(matches) if case["task_scoreable"] else None
+            case["action_sequence_scoreable"] = all(match is not None for match in matches)
+            case["action_sequence_matches"] = all(matches) if case["action_sequence_scoreable"] else None
         turns = [turn for case in cases for turn in case.get("turns", [])]
         scoreable_turns = [turn for turn in turns if turn.get("expected_action_match") is not None]
-        scoreable_cases = [case for case in cases if case.get("task_scoreable")]
+        scoreable_cases = [case for case in cases if case.get("action_sequence_scoreable")]
         summary[arm] = {
             "case_count": len(cases),
             "decision_count": len(turns),
@@ -327,9 +469,9 @@ def rescore_report(report: dict[str, Any]) -> dict[str, Any]:
             "expected_action_matches": sum(
                 turn["expected_action_match"] is True for turn in scoreable_turns
             ),
-            "complete_task_scoreable_count": len(scoreable_cases),
-            "complete_task_matches": sum(
-                case["task_all_turns_matched"] is True for case in scoreable_cases
+            "action_sequence_scoreable_count": len(scoreable_cases),
+            "action_sequences_matched": sum(
+                case["action_sequence_matches"] is True for case in scoreable_cases
             ),
             "allowlist_violations": sum(not turn.get("allowlist_valid", False) for turn in turns),
             "invalid_actions": sum(not turn.get("action_valid", False) for turn in turns),
@@ -339,11 +481,11 @@ def rescore_report(report: dict[str, Any]) -> dict[str, Any]:
         }
     rescored["summary"] = summary
     rescored["scoring_revision"] = {
-        "id": "agent_action_and_tool_schema_v3",
+        "id": "adjudicated_acceptable_action_sets_v4",
         "model_requests_repeated": False,
         "rescorer_source": "tests/evaluation/advisor_multiturn_live_eval.py",
         "rescorer_source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-        "note": "Tool arguments are validated with bounded read-only schemas and, when saved in the report, route/matrix arguments are checked against trip context; abstract domain transitions unavailable in AgentAction are excluded; safe FINISH disclosure satisfies ASK_USER_OR_LABEL_* expectations.",
+        "note": "Accepted actions are adjudicated per turn; tool arguments are independently validated; safe disclosure is accepted only for explicitly annotated alternatives.",
     }
     return rescored
 
@@ -370,14 +512,10 @@ async def _decide(
         "tool_observations_are_local_fixtures": True,
         "policy": "Use only available tools. Ask for missing dates or preferences; never commit changes or claim fixture facts are live provider data.",
     }
-    if variant == "B3_PROMPT_POLICY_ONLY":
-        observation["verification_contract"] = [
-            "Treat only current fixture observations as evidence and label them synthetic.",
-            "Reject malformed or stale evidence.",
-            "No formal plan, trip, memory, or account writes are available.",
-        ]
-        observation["recovery_contract"] = (
-            "If a required read fails, ask or stop safely; do not repeat blindly."
+    if variant == "B3_VERIFIED_RECOVERY_LOOP":
+        observation["execution_contract"] = (
+            "Your selected action will be run through the production constrained loop. "
+            "Tool results are synthetic local fixtures; no formal trip data can be written."
         )
     try:
         decision, usage = await decide_next_action(
@@ -404,15 +542,20 @@ async def _decide(
                 and isinstance(args.get("keyword"), str)
                 and (not destination or args.get("city") in {None, destination})
             )
+        loop_result = None
+        if variant == "B3_VERIFIED_RECOVERY_LOOP":
+            loop_result = await _run_verified_loop(
+                AgentAction.model_validate(action), case, allowed,
+            )
         return {
             "case_id": case["id"],
             "turn": turn_index + 1,
             "expected_action": turn["expected_action"],
+            "acceptable_actions": turn.get("acceptable_actions", [turn["expected_action"]]),
             "action": action,
             "expected_action_match": (
-                _expected_match(turn, action)
-                and tool_arguments_valid
-                if turn["expected_action"] in EXPECTED_TOOL
+                _expected_match(turn, action) and tool_arguments_valid
+                if action.get("kind") == "CALL_TOOL" and _expected_match(turn, action) is True
                 else _expected_match(turn, action)
             ),
             "action_valid": tool_arguments_valid,
@@ -423,12 +566,14 @@ async def _decide(
             "prompt_tokens": usage.prompt_tokens,
             "output_tokens": usage.completion_tokens,
             "total_tokens": usage.total_tokens,
+            "execution": loop_result,
         }
     except PlannerDecisionFailure as exc:
         return {
             "case_id": case["id"],
             "turn": turn_index + 1,
             "expected_action": turn["expected_action"],
+            "acceptable_actions": turn.get("acceptable_actions", [turn["expected_action"]]),
             "action": None,
             "expected_action_match": _expected_match(turn, {}),
             "action_valid": False,
@@ -437,12 +582,14 @@ async def _decide(
             "prompt_tokens": exc.usage.prompt_tokens,
             "output_tokens": exc.usage.completion_tokens,
             "total_tokens": exc.usage.total_tokens,
+            "execution": None,
         }
     except ToolFailure as exc:
         return {
             "case_id": case["id"],
             "turn": turn_index + 1,
             "expected_action": turn["expected_action"],
+            "acceptable_actions": turn.get("acceptable_actions", [turn["expected_action"]]),
             "action": None,
             "expected_action_match": _expected_match(turn, {}),
             "action_valid": False,
@@ -451,6 +598,7 @@ async def _decide(
             "prompt_tokens": 0,
             "output_tokens": 0,
             "total_tokens": 0,
+            "execution": None,
         }
 
 
@@ -530,11 +678,15 @@ async def run_live(
                 )
                 tool = action.get("tool") if action.get("kind") == "CALL_TOOL" else None
                 if tool and _should_append_fixture_observation(row, turn["allowed_tools"]):
+                    execution_observations = (row.get("execution") or {}).get("observations", {})
+                    observation = execution_observations.get(tool) or _fixture_observation(
+                        tool, case, action.get("arguments") or {},
+                    )
                     history.append(
                         {
                             "role": "tool_observation",
                             "tool": tool,
-                            "result": _fixture_observation(tool, case),
+                            "result": observation,
                         }
                     )
             matches = [row["expected_action_match"] for row in case_rows]
@@ -544,8 +696,9 @@ async def run_live(
                     "case_id": case["id"],
                     "initial_state": case.get("initial_state", {}),
                     "turns": case_rows,
-                    "task_all_turns_matched": all(matches) if task_scoreable else None,
-                    "task_scoreable": task_scoreable,
+                    "action_sequence_matches": all(matches) if task_scoreable else None,
+                    "action_sequence_scoreable": task_scoreable,
+                    "end_to_end_task_completion_evaluated": False,
                 }
             )
         groups[variant] = rows
@@ -555,7 +708,7 @@ async def run_live(
     for name, cases in groups.items():
         turns = [turn for case in cases for turn in case["turns"]]
         scoreable_turns = [turn for turn in turns if turn["expected_action_match"] is not None]
-        scoreable_tasks = [case for case in cases if case["task_scoreable"]]
+        scoreable_sequences = [case for case in cases if case["action_sequence_scoreable"]]
         summary[name] = {
             "case_count": len(cases),
             "decision_count": len(turns),
@@ -564,14 +717,20 @@ async def run_live(
             "expected_action_matches": sum(
                 row["expected_action_match"] is True for row in scoreable_turns
             ),
-            "complete_task_scoreable_count": len(scoreable_tasks),
-            "complete_task_matches": sum(
-                case["task_all_turns_matched"] is True for case in scoreable_tasks
+            "action_sequence_scoreable_count": len(scoreable_sequences),
+            "action_sequences_matched": sum(
+                case["action_sequence_matches"] is True for case in scoreable_sequences
             ),
             "allowlist_violations": sum(not row["allowlist_valid"] for row in turns),
             "invalid_actions": sum(not row["action_valid"] for row in turns),
             "output_tokens": sum(row["output_tokens"] for row in turns),
             "prompt_tokens": sum(row["prompt_tokens"] for row in turns),
+            "verified_tool_calls": sum(
+                (row.get("execution") or {}).get("verified_tool_count", 0) for row in turns
+            ),
+            "safe_stops": sum(
+                bool((row.get("execution") or {}).get("safe_stop")) for row in turns
+            ),
             "runs": cases,
         }
     return {
@@ -597,12 +756,12 @@ async def run_live(
         "groups": groups,
         "arm_definitions": {
             "B2_AGENT_LOOP": "The model selects an action from the supplied observation and allowlisted tool schemas.",
-            "B3_PROMPT_POLICY_ONLY": (
-                "Same model action selection with extra evidence and failure policy text in the prompt; "
-                "this runner does not invoke the production verifier or recovery implementation."
+            "B3_VERIFIED_RECOVERY_LOOP": (
+                "Same model decision is executed by production run_constrained_loop with the production "
+                "search, weather, matrix and route verifiers; evaluation-local fixtures exercise bounded safe-stop recovery."
             ),
         },
-        "scope": f"{len(case_ids)} frozen two-turn tasks per variant. Real model selects each action; local fixture observations carry tool results across turns. Scores only action labels expressible by the current AgentAction contract; domain-transition labels without a model action are counted as unscorable. This does not assess full answer quality, real providers, DB persistence, or formal writes.",
+        "scope": f"{len(case_ids)} frozen two-turn tasks per variant. Real model selects each action; local fixture observations carry tool results across turns. Reports adjudicated action correctness and action-sequence consistency separately from B3 tool verification/safe stops. It does not evaluate end-to-end task completion, full answer quality, real providers, DB persistence, or formal writes.",
         "limitations": [
             (
                 "Newly frozen, case-ID-disjoint action-selection holdout; it is not a full product API or independent human quality evaluation."
@@ -610,6 +769,7 @@ async def run_live(
                 else "Small selected subset of the frozen 60-case set; not held out from policy design."
             ),
             "Tool observations are deterministic local fixtures, not live map/weather calls.",
+            "The B3 arm does not exercise database-backed interrupted-action checkpoint restore or the full Advisor HTTP workflow.",
             "No B1 live model arm; compare with the separate fixed-workflow and scripted evaluations.",
             "Provider-reported token usage may be absent or inaccurate.",
         ],

@@ -26,7 +26,9 @@ Before any new model request:
 - Local synthetic read-only map/weather observations only. No formal itinerary writes, real map/weather requests, or use of personal trip data.
 - Results are action/runtime diagnostics. They do not close user-visible response quality or independent human ratings.
 
-This proposed run requires a new explicit authorization because v6 has been exposed and the prior authorization was scoped to v6. The request cap is a ceiling, not a target; use fewer calls if the fresh case set or B3 implementation supports a smaller valid comparison.
+The user authorized this v7 run: **up to 120 requests, 128 output tokens per request, and 15,360 requested output tokens total**. The request cap is a ceiling, not a target; the paired primary run uses 80 calls and a 10,240-token requested ceiling. The frozen set and local preflight are recorded in `docs/evaluation/advisor-holdout-v7-preflight.md`.
+
+The evaluator B3 arm executes selected actions through the production constrained loop and production search/weather/matrix/route evidence validators. It uses local bounded safe-stop recovery and does not exercise database-backed interrupted-action checkpoint restoration or the full authenticated Advisor HTTP workflow; its results must be described with that boundary.
 
 ## Separate response-quality gate
 

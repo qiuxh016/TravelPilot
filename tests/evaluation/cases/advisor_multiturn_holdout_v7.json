@@ -1,0 +1,1103 @@
+{
+  "dataset_id": "advisor_multiturn_holdout_v7",
+  "version": 7,
+  "status": "FROZEN_NOT_SCORED",
+  "provider_mode": "synthetic_contract",
+  "frozen_before_scoring": true,
+  "scope": "Twenty independently authored two-turn continuation cases with per-turn adjudicated safe action sets and full synthetic state/tool-result carryover.",
+  "holdout_protocol": {
+    "reference_datasets": [
+      "advisor_multiturn_v1",
+      "advisor_multiturn_v2",
+      "advisor_multiturn_v3",
+      "advisor_multiturn_v4",
+      "advisor_multiturn_v5",
+      "advisor_open_consultation_v2",
+      "advisor_existing_trip_agent_v3",
+      "advisor_multiturn_holdout_v1",
+      "advisor_multiturn_holdout_v2",
+      "advisor_multiturn_holdout_v3",
+      "advisor_multiturn_holdout_v4",
+      "advisor_multiturn_holdout_v5",
+      "advisor_multiturn_holdout_v6"
+    ],
+    "reference_dataset_sha256": {
+      "advisor_multiturn_v1": "45ef01e073233898354b81ce1b62e615cba8fe3503a29ad6119bbb707946899a",
+      "advisor_multiturn_v2": "a9580ce99206e02438ffbf80f8d1979cc54a2093cf334d7ef0c28ab61842143c",
+      "advisor_multiturn_v3": "0d987703549307b39ced9882b13be7fcab7cf24f1eaa1568c88427a1298f9368",
+      "advisor_multiturn_v4": "07b979f1d85db8c8a4432ac85b823bb9af5cfbb527f75bb662b5f49f65879511",
+      "advisor_multiturn_v5": "a964d0bb8e3be36fdbc41f82a736e58ad9cf3af0ee0d009708c7d9cd4a6b5af9",
+      "advisor_open_consultation_v2": "2a2fa0eaa39a65bc1fb4179634038db714463083de05777ea41e285bcf1136dd",
+      "advisor_existing_trip_agent_v3": "1223b3999cee183e92d3cc699ac902a68b150e1ce517186b67221b577d432dd4",
+      "advisor_multiturn_holdout_v1": "8435f5bf918aa3fe3292c94302bb6f76d63c31509ce244b915670d52a8b3719e",
+      "advisor_multiturn_holdout_v2": "7671b0f0db74624eeb37381342767eba56d366f0d2e4e769a4456ee0babf4433",
+      "advisor_multiturn_holdout_v3": "d5d33535531588cfb71834dfef5c4e6d59c41ce9b01558c093a94778347e677b",
+      "advisor_multiturn_holdout_v4": "2ae4f7ac28ca4994faa0d206437b7cbfe2e5def3f57a81b5b8d094bb4f2ff653",
+      "advisor_multiturn_holdout_v5": "17e948b395111c74979b05c8df3bb0eee5b0bf95fb84b9ce91b5554718fcc295",
+      "advisor_multiturn_holdout_v6": "bb2c50f9d7205d1ede15c19faba628fc1d7d56e8c5bc6ea11a58e9050a1c98e0"
+    },
+    "claim_boundary": "Freshly authored exploratory tasks; exact prompt/ID separation is checked, and scenario semantics were reviewed against prior exposed cases. Small sample; not general competence proof.",
+    "default_case_ids": [
+      "v7-context-carryover-01",
+      "v7-correction-search-02",
+      "v7-verified-evidence-03",
+      "v7-fixed-stop-conflict-04",
+      "v7-meal-scope-05",
+      "v7-allergy-caveat-06",
+      "v7-lodging-conditions-07",
+      "v7-lodging-date-08",
+      "v7-route-explicit-09",
+      "v7-route-ambiguous-10",
+      "v7-route-outage-11",
+      "v7-weather-date-12",
+      "v7-weather-followup-13",
+      "v7-weather-preparation-14",
+      "v7-discovery-clarify-15",
+      "v7-discovery-context-16",
+      "v7-schedule-fixed-preserve-17",
+      "v7-failed-search-18",
+      "v7-restaurant-meal-times-19",
+      "v7-context-ellipsis-20"
+    ],
+    "similarity_review": {
+      "method": "Normalized prompt comparison and manual inspection of the closest prior-task wording/intents before scoring.",
+      "finding": "No exact normalized prompt overlap. The set intentionally covers the same broad travel domains as earlier tests; several capability families recur. Near-identical prompt wording was revised. This does not establish statistical or semantic independence."
+    }
+  },
+  "cases": [
+    {
+      "id": "v7-context-carryover-01",
+      "family": "itinerary",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "destination": "扬州",
+        "trip_dates": [
+          "2027-04-12",
+          "2027-04-13"
+        ],
+        "saved_places": 3,
+        "saved_place_details": [
+          {
+            "id": "ys-a",
+            "name": "文昌阁",
+            "latitude": 32.39,
+            "longitude": 119.43
+          },
+          {
+            "id": "ys-b",
+            "name": "园林博物馆",
+            "latitude": 32.4,
+            "longitude": 119.44
+          },
+          {
+            "id": "ys-c",
+            "name": "运河书院",
+            "latitude": 32.41,
+            "longitude": 119.45
+          }
+        ]
+      },
+      "invariants": [
+        "跨轮次保留地点和日期",
+        "生成草案前使用已验证路线证据"
+      ],
+      "turns": [
+        {
+          "user": "这三处是我收藏的，准备拆两天逛，首日留些休息时间。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "acceptable_actions": [
+            "GET_DISTANCE_MATRIX"
+          ],
+          "adjudication_note": "多个已保存地点且无路线证据，先请求距离矩阵。",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "园林博物馆安排在午后，之前说的松弛节奏也保留。",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "acceptable_actions": [
+            "BUILD_SCHEDULE_DRAFT"
+          ],
+          "adjudication_note": "前轮矩阵已作为成功工具观察传入；用户调整时段后应构建新草案，不重复矩阵。",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-correction-search-02",
+      "family": "discovery",
+      "task_type": "SEARCH",
+      "initial_state": {
+        "destination": "泉州",
+        "trip_dates": [
+          "2027-05-08",
+          "2027-05-10"
+        ],
+        "preferences": [
+          "历史街区"
+        ]
+      },
+      "invariants": [
+        "尊重用户更正",
+        "搜索条件变化时更新地点候选"
+      ],
+      "turns": [
+        {
+          "user": "先找几个有闽南建筑特色、适合步行的地方。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "目的地与兴趣明确，可以搜索候选。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "补充一下，我爸膝盖不好，优先少爬坡的室内点。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "新增长者行动限制和室内偏好会实质改变搜索条件，需要按新条件检索。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-verified-evidence-03",
+      "family": "itinerary",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "destination": "洛阳",
+        "trip_dates": [
+          "2027-04-02",
+          "2027-04-03"
+        ],
+        "saved_places": 2,
+        "saved_place_details": [
+          {
+            "id": "ly-a",
+            "name": "古城博物馆",
+            "latitude": 34.68,
+            "longitude": 112.45
+          },
+          {
+            "id": "ly-b",
+            "name": "老城书院",
+            "latitude": 34.67,
+            "longitude": 112.46
+          }
+        ]
+      },
+      "invariants": [
+        "复用同会话已验证路线矩阵",
+        "不得重复请求相同路线证据"
+      ],
+      "turns": [
+        {
+          "user": "给这两个收藏点排一个宽松的两日顺序。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "acceptable_actions": [
+            "GET_DISTANCE_MATRIX"
+          ],
+          "adjudication_note": "首次多地点排程需要路线证据。",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "第二个点放到上午，其他安排不变。",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "acceptable_actions": [
+            "BUILD_SCHEDULE_DRAFT"
+          ],
+          "adjudication_note": "对话中已有成功矩阵；时间微调无需重复查询，进入草案构建。",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-fixed-stop-conflict-04",
+      "family": "itinerary",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "destination": "景德镇",
+        "trip_dates": [
+          "2027-06-14",
+          "2027-06-14"
+        ],
+        "saved_places": 3,
+        "saved_place_details": [
+          {
+            "id": "jd-a",
+            "name": "陶瓷馆",
+            "latitude": 29.29,
+            "longitude": 117.2,
+            "start_time": "10:00",
+            "duration_min": 120,
+            "fixed": true
+          },
+          {
+            "id": "jd-b",
+            "name": "窑址公园",
+            "latitude": 29.3,
+            "longitude": 117.21
+          },
+          {
+            "id": "jd-c",
+            "name": "手作工坊",
+            "latitude": 29.31,
+            "longitude": 117.22
+          }
+        ],
+        "fixed_return_time": "14:00"
+      },
+      "invariants": [
+        "不移动固定预约",
+        "冲突条件不足时先与用户协商"
+      ],
+      "turns": [
+        {
+          "user": "三个地方都排今天，陶瓷馆十点预约、两点前回酒店。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "acceptable_actions": [
+            "GET_DISTANCE_MATRIX"
+          ],
+          "adjudication_note": "需先核验多地点旅行时间；当前不应臆造可行性。",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "工坊也一定要保留，能安排进去吗？",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "acceptable_actions": [
+            "BUILD_SCHEDULE_DRAFT",
+            "ASK_USER_TO_RELAX_CONSTRAINT"
+          ],
+          "adjudication_note": "前轮提供矩阵后用确定性草案验证硬约束；不能凭空承诺可行。",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-meal-scope-05",
+      "family": "meal",
+      "task_type": "MEAL",
+      "initial_state": {
+        "destination": "宁德",
+        "trip_dates": [
+          "2027-07-02",
+          "2027-07-03"
+        ],
+        "party_size": 3,
+        "meal_preferences": [
+          "海鲜"
+        ]
+      },
+      "invariants": [
+        "仅检索餐饮",
+        "保持按日用餐范围"
+      ],
+      "turns": [
+        {
+          "user": "7月3日中午，想在海边附近吃一顿本地海味，列几家供我挑选。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "日期、餐次和品类明确，搜索餐饮候选。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "最好离当天上午的海边景点近些。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "新增长距离/邻近约束会改变搜索，仍限定在餐饮候选。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-allergy-caveat-06",
+      "family": "meal",
+      "task_type": "MEAL",
+      "initial_state": {
+        "destination": "潮州",
+        "trip_dates": [
+          "2027-07-12",
+          "2027-07-13"
+        ],
+        "meal_preferences": [
+          "牛肉火锅"
+        ],
+        "allergies": [
+          "花生"
+        ]
+      },
+      "invariants": [
+        "不保证厨房零交叉污染",
+        "不因询问安全性而盲目重复搜索"
+      ],
+      "turns": [
+        {
+          "user": "帮我找一家牛肉火锅，必须能处理花生过敏。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "先检索候选，但搜索不能验证厨房过敏处理能力。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "如果地图没写过敏信息，就直接告诉我这个限制。",
+          "expected_action": "FINISH",
+          "acceptable_actions": [
+            "FINISH",
+            "ASK_USER_OR_LABEL_UNVERIFIED"
+          ],
+          "adjudication_note": "用户明确要求说明信息缺口；不需重新搜索，也不能宣称安全。",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-lodging-conditions-07",
+      "family": "lodging",
+      "task_type": "LODGING",
+      "initial_state": {
+        "destination": "大理",
+        "trip_dates": [
+          "2027-08-03",
+          "2027-08-06"
+        ],
+        "party_size": 2,
+        "lodging_budget_per_night": 500,
+        "lodging_area": "古城外侧"
+      },
+      "invariants": [
+        "住宿候选按日期和预算筛选",
+        "不自动预订"
+      ],
+      "turns": [
+        {
+          "user": "按每晚五百以内，在古城外侧找住三晚的酒店。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "日期、预算、区域都给出，搜索住宿候选。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "我只要安静，价格和有没有房到时我自己核实，不用订。",
+          "expected_action": "FINISH",
+          "acceptable_actions": [
+            "FINISH",
+            "ASK_USER_OR_LABEL_UNVERIFIED"
+          ],
+          "adjudication_note": "没有新增可搜索约束；确认不预订并提示价格库存需另核，无需再搜。",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-lodging-date-08",
+      "family": "lodging",
+      "task_type": "LODGING",
+      "initial_state": {
+        "destination": "青岛",
+        "trip_dates": null,
+        "party_size": 2,
+        "lodging_budget_per_night": 700
+      },
+      "invariants": [
+        "日期是住宿检索必要约束",
+        "不得猜测入住日期"
+      ],
+      "turns": [
+        {
+          "user": "帮我找住宿，预算每晚七百。",
+          "expected_action": "ASK_USER",
+          "acceptable_actions": [
+            "ASK_USER"
+          ],
+          "adjudication_note": "缺入住日期，先询问关键条件，避免产生无依据候选。",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "8月18号入住，21号离开，两个人。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "日期与人数补齐后可检索住宿。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-route-explicit-09",
+      "family": "route",
+      "task_type": "TRANSPORT",
+      "initial_state": {
+        "destination": "绍兴",
+        "known_places": [
+          {
+            "id": "sx-a",
+            "name": "仓桥直街",
+            "latitude": 30.0,
+            "longitude": 120.58
+          },
+          {
+            "id": "sx-b",
+            "name": "兰亭",
+            "latitude": 29.99,
+            "longitude": 120.52
+          }
+        ],
+        "route_mode": "DRIVING"
+      },
+      "invariants": [
+        "端点来自当前旅行保存地点",
+        "按用户指定驾车方式查询"
+      ],
+      "turns": [
+        {
+          "user": "查一下仓桥直街开车到兰亭要多久。",
+          "expected_action": "GET_TRIP_ROUTE",
+          "acceptable_actions": [
+            "GET_TRIP_ROUTE"
+          ],
+          "adjudication_note": "两端点都能映射到旅行已保存地点，方式清晰。",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "回程也帮我查一下，还是开车。",
+          "expected_action": "GET_TRIP_ROUTE",
+          "acceptable_actions": [
+            "GET_TRIP_ROUTE"
+          ],
+          "adjudication_note": "第二轮明确反向端点，允许再次查询另一方向。",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-route-ambiguous-10",
+      "family": "route",
+      "task_type": "TRANSPORT",
+      "initial_state": {
+        "destination": "桂林",
+        "known_places": [
+          {
+            "id": "gl-a",
+            "name": "象鼻山",
+            "latitude": 25.28,
+            "longitude": 110.29
+          },
+          {
+            "id": "gl-b",
+            "name": "两江四湖",
+            "latitude": 25.27,
+            "longitude": 110.3
+          },
+          {
+            "id": "gl-c",
+            "name": "市区酒店",
+            "latitude": 25.26,
+            "longitude": 110.31
+          }
+        ]
+      },
+      "invariants": [
+        "起终点不明确时先问清",
+        "不任意选取路线端点"
+      ],
+      "turns": [
+        {
+          "user": "帮我看看交通怎么安排。",
+          "expected_action": "ASK_USER",
+          "acceptable_actions": [
+            "ASK_USER"
+          ],
+          "adjudication_note": "缺少起点、终点及方式，不能随意挑选路线端点。",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "从我住的酒店到象鼻山，打车。",
+          "expected_action": "GET_TRIP_ROUTE",
+          "acceptable_actions": [
+            "GET_TRIP_ROUTE"
+          ],
+          "adjudication_note": "用户补足已保存端点与出行方式，可查路线。",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-route-outage-11",
+      "family": "route",
+      "task_type": "TRANSPORT",
+      "initial_state": {
+        "destination": "厦门",
+        "known_places": [
+          {
+            "id": "xm-a",
+            "name": "海边民宿",
+            "latitude": 24.45,
+            "longitude": 118.08
+          },
+          {
+            "id": "xm-b",
+            "name": "植物园",
+            "latitude": 24.44,
+            "longitude": 118.1
+          }
+        ],
+        "route_mode": "DRIVING",
+        "route_provider": "timeout"
+      },
+      "invariants": [
+        "路线服务失败时不伪造耗时",
+        "失败后安全说明且不盲目重试"
+      ],
+      "turns": [
+        {
+          "user": "从民宿开车到植物园需要多久？",
+          "expected_action": "GET_TRIP_ROUTE",
+          "acceptable_actions": [
+            "GET_TRIP_ROUTE"
+          ],
+          "adjudication_note": "端点和方式明确，尝试只读路线查询。",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "那能不能把直线距离换算成开车时间？如果不可靠就直说。",
+          "expected_action": "FINISH",
+          "acceptable_actions": [
+            "FINISH",
+            "ASK_USER_OR_LABEL_UNVERIFIED"
+          ],
+          "adjudication_note": "合成工具历史显示超时，用户明确要求不猜；安全说明替代重复请求。",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-weather-date-12",
+      "family": "weather",
+      "task_type": "WEATHER",
+      "initial_state": {
+        "destination": "烟台",
+        "trip_dates": null
+      },
+      "invariants": [
+        "预报查询需要日期",
+        "不推断未提供的出行日期"
+      ],
+      "turns": [
+        {
+          "user": "看看我旅行时会不会下雨。",
+          "expected_action": "ASK_USER",
+          "acceptable_actions": [
+            "ASK_USER"
+          ],
+          "adjudication_note": "无旅行日期，天气工具无法确定目标日期，应询问日期。",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "9月5号到7号。",
+          "expected_action": "GET_TRIP_WEATHER",
+          "acceptable_actions": [
+            "GET_TRIP_WEATHER"
+          ],
+          "adjudication_note": "用户提供日期后调用行程天气查询。",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-weather-followup-13",
+      "family": "weather",
+      "task_type": "WEATHER",
+      "initial_state": {
+        "destination": "珠海",
+        "trip_dates": [
+          "2027-09-10",
+          "2027-09-12"
+        ]
+      },
+      "invariants": [
+        "使用已返回的天气观察",
+        "天气解释不重复请求相同日期"
+      ],
+      "turns": [
+        {
+          "user": "按这趟珠海行的日期查一下天气概况。",
+          "expected_action": "GET_TRIP_WEATHER",
+          "acceptable_actions": [
+            "GET_TRIP_WEATHER"
+          ],
+          "adjudication_note": "日期和地点明确，查询行程天气。",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "我在整理随身包，按这份预报要不要准备雨具？",
+          "expected_action": "FINISH",
+          "acceptable_actions": [
+            "FINISH"
+          ],
+          "adjudication_note": "对话已有天气结果，用户要求解读现有结果，不需要再次查询。",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-weather-preparation-14",
+      "family": "preparation",
+      "task_type": "PREPARATION",
+      "initial_state": {
+        "destination": "秦皇岛",
+        "trip_dates": [
+          "2027-09-18",
+          "2027-09-20"
+        ],
+        "forecast": {
+          "source": "LOCAL_FIXTURE",
+          "precipitation_probability_max": 75,
+          "temperature_min": 14,
+          "temperature_max": 21
+        }
+      },
+      "invariants": [
+        "建议与已知天气数据相符",
+        "明确天气信息为参考"
+      ],
+      "turns": [
+        {
+          "user": "以秦皇岛这趟的日期为准，调取当地天气预报。",
+          "expected_action": "GET_TRIP_WEATHER",
+          "acceptable_actions": [
+            "GET_TRIP_WEATHER"
+          ],
+          "adjudication_note": "有明确旅行日期，可取得天气信息。",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "根据这些温度和降雨信息，行李里该放哪些衣物用品？",
+          "expected_action": "FINISH",
+          "acceptable_actions": [
+            "FINISH"
+          ],
+          "adjudication_note": "现有天气观察充足以给出普通穿衣与雨具建议，不需查询新工具。",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-discovery-clarify-15",
+      "family": "discovery",
+      "task_type": "DISCOVERY",
+      "initial_state": {
+        "destination": null,
+        "trip_dates": null
+      },
+      "invariants": [
+        "开放需求缺少目的地时询问关键上下文",
+        "避免无目标泛搜"
+      ],
+      "turns": [
+        {
+          "user": "爸妈带幼儿想周末出去透透气，不坐飞机的话目的地该怎么选？",
+          "expected_action": "ASK_USER",
+          "acceptable_actions": [
+            "ASK_USER"
+          ],
+          "adjudication_note": "目的地与日期都缺失，地点检索工具在此轮不可用，应先询问目的地。",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "就从苏州出发，安排两天，整体别太赶。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "目的地、时长和节奏偏好补齐后，可主动开始推荐。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-discovery-context-16",
+      "family": "discovery",
+      "task_type": "DISCOVERY",
+      "initial_state": {
+        "destination": "长沙",
+        "trip_dates": [
+          "2027-10-01",
+          "2027-10-02"
+        ],
+        "preferences": [
+          "城市文化"
+        ]
+      },
+      "invariants": [
+        "结合上下文继续完成推荐",
+        "将新增偏好用于检索"
+      ],
+      "turns": [
+        {
+          "user": "给我推荐些适合国庆的城市文化地点。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "上下文完整，开始找地点候选。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "补充，要能带小朋友一起，不要太晚结束。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "家庭适配和结束时间改变检索条件，继续搜索并保留前文偏好。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-schedule-fixed-preserve-17",
+      "family": "itinerary",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "destination": "常州",
+        "trip_dates": [
+          "2027-10-08",
+          "2027-10-08"
+        ],
+        "saved_places": 2,
+        "saved_place_details": [
+          {
+            "id": "cz-a",
+            "name": "博物馆",
+            "latitude": 31.78,
+            "longitude": 119.95,
+            "start_time": "09:30",
+            "duration_min": 120,
+            "fixed": true
+          },
+          {
+            "id": "cz-b",
+            "name": "历史街区",
+            "latitude": 31.79,
+            "longitude": 119.96,
+            "optional": true
+          }
+        ]
+      },
+      "invariants": [
+        "保留已有固定安排",
+        "使用本轮已存在的路线矩阵生成草案"
+      ],
+      "turns": [
+        {
+          "user": "博物馆预约已经定在九点半，两个点排一天。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "acceptable_actions": [
+            "GET_DISTANCE_MATRIX"
+          ],
+          "adjudication_note": "多地点首次排程先取得路线矩阵。",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "预约时间原样保留；请把历史街区接在参观结束之后。",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "acceptable_actions": [
+            "BUILD_SCHEDULE_DRAFT"
+          ],
+          "adjudication_note": "前轮矩阵有效，用户只指定顺序；生成草案且保留固定点。",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-failed-search-18",
+      "family": "search",
+      "task_type": "SEARCH",
+      "initial_state": {
+        "destination": "张家口",
+        "trip_dates": [
+          "2027-10-20",
+          "2027-10-21"
+        ],
+        "search_provider": "timeout"
+      },
+      "invariants": [
+        "搜索故障后透明告知",
+        "不把超时当作无结果"
+      ],
+      "turns": [
+        {
+          "user": "找一个适合看秋景的公园。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "条件明确，进行搜索尝试。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "如果刚才超时，就说明服务暂时不可用，不要编造地点。",
+          "expected_action": "FINISH",
+          "acceptable_actions": [
+            "FINISH",
+            "ASK_USER_OR_LABEL_UNVERIFIED"
+          ],
+          "adjudication_note": "本地工具观察记录超时，安全披露故障优于重复或捏造结果。",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-restaurant-meal-times-19",
+      "family": "meal",
+      "task_type": "MEAL",
+      "initial_state": {
+        "destination": "绍兴",
+        "trip_dates": [
+          "2027-11-02",
+          "2027-11-03"
+        ],
+        "meal_preferences": [
+          "本地小吃"
+        ],
+        "party_size": 2
+      },
+      "invariants": [
+        "地点候选按指定餐次检索",
+        "说明营业状态需另核"
+      ],
+      "turns": [
+        {
+          "user": "11月3日中午，在鲁迅故里周边挑几家能尝到绍兴小吃的餐馆。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "餐次、日期、品类和邻近点足以开始餐饮检索。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "如果没查到营业时间就提醒我出发前确认。",
+          "expected_action": "FINISH",
+          "acceptable_actions": [
+            "FINISH",
+            "ASK_USER_OR_LABEL_UNVERIFIED"
+          ],
+          "adjudication_note": "用户仅补充营业时间提醒要求，不改变搜索目标；无需重复检索，可带上核验提醒。",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "v7-context-ellipsis-20",
+      "family": "itinerary",
+      "task_type": "SCHEDULE",
+      "initial_state": {
+        "destination": "佛山",
+        "trip_dates": [
+          "2027-11-14",
+          "2027-11-15"
+        ],
+        "saved_places": 2,
+        "saved_place_details": [
+          {
+            "id": "fs-a",
+            "name": "祖庙",
+            "latitude": 23.03,
+            "longitude": 113.12
+          },
+          {
+            "id": "fs-b",
+            "name": "岭南天地",
+            "latitude": 23.03,
+            "longitude": 113.11
+          }
+        ],
+        "user_constraints": [
+          "第二天下午留空"
+        ]
+      },
+      "invariants": [
+        "解析省略指代并继承第二天下午留空约束",
+        "不因自然语言表达变化丢失旅行状态"
+      ],
+      "turns": [
+        {
+          "user": "把祖庙和岭南天地安排在两天里，第二天下午留空。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "acceptable_actions": [
+            "GET_DISTANCE_MATRIX"
+          ],
+          "adjudication_note": "两个地点跨日安排需先确认路线时间。",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        },
+        {
+          "user": "那就按你说的轻松点，空出来的时间别再塞东西。",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "acceptable_actions": [
+            "BUILD_SCHEDULE_DRAFT"
+          ],
+          "adjudication_note": "复用前轮已验证矩阵，执行时继承第二天下午留空；该措辞承接前文而非新任务。",
+          "allowed_tools": [
+            "get_distance_matrix",
+            "build_schedule_draft"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION"
+        }
+      ]
+    }
+  ]
+}

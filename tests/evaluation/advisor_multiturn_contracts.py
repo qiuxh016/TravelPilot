@@ -59,6 +59,10 @@ EXPECTED_AGENT_TOOLS = {
     "BUILD_SCHEDULE_DRAFT": "build_schedule_draft",
     "GET_TRIP_ROUTE": "get_trip_route",
 }
+V7_AGENT_ACTION_LABELS = set(EXPECTED_AGENT_TOOLS) | {
+    "ASK_USER", "ASK_USER_OR_LABEL_ASSUMPTION", "ASK_USER_OR_LABEL_UNVERIFIED",
+    "ASK_USER_TO_RELAX_CONSTRAINT", "FINISH",
+}
 
 
 def _is_holdout_dataset(dataset_id: Any) -> bool:
@@ -113,6 +117,21 @@ def validate_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError(f"{case_id} turn {index}: user input is required")
             if not isinstance(turn.get("expected_action"), str) or not turn["expected_action"]:
                 raise ValueError(f"{case_id} turn {index}: expected_action is required")
+            accepted = turn.get("acceptable_actions", [turn["expected_action"]])
+            if (
+                not isinstance(accepted, list) or not accepted
+                or any(not isinstance(value, str) or not value for value in accepted)
+                or len(set(accepted)) != len(accepted)
+                or turn["expected_action"] not in accepted
+            ):
+                raise ValueError(f"{case_id} turn {index}: acceptable_actions must be a unique set containing expected_action")
+            if dataset.get("dataset_id") == "advisor_multiturn_holdout_v7" and not isinstance(turn.get("adjudication_note"), str):
+                raise ValueError(f"{case_id} turn {index}: v7 requires a per-turn adjudication note")
+            if dataset.get("dataset_id") == "advisor_multiturn_holdout_v7":
+                if len(turns) != 2 or turn.get("action_owner") != "AGENT_DECISION":
+                    raise ValueError(f"{case_id} turn {index}: v7 requires two Agent-owned decisions")
+                if any(value not in V7_AGENT_ACTION_LABELS for value in accepted):
+                    raise ValueError(f"{case_id} turn {index}: v7 action set contains an unsupported AgentAction label")
             if turn.get("expected_status") not in STATUSES:
                 raise ValueError(f"{case_id} turn {index}: unsupported expected_status")
             tools = turn.get("allowed_tools")
@@ -120,6 +139,11 @@ def validate_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
                 not isinstance(tool, str) or not tool for tool in tools
             ):
                 raise ValueError(f"{case_id} turn {index}: allowed_tools must be a string array")
+            if dataset.get("dataset_id") == "advisor_multiturn_holdout_v7":
+                for value in accepted:
+                    required_tool = EXPECTED_AGENT_TOOLS.get(value)
+                    if required_tool and required_tool not in tools:
+                        raise ValueError(f"{case_id} turn {index}: accepted action tool is absent from the allowlist")
             if _is_holdout_dataset(dataset.get("dataset_id")):
                 expected_tool = EXPECTED_AGENT_TOOLS.get(turn["expected_action"])
                 if expected_tool and expected_tool not in tools:

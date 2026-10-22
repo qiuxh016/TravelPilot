@@ -162,7 +162,7 @@ def test_grounded_holdout_v2_runs_through_action_and_tool_schema_checks(monkeypa
             for case in group["runs"] for turn in case["turns"]
             if turn["expected_action_match"] is not True
         ]
-        assert group["complete_task_matches"] == 5
+        assert group["action_sequences_matched"] == 5
         assert group["invalid_actions"] == 0
         assert group["allowlist_violations"] == 0
 
