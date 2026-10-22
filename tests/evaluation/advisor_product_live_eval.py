@@ -249,9 +249,16 @@ def _verify_server_token_caps(
     }
 
 
-def _provider_mode(llm_base_url: str, *, model_is_local_stub: bool = False) -> str:
+def _provider_mode(
+    llm_base_url: str,
+    *,
+    model_is_local_stub: bool = False,
+    model_is_bounded_proxy: bool = False,
+) -> str:
     if model_is_local_stub:
         return "LOCAL_MODEL_STUB_REAL_ADVISOR_API_FAKE_MAPS"
+    if model_is_bounded_proxy:
+        return "LIVE_MODEL_REAL_ADVISOR_API_FAKE_MAPS_BOUNDED_PROXY"
     hostname = (urlparse(llm_base_url).hostname or "").lower()
     if hostname in {"localhost", "127.0.0.1", "::1"}:
         return "LOCAL_MODEL_STUB_REAL_ADVISOR_API_FAKE_MAPS"
@@ -1089,6 +1096,7 @@ async def run_eval(
     *, base_url: str, output: Path, server_output_cap: int | None = None,
     server_session_cap: int | None = None, trip_start_date: date | None = None,
     scenario_id: str = "schedule-two-turn", model_is_local_stub: bool = False,
+    model_is_bounded_proxy: bool = False,
 ) -> dict[str, Any]:
     if output.exists():
         raise FileExistsError(f"refusing to overwrite evaluation report: {output}")
@@ -1096,7 +1104,11 @@ async def run_eval(
     if scenario is None:
         raise ValueError(f"unknown product evaluation scenario: {scenario_id}")
     start, end = _resolve_trip_dates(trip_start_date)
-    provider_mode = _provider_mode(settings.llm_base_url, model_is_local_stub=model_is_local_stub)
+    provider_mode = _provider_mode(
+        settings.llm_base_url,
+        model_is_local_stub=model_is_local_stub,
+        model_is_bounded_proxy=model_is_bounded_proxy,
+    )
     if provider_mode.startswith("LIVE_MODEL") and (
         server_output_cap is None or server_session_cap is None
     ):

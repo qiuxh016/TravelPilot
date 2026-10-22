@@ -9,7 +9,7 @@ def test_packet_uses_only_complete_successful_anonymized_turns(tmp_path, monkeyp
     monkeypatch.setattr(packet, "RESULTS", tmp_path)
     monkeypatch.setattr(packet, "SCENARIOS", ("case-a",))
     report = {
-        "provider_mode": "LIVE_MODEL_REAL_ADVISOR_API_FAKE_MAPS",
+        "provider_mode": "LIVE_MODEL_REAL_ADVISOR_API_FAKE_MAPS_BOUNDED_PROXY",
         "scenario_id": "case-a",
         "run_at_utc": "2026-10-20T00:08:30+00:00",
         "model": "must-not-leak",

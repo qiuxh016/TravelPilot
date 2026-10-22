@@ -61,7 +61,7 @@ def _evidence(turn: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
 def _load_conversation_path(path: Path, scenario: str) -> list[dict[str, Any]]:
     report = json.loads(path.read_text(encoding="utf-8"))
     if (
-        report.get("provider_mode") != "LIVE_MODEL_REAL_ADVISOR_API_FAKE_MAPS"
+        not str(report.get("provider_mode", "")).startswith("LIVE_MODEL_REAL_ADVISOR_API_FAKE_MAPS")
         or report.get("scenario_id") != scenario
         or report.get("failure") is not None
         or report.get("product_assessment", {}).get("passed") is not True

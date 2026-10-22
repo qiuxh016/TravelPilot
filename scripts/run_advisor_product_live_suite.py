@@ -16,6 +16,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.error import URLError
+from urllib.parse import urlsplit
 from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +65,54 @@ def _free_port() -> int:
 def _read_url(url: str) -> bytes:
     with urlopen(url, timeout=2) as response:
         return response.read()
+
+
+def _proxy_budget_url(base_url: str) -> str:
+    parsed = urlsplit(base_url)
+    if (
+        parsed.scheme != "http"
+        or parsed.hostname not in {"127.0.0.1", "::1", "localhost"}
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RuntimeError("bounded evaluation proxy must use an HTTP loopback URL")
+    return f"{parsed.scheme}://{parsed.netloc}/budget"
+
+
+def _read_proxy_budget(base_url: str) -> dict:
+    with urlopen(_proxy_budget_url(base_url), timeout=2) as response:
+        payload = json.loads(response.read())
+    if not isinstance(payload, dict):
+        raise TypeError("bounded evaluation proxy returned an invalid budget status")
+    return payload
+
+
+def _validate_fresh_proxy_budget(
+    base_url: str,
+    budget: dict,
+    *,
+    aggregate_cap: int,
+    maximum_required: int,
+) -> None:
+    int_fields = (
+        "admitted_requests", "requested_output_tokens", "max_requests",
+        "max_requested_output_tokens", "max_output_tokens_per_request",
+    )
+    if (
+        budget.get("upstream_origin") != "https://api.deepseek.com"
+        or any(
+            isinstance(budget.get(field), bool) or not isinstance(budget.get(field), int)
+            for field in int_fields
+        )
+        or budget["admitted_requests"] != 0
+        or budget["requested_output_tokens"] != 0
+        or not 1 <= budget["max_requests"] <= 120
+        or not maximum_required <= budget["max_requested_output_tokens"] <= aggregate_cap
+        or not 1 <= budget["max_output_tokens_per_request"] <= 512
+    ):
+        raise RuntimeError("bounded evaluation proxy has an unsafe, used, or undersized budget")
 
 
 async def _wait_http(url: str, process: asyncio.subprocess.Process) -> None:
@@ -222,6 +271,7 @@ async def _run(
     per_turn_cap: int,
     session_cap: int,
     aggregate_cap: int,
+    require_bounded_proxy: bool = False,
 ) -> dict:
     if not settings.llm_api_key or not settings.llm_model:
         raise RuntimeError("LLM_API_KEY and LLM_MODEL must be configured in .env")
@@ -229,6 +279,17 @@ async def _run(
         raise FileExistsError(f"refusing to overwrite report: {output}")
     output.parent.mkdir(parents=True, exist_ok=True)
     reports = []
+    proxy_initial = None
+    if require_bounded_proxy:
+        proxy_initial = _read_proxy_budget(settings.llm_base_url)
+        _validate_fresh_proxy_budget(
+            settings.llm_base_url,
+            proxy_initial,
+            aggregate_cap=aggregate_cap,
+            maximum_required=_maximum_output_for_scenarios(
+                scenarios, per_turn_cap, session_cap,
+            ),
+        )
     api: asyncio.subprocess.Process | None = None
     active_group = None
     try:
@@ -272,6 +333,7 @@ async def _run(
                 output=scenario_output,
                 scenario_id=scenario_id,
                 model_is_local_stub=False,
+                model_is_bounded_proxy=require_bounded_proxy,
                 server_output_cap=per_turn_cap,
                 server_session_cap=session_cap,
             )
@@ -295,6 +357,16 @@ async def _run(
                 completion_tokens, session_completion_tokens, strict=True
             )
         ) and sum(completion_tokens) <= aggregate_cap
+        proxy_final = (
+            _read_proxy_budget(settings.llm_base_url)
+            if require_bounded_proxy else None
+        )
+        proxy_budget_respected = proxy_final is None or (
+            proxy_final.get("admitted_requests", 0) <= proxy_final.get("max_requests", -1)
+            and proxy_final.get("requested_output_tokens", 0)
+            <= proxy_final.get("max_requested_output_tokens", -1)
+            and proxy_final.get("requested_output_tokens", 0) <= aggregate_cap
+        )
         result = {
             "evaluation_id": "advisor_product_live_suite_v1",
             "model": settings.llm_model,
@@ -309,11 +381,14 @@ async def _run(
             "temporary_accounts_deleted": all(item["account_deleted"] for item in summary.values()),
             "all_scenarios_passed": len(reports) == len(scenarios)
             and all(item["passed"] and item["account_deleted"] for item in summary.values())
-            and token_caps_respected,
+            and token_caps_respected and proxy_budget_respected,
             "maps_weather_mode": "FAKE_MAPS_AND_LOCAL_SYNTHETIC_WEATHER",
             "per_turn_output_cap": per_turn_cap,
             "per_session_output_cap": session_cap,
             "aggregate_output_token_cap": aggregate_cap,
+            "bounded_provider_proxy_required": require_bounded_proxy,
+            "provider_proxy_budget": proxy_final,
+            "provider_proxy_budget_respected": proxy_budget_respected,
             "summary": summary,
             "product_metrics": _aggregate_product_metrics(list(summary.values())),
             "scenario_reports": [
@@ -335,6 +410,10 @@ def main() -> None:
     parser.add_argument("--per-turn-token-cap", type=int, default=128)
     parser.add_argument("--session-token-cap", type=int, default=256)
     parser.add_argument("--aggregate-token-cap", type=int, default=DEFAULT_TOTAL_OUTPUT_TOKEN_CAP)
+    parser.add_argument(
+        "--require-bounded-proxy", action="store_true",
+        help="require a fresh loopback proxy and enforce provider request plus requested-token ceilings",
+    )
     args = parser.parse_args()
     if not 128 <= args.per_turn_token_cap <= 512:
         parser.error("per-turn output cap must be between 128 and 512")
@@ -355,6 +434,7 @@ def main() -> None:
     asyncio.run(_run(
         args.output.resolve(), scenarios,
         args.per_turn_token_cap, args.session_token_cap, args.aggregate_token_cap,
+        args.require_bounded_proxy,
     ))
 
 

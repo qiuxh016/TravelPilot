@@ -1,7 +1,52 @@
 from scripts.run_advisor_product_live_suite import (
     _aggregate_product_metrics,
+    _proxy_budget_url,
     _scenario_summary,
+    _validate_fresh_proxy_budget,
 )
+
+
+def test_proxy_budget_validation_rejects_used_wrong_origin_and_undersized():
+    fresh = {
+        "upstream_origin": "https://api.deepseek.com",
+        "admitted_requests": 0,
+        "requested_output_tokens": 0,
+        "max_requests": 120,
+        "max_requested_output_tokens": 9000,
+        "max_output_tokens_per_request": 512,
+    }
+    _validate_fresh_proxy_budget(
+        "http://127.0.0.1:8022/v1", fresh, aggregate_cap=10240, maximum_required=8704,
+    )
+    for changes in (
+        {"admitted_requests": 1},
+        {"upstream_origin": "https://attacker.invalid"},
+        {"max_requested_output_tokens": 8000},
+        {"max_requests": True},
+    ):
+        try:
+            _validate_fresh_proxy_budget(
+                "http://127.0.0.1:8022/v1",
+                {**fresh, **changes},
+                aggregate_cap=10240,
+                maximum_required=8704,
+            )
+        except RuntimeError:
+            continue
+        raise AssertionError(f"invalid proxy budget was accepted: {changes}")
+
+
+def test_proxy_budget_url_rejects_non_loopback_and_url_credentials():
+    assert _proxy_budget_url("http://localhost:8022/v1") == "http://localhost:8022/budget"
+    for url in (
+        "http://remote.example:8022/v1",
+        "http://user:pass@127.0.0.1:8022/v1",
+    ):
+        try:
+            _proxy_budget_url(url)
+        except RuntimeError:
+            continue
+        raise AssertionError(f"invalid proxy URL was accepted: {url}")
 
 
 def test_scenario_summary_aggregates_trace_and_token_metrics():

@@ -1,0 +1,144 @@
+{
+  "evaluation_id": "advisor_product_response_v1",
+  "status": "FROZEN_FOR_REVIEW_PROTOCOL_ONLY",
+  "created_at": "2026-10-23",
+  "case_count": 16,
+  "user_turn_count": 20,
+  "case_source": "scripts/run_advisor_product_live_suite.py::SCENARIO_ORDER",
+  "prompt_source": "tests/evaluation/advisor_product_live_eval.py::SCENARIOS",
+  "cases": [
+    {
+      "scenario_id": "schedule-two-turn",
+      "turn_count": 2,
+      "user_turn_sha256": [
+        "90efe0d9f818419fc95756f5d83194a22ddebd6d468be46fc5f191b87b54dfcf",
+        "5289a17e6505145b13fb3b65a30e6b4b6ae6cce74889f63c31761081d61f56d7"
+      ],
+      "focus": "open-ended planning and explicit no-save boundary"
+    },
+    {
+      "scenario_id": "schedule-route-weather",
+      "turn_count": 2,
+      "user_turn_sha256": [
+        "c0c8c9d421abd8ef105208ce7fc125ad7c99b94c53a227911fe29d6cd5b87ea9",
+        "7d88e155cd4189118afe21dda498c17a6fde7791a8d139f1b0689a2b119743c8"
+      ],
+      "focus": "route evidence and weather preparation across turns"
+    },
+    {
+      "scenario_id": "schedule-proposal-edit",
+      "turn_count": 2,
+      "user_turn_sha256": [
+        "25ead1b3193cf8cf8f189a2aa9ee0927ab4b8ccee98b54699c55ea0d2da746db",
+        "c04fe7f21aa600f51e31775fb8793fb10c2529547cb65882114b02a2f8887ab1"
+      ],
+      "focus": "preserve schedule constraints through a multi-turn edit"
+    },
+    {
+      "scenario_id": "lunch-only",
+      "turn_count": 1,
+      "user_turn_sha256": [
+        "92acf117750a7588cfff10403163824a74f207abc93cf8a12b66fbe9a224ed3f"
+      ],
+      "focus": "stay within meal-only scope"
+    },
+    {
+      "scenario_id": "lunch-weather-preparation",
+      "turn_count": 1,
+      "user_turn_sha256": [
+        "03287837b47503aae317e1b6c072f76a5bde5290b1c6fee0f601826011a4d178"
+      ],
+      "focus": "combine meal search with practical weather advice"
+    },
+    {
+      "scenario_id": "lunch-weather-weather-outage",
+      "turn_count": 1,
+      "user_turn_sha256": [
+        "03287837b47503aae317e1b6c072f76a5bde5290b1c6fee0f601826011a4d178"
+      ],
+      "focus": "disclose unavailable forecast while preserving meal task"
+    },
+    {
+      "scenario_id": "mixed-attraction-lunch",
+      "turn_count": 1,
+      "user_turn_sha256": [
+        "e92b2d5c2baa51845386f0855a46fb590a939c5c5881b2433218c146fffaac58"
+      ],
+      "focus": "separate place categories and avoid premature writes"
+    },
+    {
+      "scenario_id": "mixed-attraction-lunch-draft",
+      "turn_count": 1,
+      "user_turn_sha256": [
+        "51fd5c5a227cab6697c1c834b2bdeec216e5d79e238e483e6399d5d88864bf3d"
+      ],
+      "focus": "reflect user choice in a pending draft only"
+    },
+    {
+      "scenario_id": "lodging-only",
+      "turn_count": 1,
+      "user_turn_sha256": [
+        "8a122f9e17b8e3436b7a300bcebd46adc1719cdaac9dbec0531705ec368c4544"
+      ],
+      "focus": "stay within lodging-only scope and do not imply booking"
+    },
+    {
+      "scenario_id": "general-trip-question",
+      "turn_count": 1,
+      "user_turn_sha256": [
+        "6cfbc5970295436a150698b8de8d2d407164f85e035ac0b034a87e0b79ec8e14"
+      ],
+      "focus": "use existing trip context for an open-ended answer"
+    },
+    {
+      "scenario_id": "weather-preparation",
+      "turn_count": 1,
+      "user_turn_sha256": [
+        "2ff3d9b5f9291b3cdb514356c03c72cdd3bf929f4a4361d1dfa881007cc6c07b"
+      ],
+      "focus": "give appropriately bounded preparation advice"
+    },
+    {
+      "scenario_id": "route-weather-preparation",
+      "turn_count": 1,
+      "user_turn_sha256": [
+        "40f668537f053c516c948444d72a92c3cc4146c293102f358aaa3694efa067a0"
+      ],
+      "focus": "combine verified route and weather context"
+    },
+    {
+      "scenario_id": "route-weather-route-outage",
+      "turn_count": 1,
+      "user_turn_sha256": [
+        "40f668537f053c516c948444d72a92c3cc4146c293102f358aaa3694efa067a0"
+      ],
+      "focus": "recover transparently from route failure"
+    },
+    {
+      "scenario_id": "route-weather-weather-outage",
+      "turn_count": 1,
+      "user_turn_sha256": [
+        "40f668537f053c516c948444d72a92c3cc4146c293102f358aaa3694efa067a0"
+      ],
+      "focus": "preserve route result while disclosing weather failure"
+    },
+    {
+      "scenario_id": "weather-indoor-search",
+      "turn_count": 1,
+      "user_turn_sha256": [
+        "2579a1e6f1c668518451b749034ee55f983b1b61ef8531885925c622d59d07dd"
+      ],
+      "focus": "scope weather-aware fallback search"
+    },
+    {
+      "scenario_id": "route-provider-outage",
+      "turn_count": 2,
+      "user_turn_sha256": [
+        "90efe0d9f818419fc95756f5d83194a22ddebd6d468be46fc5f191b87b54dfcf",
+        "5289a17e6505145b13fb3b65a30e6b4b6ae6cce74889f63c31761081d61f56d7"
+      ],
+      "focus": "continue itinerary request without fabricating route evidence"
+    }
+  ],
+  "scope_note": "Established product scenarios, not unseen-task prompts. Do not use as a new blind action holdout."
+}
