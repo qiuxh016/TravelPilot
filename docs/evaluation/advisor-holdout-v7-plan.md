@@ -38,6 +38,18 @@ The authorized run is complete and recorded in `docs/evaluation/advisor-holdout-
 
 Capture complete, bounded Chinese replies through the authenticated Advisor API using matched prompts, context, model settings, and source manifests. Generate an anonymized paired review sheet and keep the private arm key separate. Obtain independent human ratings for grounding, constraint safety, task progress, clarification quality, and transparency. The existing blind-review packager can prepare and summarize the sheet, but no human score may be reported until reviewers complete it. This product-response run and any additional model budget require their own concrete protocol and authorization.
 
+### Existing single-system review handoff
+
+The authorized 2026-10-20 full product-response run already has an unrated quality sheet at `tests/evaluation/reviews/advisor_product_quality_review_user_authorized_20261020_v4.json` (16 conversations / 20 turns). It is a descriptive single-system review, not a paired B1/B2/B3 comparison. An independent reviewer should fill each response's five `scores` fields (`factual_grounding`, `constraint_safety`, `task_progress`, `clarification_quality`, `transparency`) with integers from 1 to 5 and optionally add `reviewer_notes`; do not change the conversation text or IDs. After receiving the completed sheet, validate and summarize it without overwriting the input:
+
+```powershell
+.venv/Scripts/python.exe tests/evaluation/summarize_product_quality_review.py `
+  tests/evaluation/reviews/advisor_product_quality_review_user_authorized_20261020_v4.json `
+  tests/evaluation/reviews/advisor_product_quality_summary_user_authorized_20261020_v4.json
+```
+
+This closes only the existing single-system response-quality review. A paired blind B1/B2/B3 rating still requires a new matched capture, a separate private arm key, and completed independent ratings.
+
 ## Exit state
 
 P0 remains open until the reference-valid fresh action evaluation, supported matched B1, production B3, full product-response capture, failure analysis, and independent blind review are complete. Do not infer general competence from a small exploratory set. Keep production external trial and continuous-operations requirements out of this plan, as previously requested.
