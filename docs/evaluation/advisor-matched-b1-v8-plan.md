@@ -1,7 +1,7 @@
 # Matched fixed-workflow baseline v8 plan
 
 Updated: 2026-10-23  
-Status: protocol and four-case matched diagnostic set prepared; exact-prompt check passes; legacy-service startup preflight incomplete; not authorized or run.
+Status: protocol and four-case matched diagnostic set prepared; exact-prompt check passes; legacy import/OpenAPI and interpretation-unit preflight pass; full authenticated legacy-service startup preflight incomplete; not authorized or run.
 
 ## Purpose
 
@@ -29,7 +29,7 @@ The run must not begin until the fresh case file, semantic-overlap review, basel
 ## Required local preflight before seeking run approval
 
 1. Implement a frozen four-case dataset and a validator for both turns, state carryover, map fixture coordinates, expected outcome invariants, and exact prompt non-reuse. **Prepared locally:** the dataset test checks four two-turn cases, coordinates, acceptance invariants, strict run limits, and exact prompt overlap against prior case JSON and registered product scenarios. It does not prove semantic independence.
-2. Prove the pinned B1 source can be launched against an isolated schema/database and can execute the supported schedule cases without modifying the current checkout or production data.
+2. Prove the pinned B1 source can be launched against an isolated schema/database and can execute the supported schedule cases without modifying the current checkout or production data. **Partial local check:** a detached worktree at the pinned B1 revision imported successfully with eight Advisor OpenAPI paths, including the message endpoint; its interpretation unit suite passed **22 tests**. The worktree was removed afterward. This does not prove database-backed startup or the authenticated end-to-end schedule flow.
 3. Run the same cases against B2/B3 with a loopback model stub; validate request/token ceilings, synthetic provider isolation, formal-write prevention, temporary-account cleanup, and full response capture.
 4. Fail closed if the B1/B2/B3 inputs or state differ, a provider is not local, cleanup fails, or any budget ceiling is missing.
 
