@@ -87,6 +87,8 @@ The completed roadmap above remains closed for its local-scope acceptance criter
 
 **Execution record (2026-10-22, v6 reference-label audit):** Post-run review found at least six second-turn expected actions inconsistent with the carried tool history or user request: three schedule turns require a repeated route-matrix call after verified route evidence, two follow-ups require searches that cannot address the clarified safety/booking concern, and one discovery follow-up requires finishing despite missing trip facts and no discovery tool. Several other labels need adjudication. Do not interpret the original strict-match percentages or task counts as comparative quality evidence; raw outputs remain unchanged and v6 remains exposed. Next evaluation requires a new version with tool-result-aware state transitions and adjudicated acceptable-action sets. Details: `docs/evaluation/advisor-holdout-v6-results.md`.
 
+The corrective v7 evaluation protocol is documented at `docs/evaluation/advisor-holdout-v7-plan.md`. Its proposed live action run has a separate 120-request / 15,360-output-token ceiling and requires new authorization; independent product-response review remains a separate gate.
+
 ### Indicative six-week sequence
 
 | Week | Focus | Deliverable |
