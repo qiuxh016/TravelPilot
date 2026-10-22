@@ -147,6 +147,26 @@ def _safe_action(action: AgentAction) -> dict[str, Any]:
     return action.model_dump(mode="json")
 
 
+def _validate_fixture_evidence(dataset: dict[str, Any]) -> None:
+    """Fail before spending model calls when a tool fixture lacks grounding."""
+    for case in dataset.get("cases", []):
+        if not any(
+            "get_trip_route" in turn.get("allowed_tools", [])
+            for turn in case.get("turns", [])
+        ):
+            continue
+        places = case.get("initial_state", {}).get("known_places")
+        ids = {
+            place.get("id")
+            for place in places
+            if isinstance(place, dict) and isinstance(place.get("id"), str) and place["id"]
+        } if isinstance(places, list) else set()
+        if len(ids) < 2:
+            raise ValueError(
+                f"{case.get('id')}: route evaluation requires at least two grounded known_places IDs"
+            )
+
+
 async def _run_turn(
     *,
     case: dict[str, Any],
@@ -374,6 +394,7 @@ async def run_live(
         raise ValueError("aggregate requested output ceiling exceeds the authorized token budget")
     dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
     contract_report = validate_dataset(dataset)
+    _validate_fixture_evidence(dataset)
     reference_sets = load_holdout_references(dataset, cases_directory=dataset_path.parent)
     separation = validate_holdout_separation(dataset, reference_sets)
     cases = dataset["cases"]
@@ -485,7 +506,7 @@ async def run_live(
             ),
         }
     return {
-        "evaluation_id": "advisor_unseen_multiturn_pilot_v1",
+        "evaluation_id": f"advisor_unseen_multiturn_pilot_{dataset.get('version', 'unknown')}",
         "provider_mode": "LIVE_MODEL_WITH_PRODUCTION_RUNTIME_AND_SYNTHETIC_TOOLS",
         "dataset_id": dataset["dataset_id"],
         "dataset_sha256": hashlib.sha256(dataset_path.read_bytes()).hexdigest(),
@@ -530,6 +551,7 @@ def main() -> None:
     parser.add_argument("--request-cap", type=int, default=DEFAULT_REQUEST_CAP)
     parser.add_argument("--output-token-cap", type=int, default=DEFAULT_OUTPUT_CAP)
     parser.add_argument("--total-output-token-cap", type=int, default=DEFAULT_TOTAL_OUTPUT_CAP)
+    parser.add_argument("--dataset", type=Path, default=DATASET)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if not args.run_live:
@@ -538,6 +560,7 @@ def main() -> None:
 
     report = asyncio.run(
         run_live(
+            dataset_path=args.dataset,
             api_key=settings.llm_api_key,
             model=settings.llm_model,
             base_url=settings.llm_base_url,
