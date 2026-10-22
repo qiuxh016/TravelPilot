@@ -629,6 +629,7 @@ async def run_live(
         case_ids = tuple(defaults) if isinstance(defaults, list) else CASE_IDS
     holdout_separation = None
     is_holdout = _is_holdout_dataset(dataset.get("dataset_id"))
+    enforce_single_exposure = dataset.get("dataset_id") == "advisor_multiturn_holdout_v7"
     if is_holdout:
         validate_dataset(dataset)
         if dataset.get("status") != "FROZEN_NOT_SCORED":
@@ -658,7 +659,7 @@ async def run_live(
             raise ValueError(f"{case['id']} has a tool without a read-only evaluation schema")
 
     exposure_marker = None
-    if is_holdout:
+    if enforce_single_exposure:
         exposure_marker = _holdout_exposure_marker(dataset["dataset_id"])
         exposure_marker.parent.mkdir(parents=True, exist_ok=True)
         try:

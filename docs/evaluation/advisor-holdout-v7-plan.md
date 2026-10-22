@@ -30,6 +30,10 @@ The user authorized this v7 run: **up to 120 requests, 128 output tokens per req
 
 The evaluator B3 arm executes selected actions through the production constrained loop and production search/weather/matrix/route evidence validators. It uses local bounded safe-stop recovery and does not exercise database-backed interrupted-action checkpoint restoration or the full authenticated Advisor HTTP workflow; its results must be described with that boundary.
 
+## Live action results
+
+The authorized run is complete and recorded in `docs/evaluation/advisor-holdout-v7-results.md`. It used 80/120 allowed requests and 2,303 reported output tokens under the 15,360-token authorization. B2 and B3 each matched 39/40 adjudicated actions and 19/20 complete action sequences; both missed the same meal-scope case by asking an unnecessary question despite sufficient destination/date/food context. B3 verified 27 local fixture tool calls and safely stopped once on a synthetic route timeout. The holdout is now `EXPOSED` and cannot be used as a fresh blind set.
+
 ## Separate response-quality gate
 
 Capture complete, bounded Chinese replies through the authenticated Advisor API using matched prompts, context, model settings, and source manifests. Generate an anonymized paired review sheet and keep the private arm key separate. Obtain independent human ratings for grounding, constraint safety, task progress, clarification quality, and transparency. The existing blind-review packager can prepare and summarize the sheet, but no human score may be reported until reviewers complete it. This product-response run and any additional model budget require their own concrete protocol and authorization.

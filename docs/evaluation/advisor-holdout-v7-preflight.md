@@ -35,6 +35,8 @@ Updated: 2026-10-22
 
 These hashes are checked against the frozen tree before the live run. Any source or dataset change requires a new preflight and a new holdout version.
 
+The evaluator SHA above (`7d3dc9...`) is the exact source used for the scored run. A post-run compatibility fix narrowed the exclusive exposure marker to v7 only; other historical holdouts retain their previous test/replay behavior. Current evaluator SHA after this non-scoring-path fix: `d20ecbfa91c57ee0af1a8181506133449b979575f720452216d4b9d115a6478c`. The complete API/evaluation suite passes on this current source.
+
 ## Local preflight results
 
 Commands from the repository root:
@@ -45,7 +47,9 @@ Commands from the repository root:
 ruff check tests/evaluation/advisor_multiturn_live_eval.py tests/evaluation/advisor_multiturn_contracts.py tests/evaluation/test_advisor_multiturn_live_eval.py tests/evaluation/test_advisor_multiturn_contracts.py
 ```
 
-Results: contract validation passed; **58 focused tests passed**; Ruff passed. This includes a one-time exposure-marker regression: the marker is written before scoring and blocks a second attempt. A separate local fixture replay sent all 40 adjudicated actions through the B3 constrained runtime: 36 completed tool/finish transitions, 4 user-input transitions, 25 verified tool calls, and no loop failures. Dedicated tests cover production route evidence acceptance, production search/weather/matrix verification, and route-provider timeout safe-stop recovery. No model requests were sent in preflight.
+Results before scoring: contract validation passed; **58 focused tests passed**; Ruff passed. This includes a one-time exposure-marker regression: the marker is written before scoring and blocks a second attempt. A separate local fixture replay sent all 40 adjudicated actions through the B3 constrained runtime: 36 completed tool/finish transitions, 4 user-input transitions, 25 verified tool calls, and no loop failures. Dedicated tests cover production route evidence acceptance, production search/weather/matrix verification, and route-provider timeout safe-stop recovery. No model requests were sent in preflight.
+
+Post-run regression: **1,087 API/evaluation tests passed**, one existing Starlette/httpx deprecation warning; Ruff passed. This additionally verifies the exposed status and v7-only marker behavior against historical holdout tests.
 
 ## Authorized live run cap
 

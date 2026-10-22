@@ -1,7 +1,7 @@
 {
   "dataset_id": "advisor_multiturn_holdout_v7",
   "version": 7,
-  "status": "FROZEN_NOT_SCORED",
+  "status": "EXPOSED",
   "provider_mode": "synthetic_contract",
   "frozen_before_scoring": true,
   "scope": "Twenty independently authored two-turn continuation cases with per-turn adjudicated safe action sets and full synthetic state/tool-result carryover.",

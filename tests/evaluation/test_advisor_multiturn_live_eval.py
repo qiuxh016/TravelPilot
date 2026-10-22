@@ -134,7 +134,19 @@ async def test_v7_holdout_exposure_marker_blocks_a_second_scoring_attempt(monkey
         )
 
     monkeypatch.setattr(evaluation, "decide_next_action", fake_decision)
-    dataset_path = evaluation.ROOT / "tests/evaluation/cases/advisor_multiturn_holdout_v7.json"
+    source_path = evaluation.ROOT / "tests/evaluation/cases/advisor_multiturn_holdout_v7.json"
+    dataset = evaluation.json.loads(source_path.read_text(encoding="utf-8"))
+    dataset["status"] = "FROZEN_NOT_SCORED"
+    dataset_path = tmp_path / "advisor_multiturn_holdout_v7.json"
+    dataset_path.write_text(evaluation.json.dumps(dataset), encoding="utf-8")
+    load_references = evaluation.load_holdout_references
+    monkeypatch.setattr(
+        evaluation,
+        "load_holdout_references",
+        lambda frozen, cases_directory: load_references(
+            frozen, cases_directory=source_path.parent,
+        ),
+    )
     case_id = "v7-context-carryover-01"
     report = await evaluation.run_live(
         dataset_path=dataset_path,
