@@ -128,6 +128,7 @@ async def test_b3_recovery_does_not_repeat_a_failed_provider_action(monkeypatch)
             "tool": "get_distance_matrix",
             "status": "FAILED",
             "error": "MAP_TIMEOUT",
+            "latency_ms": 0,
         }
     ]
 

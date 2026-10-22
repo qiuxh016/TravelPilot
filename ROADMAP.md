@@ -77,6 +77,8 @@ The completed roadmap above remains closed for its local-scope acceptance criter
 
 **Execution record (2026-10-22, redacted diagnostics export):** Added an owner-scoped Advisor diagnostics endpoint and a chat-page export action. The export is capped at the latest 250 events and uses a strict metadata allowlist for timings, token counts, plan/draft/context versions, evidence source/status, and sanitized tool transitions; it excludes user/assistant message text, candidate names, query/input payloads, arbitrary event metadata, and model reasoning. API tests verify authorization scoping, the query limit, and redaction of seeded private text. Targeted diagnostics/session/trace tests: **8 passed**; Ruff and TypeScript check passed. This is an operational support export, not a full cost accounting surface; provider price schedules and per-plan cost attribution remain to be designed.
 
+**Execution record (2026-10-22, full local regression):** Full API/evaluation suite passed **1,073 tests** after updating the failed-tool trace assertion for the new measured-latency field. Ruff, TypeScript, and Next.js production build passed. One existing Starlette/httpx deprecation warning remains. No live-model or external map/weather calls were made in this verification.
+
 ### Indicative six-week sequence
 
 | Week | Focus | Deliverable |
