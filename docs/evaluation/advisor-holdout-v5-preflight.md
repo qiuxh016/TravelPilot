@@ -24,6 +24,8 @@ B3 ended 33/40 turns as `SUCCEEDED`, versus 7/40 for B2; B2 hit its step limit i
 
 The run output is retained locally at the ignored path `tests/evaluation/results/advisor_unseen_multiturn_pilot_v5.json`; it records per-turn evidence, model/runtime source hashes, token usage, and tool transitions. The dataset is now exposed and must not be treated as a blind holdout in a rerun. B1 remains an offline scripted diagnostic and must not be compared to these live-model arms as a matched baseline. Final conversational reply usefulness/readability has not been evaluated or independently blind-rated.
 
+After this run, commit `941ef11` shortened the action-selector contract to reduce output-format failures under the 128-token cap. The v5 scores predate that prompt change, so they are not evidence for its effectiveness; a fresh, unexposed set is needed for a valid check.
+
 ## Previous live-run budget
 
 The v4 authorization covered at most 120 requests and 15,360 requested output tokens. Its v4 run used 81 requests and 4,474 output tokens. The v5 run used a separate user-approved allowance of at most 120 requests and 15,360 output tokens. Do not use unused capacity from either approval for a different evaluation protocol.
