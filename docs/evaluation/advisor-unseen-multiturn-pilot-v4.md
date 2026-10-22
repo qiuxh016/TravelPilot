@@ -1,9 +1,9 @@
 # AI 旅行顾问未见多轮任务评测：v4 诊断记录
 
-日期：2026-10-22  
-模型：`deepseek-flash`（`api.deepseek.com`）  
-代码提交：`63709a0ff275a64c2498a7b15a61672c5c41481d`（工作区当时有未提交变更）  
-任务集：`advisor_multiturn_holdout_v4`，20 个任务、40 轮用户输入  
+日期：2026-10-22
+模型：`deepseek-flash`（`api.deepseek.com`）
+代码提交：`63709a0ff275a64c2498a7b15a61672c5c41481d`（工作区当时有未提交变更）
+任务集：`advisor_multiturn_holdout_v4`，20 个任务、40 轮用户输入
 原始文件 SHA-256：`2d6721e1d088e4e17c8a0980531837714c508fd5f83456f1e06d05c8ea46d326`
 
 ## 评测范围与安全边界
@@ -51,7 +51,4 @@
   --output tests\evaluation\results\advisor_unseen_multiturn_pilot_v2.json
 ```
 
-实时命令会再次发起真实模型请求。不要重跑已曝光的 v4 来获取盲测结论。
-
-
-
+实时命令会再次发起真实模型请求。不要重跑已曝光的 v4 来获取盲测结论。\n
