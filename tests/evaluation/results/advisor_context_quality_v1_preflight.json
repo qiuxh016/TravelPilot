@@ -1,0 +1,57 @@
+{
+  "evaluation_id": "advisor_context_quality_v1",
+  "status": "FROZEN_NOT_SCORED",
+  "provider_mode": "synthetic_contract",
+  "case_count": 20,
+  "turn_count": 40,
+  "family_counts": {
+    "ambiguous-referent": 1,
+    "cancel-pending": 1,
+    "changed-destination": 1,
+    "continuity": 1,
+    "failed-provider": 1,
+    "hard-constraint-correction": 1,
+    "lodging-followup": 1,
+    "meal-category-switch": 1,
+    "memory-not-approval": 1,
+    "memory-scope": 1,
+    "preserve-lodging": 1,
+    "route-missing-origin": 1,
+    "route-reversal": 1,
+    "schedule-approval-boundary": 1,
+    "search-refinement": 1,
+    "short-reference": 1,
+    "stale-evidence": 1,
+    "task-switch": 1,
+    "weather-date-correction": 1,
+    "weather-followup": 1
+  },
+  "case_file_sha256": "974a03d781e6a58b69916119ed873ea6b9d425f94a3795a979ee2954c5cf8f8d",
+  "source_provenance": {
+    "git_revision": "f079475ceb5d054e998642ad169b6d3b64749e22",
+    "working_tree_dirty": true,
+    "source_sha256": {
+      "tests/evaluation/advisor_multiturn_contracts.py": "59e9b516eff0f7afe9796e08b2cca4ccf2e8640753600ea442b68d4f7cbf01fd",
+      "tests/evaluation/cases/advisor_multiturn_v1.json": "1baa244d66e0478b2394a74ec6cbd09f8d94542e5259822f5cdea938825db17e",
+      "tests/evaluation/test_advisor_multiturn_contracts.py": "57898356b0b8df7f295e7fbf9d789873d31afba060de4b78dc4b76572ef446d1",
+      "apps/api/src/travelpilot_api/advisor/task_state.py": "1c6b5fb175f390114d7debfb9c82292c7ed3d85c9b55c9a0b66bb7f4f383bb2c",
+      "apps/api/src/travelpilot_api/advisor/state.py": "ac78423cf035207f8f012b8146e78db8e02817dd6edb2aaff48a4c6d48e22be4",
+      "packages/core/src/travelpilot_core/agents/loop.py": "908ddae699ba40768cd4ce2e6de39d62c886cc671926b15239455d22ef76640e"
+    }
+  },
+  "interpretation": "Schema/coverage validation only. No Agent execution, quality score, or live provider result.",
+  "decision_count": 40,
+  "policy_arms": [
+    "RECENT_HISTORY",
+    "STRUCTURED_CONTEXT",
+    "SELECTIVE_CONTEXT"
+  ],
+  "planned_requests": 120,
+  "planned_output_token_ceiling_at_256": 30720,
+  "exact_normalized_prompt_overlap_count": 0,
+  "arm_equivalence_check": "passed: task, goal, turn, trip state, tools and safety contract are identical",
+  "max_serialized_planner_input_chars": 1551,
+  "planner_input_truncation_boundary_chars": 4000,
+  "live_model_calls": 0,
+  "dataset_sha256": "c1425043b75018dfd113889001ad7f894abe7910099973fe60bd95aea3b2006e"
+}

@@ -1,6 +1,6 @@
 # Context quality and reliability plan
 
-**Status:** plan updated; baseline code inventory completed; no implementation or model evaluation is claimed by this document.
+**Status:** baseline inventory and Phase 1 local preflight are complete; the three-policy live comparison, evidence-based production changes, and Phase 4 reliability/CI work remain open.
 
 ## Goal
 
@@ -31,6 +31,8 @@ Compare three context policies on identical inputs:
 3. **Selective context:** structured context plus only applicable memories and fresh evidence, with explicit provenance and a token budget.
 
 Do not give a policy extra tools, facts, or output budget. Freeze model version, decoding settings, system instructions and tool schema across arms. Run local schema and input-equivalence preflight before any real-model call.
+
+**Preflight checkpoint (2026-10-23):** A new 20-case / 40-decision set is frozen at `tests/evaluation/cases/advisor_context_quality_v1.json`. It was checked against 28 existing case files: zero exact normalized prompt overlaps. Every arm receives the same task, goal, current message, trip state, dynamically valid tool schemas, safety contract, visible history, and synthetic tool observations; only supplemental-context inclusion/format differs. Visible history follows production's last-six-message / 400-character limit, and each serialized planner input is checked against its 4,000-character truncation boundary. Local tests verify selection, arm equivalence, context separation, and case consistency. The planned full comparison is 120 sequential model decisions, with at most 256 output tokens each (30,720 reserved output tokens total). This is protocol/preflight evidence only; no model was called and no quality score exists yet. Case SHA-256: `c1425043b75018dfd113889001ad7f894abe7910099973fe60bd95aea3b2006e`.
 
 ## Phase 2 — Implement only measured context gaps
 

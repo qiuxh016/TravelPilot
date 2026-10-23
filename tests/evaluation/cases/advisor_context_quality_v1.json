@@ -1,0 +1,1157 @@
+{
+  "dataset_id": "advisor_context_quality_v1",
+  "version": 1,
+  "status": "FROZEN_NOT_SCORED",
+  "provider_mode": "synthetic_contract",
+  "frozen_before_scoring": true,
+  "scope": "20 newly authored two-turn context-selection tasks; action-level outcomes only.",
+  "context_policy_protocol": {
+    "arms": [
+      "RECENT_HISTORY",
+      "STRUCTURED_CONTEXT",
+      "SELECTIVE_CONTEXT"
+    ],
+    "shared": [
+      "same user turns",
+      "same trip state",
+      "same authorized tools",
+      "same tool schemas",
+      "same model settings",
+      "same per-request output cap"
+    ],
+    "selective_rule": "Only include context_items with applicable=true, authorized=true, and freshness=CURRENT or FRESH; omit all other items. Do not send applicability or authorization labels to the model.",
+    "recent_history_rule": "Replay the same synthetic visible user/assistant dialogue for every arm, using production's last-six-visible-messages and 400-character-per-message bound; verified local tool observations are a separate shared field.",
+    "structured_context_rule": "Include all context_items with their provenance, authorization state, and freshness state, plus the same trip state and bounded conversation.",
+    "scoring_boundary": "Score the model action after each of the two turns. Tool observations are local synthetic fixtures shared across arms. No plan writes or external provider calls."
+  },
+  "claim_boundary": "Exploratory project-authored set; exact prompt and ID overlap are checked. It is not an open benchmark and cannot prove general travel competence.",
+  "cases": [
+    {
+      "id": "ctxq-v1-01-continuity",
+      "task_type": "SCHEDULE",
+      "family": "continuity",
+      "initial_state": {
+        "destination": "苏州",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": [],
+        "saved_place_details": [
+          {
+            "id": "ctx-1-a",
+            "name": "历史街区",
+            "latitude": 31.2304,
+            "longitude": 121.4737
+          },
+          {
+            "id": "ctx-1-b",
+            "name": "城市博物馆",
+            "latitude": 31.2404,
+            "longitude": 121.4837
+          }
+        ],
+        "saved_places": [
+          "历史街区",
+          "城市博物馆"
+        ]
+      },
+      "invariants": [
+        "按第二轮明确改动重排，并保留首日休息。"
+      ],
+      "turns": [
+        {
+          "user": "先把园林和博物馆排成两天，第一天别排满。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "acceptable_actions": [
+            "GET_DISTANCE_MATRIX"
+          ],
+          "adjudication_note": "按第二轮明确改动重排，并保留首日休息。",
+          "allowed_tools": [
+            "get_distance_matrix"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "第二个放到下午，原来的休息安排照旧。",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "acceptable_actions": [
+            "BUILD_SCHEDULE_DRAFT"
+          ],
+          "adjudication_note": "按第二轮明确改动重排，并保留首日休息。",
+          "allowed_tools": [
+            "build_schedule_draft",
+            "get_distance_matrix"
+          ],
+          "expected_status": "PROPOSED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-02-short-reference",
+      "task_type": "DISCOVERY",
+      "family": "short-reference",
+      "initial_state": {
+        "destination": "成都",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": []
+      },
+      "invariants": [
+        "把第二个地点解析到本轮候选，再围绕它搜索室内地点。"
+      ],
+      "turns": [
+        {
+          "user": "给我找几处适合带父母慢慢逛的文化地点。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "把第二个地点解析到本轮候选，再围绕它搜索室内地点。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "第二个附近再加一个室内的。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "把第二个地点解析到本轮候选，再围绕它搜索室内地点。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-03-weather-followup",
+      "task_type": "WEATHER",
+      "family": "weather-followup",
+      "initial_state": {
+        "destination": "厦门",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": [
+          {
+            "kind": "evidence",
+            "content": "周六预报：午后降雨概率较高；来源 Open-Meteo；已验证；适用于本次旅行。",
+            "applicable": true,
+            "freshness": "FRESH",
+            "authorized": true
+          }
+        ]
+      },
+      "invariants": [
+        "用本轮已验证的周六预报回答，不因追问重复查无关日期。"
+      ],
+      "turns": [
+        {
+          "user": "查一下周六和周日的天气。",
+          "expected_action": "GET_TRIP_WEATHER",
+          "acceptable_actions": [
+            "GET_TRIP_WEATHER"
+          ],
+          "adjudication_note": "用本轮已验证的周六预报回答，不因追问重复查无关日期。",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "那周六出门要带伞吗？",
+          "expected_action": "FINISH",
+          "acceptable_actions": [
+            "FINISH"
+          ],
+          "adjudication_note": "用本轮已验证的周六预报回答，不因追问重复查无关日期。",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-04-weather-date-correction",
+      "task_type": "WEATHER",
+      "family": "weather-date-correction",
+      "initial_state": {
+        "destination": "青岛",
+        "context_items": []
+      },
+      "invariants": [
+        "识别用户纠正后的日期，使用修正日期重新查询。"
+      ],
+      "turns": [
+        {
+          "user": "查一下周末天气。",
+          "expected_action": "ASK_USER",
+          "acceptable_actions": [
+            "ASK_USER"
+          ],
+          "adjudication_note": "识别用户纠正后的日期，使用修正日期重新查询。",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "我说的是下下周六，不是这周。",
+          "expected_action": "GET_TRIP_WEATHER",
+          "acceptable_actions": [
+            "GET_TRIP_WEATHER"
+          ],
+          "adjudication_note": "识别用户纠正后的日期，使用修正日期重新查询。",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-05-search-refinement",
+      "task_type": "DISCOVERY",
+      "family": "search-refinement",
+      "initial_state": {
+        "destination": "杭州",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": [
+          {
+            "kind": "preference",
+            "content": "同行有一名儿童，偏好室内活动。",
+            "applicable": true,
+            "freshness": "CURRENT",
+            "authorized": true
+          }
+        ]
+      },
+      "invariants": [
+        "继承雨天和儿童条件，只增加位置范围。"
+      ],
+      "turns": [
+        {
+          "user": "找适合雨天、同行有孩子也能去的地方。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "继承雨天和儿童条件，只增加位置范围。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "最好离西湖东边近一点。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "继承雨天和儿童条件，只增加位置范围。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-06-route-reversal",
+      "task_type": "TRANSPORT",
+      "family": "route-reversal",
+      "initial_state": {
+        "destination": "南京",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": [],
+        "known_places": [
+          {
+            "id": "ctx-6-from",
+            "name": "城市博物馆"
+          },
+          {
+            "id": "ctx-6-to",
+            "name": "火车站"
+          }
+        ]
+      },
+      "invariants": [
+        "保留地点实体，交换起终点查询返程。"
+      ],
+      "turns": [
+        {
+          "user": "帮我查博物馆到火车站的公交路线。",
+          "expected_action": "GET_TRIP_ROUTE",
+          "acceptable_actions": [
+            "GET_TRIP_ROUTE"
+          ],
+          "adjudication_note": "保留地点实体，交换起终点查询返程。",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "返程从车站回博物馆也查一下。",
+          "expected_action": "GET_TRIP_ROUTE",
+          "acceptable_actions": [
+            "GET_TRIP_ROUTE"
+          ],
+          "adjudication_note": "保留地点实体，交换起终点查询返程。",
+          "allowed_tools": [
+            "get_trip_route"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-07-meal-category-switch",
+      "task_type": "MEAL",
+      "family": "meal-category-switch",
+      "initial_state": {
+        "destination": "潮州",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": [
+          {
+            "kind": "evidence",
+            "content": "周五午餐已由用户确认：牌坊街粿条店；不要在晚餐搜索中覆盖。",
+            "applicable": true,
+            "freshness": "FRESH",
+            "authorized": true
+          }
+        ]
+      },
+      "invariants": [
+        "只搜索晚餐候选，保留已选午餐。"
+      ],
+      "turns": [
+        {
+          "user": "牌坊街粿条店已经选作周五午餐，接着帮我找周五晚餐。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "只搜索晚餐候选，保留已选午餐。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "晚餐要清淡一点，周五午餐保持不变。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "只搜索晚餐候选，保留已选午餐。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-08-lodging-followup",
+      "task_type": "LODGING",
+      "family": "lodging-followup",
+      "initial_state": {
+        "destination": "珠海",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": []
+      },
+      "invariants": [
+        "继承区域与人数条件，仅追加可取消偏好；不声称已预订。"
+      ],
+      "turns": [
+        {
+          "user": "找一家靠近拱北、适合两人的住宿。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "继承区域与人数条件，仅追加可取消偏好；不声称已预订。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "要能免费取消，刚才的区域和人数不变。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "继承区域与人数条件，仅追加可取消偏好；不声称已预订。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-09-task-switch",
+      "task_type": "WEATHER",
+      "family": "task-switch",
+      "initial_state": {
+        "destination": "重庆",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": [],
+        "saved_place_details": [
+          {
+            "id": "ctx-9-a",
+            "name": "历史街区",
+            "latitude": 31.2304,
+            "longitude": 121.4737
+          },
+          {
+            "id": "ctx-9-b",
+            "name": "城市博物馆",
+            "latitude": 31.2404,
+            "longitude": 121.4837
+          }
+        ],
+        "saved_places": [
+          "历史街区",
+          "城市博物馆"
+        ]
+      },
+      "invariants": [
+        "切换到天气任务，不继续旧排程。"
+      ],
+      "turns": [
+        {
+          "user": "把已收藏的三个景点排成一天，上午轻松一点。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "acceptable_actions": [
+            "GET_DISTANCE_MATRIX"
+          ],
+          "adjudication_note": "切换到天气任务，不继续旧排程。",
+          "allowed_tools": [
+            "get_distance_matrix"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "先不排了，看看周日天气。",
+          "expected_action": "GET_TRIP_WEATHER",
+          "acceptable_actions": [
+            "GET_TRIP_WEATHER"
+          ],
+          "adjudication_note": "切换到天气任务，不继续旧排程。",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-10-ambiguous-referent",
+      "task_type": "SEARCH",
+      "family": "ambiguous-referent",
+      "initial_state": {
+        "destination": "西安",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": []
+      },
+      "invariants": [
+        "“那家/它”指代不清时追问，不猜实体。"
+      ],
+      "turns": [
+        {
+          "user": "我看了钟楼附近的两个酒店，还有一家博物馆。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "“那家/它”指代不清时追问，不猜实体。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "那家离它近吗？",
+          "expected_action": "ASK_USER",
+          "acceptable_actions": [
+            "ASK_USER"
+          ],
+          "adjudication_note": "“那家/它”指代不清时追问，不猜实体。",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-11-hard-constraint-correction",
+      "task_type": "SCHEDULE",
+      "family": "hard-constraint-correction",
+      "initial_state": {
+        "destination": "北京",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": [
+          {
+            "kind": "constraint",
+            "content": "国家博物馆预约：周二上午；用户明确固定。",
+            "applicable": true,
+            "freshness": "CURRENT",
+            "authorized": true
+          }
+        ],
+        "saved_place_details": [
+          {
+            "id": "ctx-11-a",
+            "name": "历史街区",
+            "latitude": 31.2304,
+            "longitude": 121.4737
+          },
+          {
+            "id": "ctx-11-b",
+            "name": "城市博物馆",
+            "latitude": 31.2404,
+            "longitude": 121.4837
+          }
+        ],
+        "saved_places": [
+          "历史街区",
+          "城市博物馆"
+        ]
+      },
+      "invariants": [
+        "采纳最新预约时间并保留其他已选地点。"
+      ],
+      "turns": [
+        {
+          "user": "安排故宫和国家博物馆，周一不要排闭馆场馆。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "acceptable_actions": [
+            "GET_DISTANCE_MATRIX"
+          ],
+          "adjudication_note": "采纳最新预约时间并保留其他已选地点。",
+          "allowed_tools": [
+            "get_distance_matrix"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "国家博物馆预约改到周二上午，其他地点先保留。",
+          "expected_action": "BUILD_SCHEDULE_DRAFT",
+          "acceptable_actions": [
+            "BUILD_SCHEDULE_DRAFT"
+          ],
+          "adjudication_note": "采纳最新预约时间并保留其他已选地点。",
+          "allowed_tools": [
+            "build_schedule_draft",
+            "get_distance_matrix"
+          ],
+          "expected_status": "PROPOSED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-12-preserve-lodging",
+      "task_type": "SCHEDULE",
+      "family": "preserve-lodging",
+      "initial_state": {
+        "destination": "广州",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": [
+          {
+            "kind": "evidence",
+            "content": "已确认住宿：北京路酒店；用户要求保持。",
+            "applicable": true,
+            "freshness": "CURRENT",
+            "authorized": true
+          }
+        ],
+        "saved_place_details": [
+          {
+            "id": "ctx-12-a",
+            "name": "历史街区",
+            "latitude": 31.2304,
+            "longitude": 121.4737
+          },
+          {
+            "id": "ctx-12-b",
+            "name": "城市博物馆",
+            "latitude": 31.2404,
+            "longitude": 121.4837
+          }
+        ],
+        "saved_places": [
+          "历史街区",
+          "城市博物馆"
+        ]
+      },
+      "invariants": [
+        "更新地点路线证据并保留住宿候选/选择。"
+      ],
+      "turns": [
+        {
+          "user": "把沙面和陈家祠排在第一天，酒店已选在北京路。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "acceptable_actions": [
+            "GET_DISTANCE_MATRIX"
+          ],
+          "adjudication_note": "更新地点路线证据并保留住宿候选/选择。",
+          "allowed_tools": [
+            "get_distance_matrix"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "再加入越秀公园，酒店别动。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "acceptable_actions": [
+            "GET_DISTANCE_MATRIX"
+          ],
+          "adjudication_note": "更新地点路线证据并保留住宿候选/选择。",
+          "allowed_tools": [
+            "get_distance_matrix"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-13-stale-evidence",
+      "task_type": "DISCOVERY",
+      "family": "stale-evidence",
+      "initial_state": {
+        "destination": "大理",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": [
+          {
+            "kind": "evidence",
+            "content": "洱海东岸步道上周开放状态；已过期。",
+            "applicable": true,
+            "freshness": "STALE",
+            "authorized": true
+          }
+        ]
+      },
+      "invariants": [
+        "不复用已过期地点证据，重新搜索替代地点。"
+      ],
+      "turns": [
+        {
+          "user": "按上周查到的洱海东岸步道安排半天。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "不复用已过期地点证据，重新搜索替代地点。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "景区刚通知临时关闭，换一个可去的地方。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "不复用已过期地点证据，重新搜索替代地点。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-14-failed-provider",
+      "task_type": "WEATHER",
+      "family": "failed-provider",
+      "initial_state": {
+        "destination": "哈尔滨",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": [
+          {
+            "kind": "evidence",
+            "content": "上一次天气工具响应：TIMEOUT；没有预报数据。",
+            "applicable": true,
+            "freshness": "FAILED",
+            "authorized": true
+          }
+        ],
+        "weather_provider": "timeout"
+      },
+      "invariants": [
+        "报告工具失败与未知项，不编造天气，不无限重试。"
+      ],
+      "turns": [
+        {
+          "user": "查下周二的天气。",
+          "expected_action": "GET_TRIP_WEATHER",
+          "acceptable_actions": [
+            "GET_TRIP_WEATHER"
+          ],
+          "adjudication_note": "报告工具失败与未知项，不编造天气，不无限重试。",
+          "allowed_tools": [
+            "get_trip_weather"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "刚才查询超时了，先告诉我现在能确定什么。",
+          "expected_action": "FINISH",
+          "acceptable_actions": [
+            "FINISH"
+          ],
+          "adjudication_note": "报告工具失败与未知项，不编造天气，不无限重试。",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-15-cancel-pending",
+      "task_type": "DISCOVERY",
+      "family": "cancel-pending",
+      "initial_state": {
+        "destination": "云南",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": []
+      },
+      "invariants": [
+        "结束待处理任务，不继续调用搜索工具。"
+      ],
+      "turns": [
+        {
+          "user": "我想看看云南有什么适合长辈的地方。",
+          "expected_action": "ASK_USER",
+          "acceptable_actions": [
+            "ASK_USER"
+          ],
+          "adjudication_note": "结束待处理任务，不继续调用搜索工具。",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "暂时不找了，先取消这个问题。",
+          "expected_action": "FINISH",
+          "acceptable_actions": [
+            "FINISH"
+          ],
+          "adjudication_note": "结束待处理任务，不继续调用搜索工具。",
+          "allowed_tools": [],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-16-memory-scope",
+      "task_type": "MEAL",
+      "family": "memory-scope",
+      "initial_state": {
+        "destination": "上海",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": [
+          {
+            "kind": "preference",
+            "content": "用户喜欢拍胶片照片。",
+            "applicable": false,
+            "freshness": "CURRENT",
+            "authorized": true
+          },
+          {
+            "kind": "preference",
+            "content": "用户对辣椒敏感，避免辣味菜品。",
+            "applicable": true,
+            "freshness": "CURRENT",
+            "authorized": true
+          }
+        ]
+      },
+      "invariants": [
+        "将“不辣”作为当前任务要求；不注入无关长期偏好。"
+      ],
+      "turns": [
+        {
+          "user": "找附近不辣的午餐。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "将“不辣”作为当前任务要求；不注入无关长期偏好。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "有适合的面食就行。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "将“不辣”作为当前任务要求；不注入无关长期偏好。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-17-memory-not-approval",
+      "task_type": "LODGING",
+      "family": "memory-not-approval",
+      "initial_state": {
+        "destination": "宁波",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": [
+          {
+            "kind": "preference",
+            "content": "通常偏好靠近地铁的住宿。",
+            "applicable": true,
+            "freshness": "CURRENT",
+            "authorized": true
+          }
+        ]
+      },
+      "invariants": [
+        "当前明确要求优先于一般偏好，不把偏好解释为预订授权。"
+      ],
+      "turns": [
+        {
+          "user": "我一般喜欢交通方便的酒店。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "当前明确要求优先于一般偏好，不把偏好解释为预订授权。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "这次想住安静一点的民宿。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "当前明确要求优先于一般偏好，不把偏好解释为预订授权。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-18-changed-destination",
+      "task_type": "DISCOVERY",
+      "family": "changed-destination",
+      "initial_state": {
+        "destination": "桂林",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": [
+          {
+            "kind": "evidence",
+            "content": "桂林徒步候选；与新目的地不匹配。",
+            "applicable": true,
+            "freshness": "SUPERSEDED",
+            "authorized": true
+          }
+        ]
+      },
+      "invariants": [
+        "采用用户纠正的阳朔目的地，不沿用桂林搜索结果。"
+      ],
+      "turns": [
+        {
+          "user": "推荐桂林适合徒步的景点。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "采用用户纠正的阳朔目的地，不沿用桂林搜索结果。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "更正一下，我最后去阳朔。",
+          "expected_action": "SEARCH_PLACES",
+          "acceptable_actions": [
+            "SEARCH_PLACES"
+          ],
+          "adjudication_note": "采用用户纠正的阳朔目的地，不沿用桂林搜索结果。",
+          "allowed_tools": [
+            "search_places"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-19-route-missing-origin",
+      "task_type": "TRANSPORT",
+      "family": "route-missing-origin",
+      "initial_state": {
+        "destination": "天津",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": []
+      },
+      "invariants": [
+        "识别新的出发点；若缺少机场/目的地实体则澄清，不能沿用旧起点。"
+      ],
+      "turns": [
+        {
+          "user": "查一下五大道到古文化街怎么走。",
+          "expected_action": "ASK_USER",
+          "acceptable_actions": [
+            "ASK_USER"
+          ],
+          "adjudication_note": "识别新的出发点；若缺少机场/目的地实体则澄清，不能沿用旧起点。",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "我从机场出发，不是五大道。",
+          "expected_action": "ASK_USER",
+          "acceptable_actions": [
+            "ASK_USER"
+          ],
+          "adjudication_note": "识别新的出发点；若缺少机场/目的地实体则澄清，不能沿用旧起点。",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "ctxq-v1-20-schedule-approval-boundary",
+      "task_type": "SCHEDULE",
+      "family": "schedule-approval-boundary",
+      "initial_state": {
+        "destination": "武汉",
+        "trip_dates": [
+          "2027-05-14",
+          "2027-05-16"
+        ],
+        "context_items": [
+          {
+            "kind": "evidence",
+            "content": "已验证路线矩阵：本轮三个地点；本地合成证据。",
+            "applicable": true,
+            "freshness": "FRESH",
+            "authorized": true
+          }
+        ],
+        "saved_place_details": [
+          {
+            "id": "ctx-20-a",
+            "name": "历史街区",
+            "latitude": 31.2304,
+            "longitude": 121.4737
+          },
+          {
+            "id": "ctx-20-b",
+            "name": "城市博物馆",
+            "latitude": 31.2404,
+            "longitude": 121.4837
+          }
+        ],
+        "saved_places": [
+          "历史街区",
+          "城市博物馆"
+        ]
+      },
+      "invariants": [
+        "即使用户要求直接写入，本评测也只允许只读工具；不得伪称已写入或绕过正式审批边界。"
+      ],
+      "turns": [
+        {
+          "user": "把黄鹤楼和省博物馆排进周六，留出午餐时间。",
+          "expected_action": "GET_DISTANCE_MATRIX",
+          "acceptable_actions": [
+            "GET_DISTANCE_MATRIX"
+          ],
+          "adjudication_note": "即使用户要求直接写入，本评测也只允许只读工具；不得伪称已写入或绕过正式审批边界。",
+          "allowed_tools": [
+            "get_distance_matrix"
+          ],
+          "expected_status": "COMPLETED",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 1
+        },
+        {
+          "user": "午餐安排得不错，直接写入正式行程。",
+          "expected_action": "ASK_USER",
+          "acceptable_actions": [
+            "ASK_USER"
+          ],
+          "adjudication_note": "即使用户要求直接写入，本评测也只允许只读工具；不得伪称已写入或绕过正式审批边界。",
+          "allowed_tools": [],
+          "expected_status": "WAITING_USER",
+          "action_owner": "AGENT_DECISION",
+          "context_turn": 2
+        }
+      ]
+    }
+  ],
+  "reference_dataset_sha256": {
+    "advisor_autonomous_planning_baseline_v1": "2eae5a701563c7c08ef6064b139cf45d37c74cfbb50a1082fdc80c1f23143ec8",
+    "advisor_existing_trip_agent_v1": "26cf6ffbd58b6295ed923ad63f8a8a80a9ce88ef6652947ed38c05f9f93940cf",
+    "advisor_existing_trip_agent_v2": "fa45798b2cef5329c7636ce27ad42207435981b9f75c2463a2ca5e9e007226d0",
+    "advisor_existing_trip_agent_v3": "6312ae7114e5066c2686e9993a7c7895ab2ba03f2148fe508903ffd18d24fcac",
+    "advisor_matched_schedule_b1_v1": "109df0f9da3b1cc794fdd042219fc5a5e7f8b468ee9ea4136c30d9de33e487a8",
+    "advisor_memory_transfer_v1": "50acecd0cc2fcfeefded8994a7d858157d0bb6815a9e4163e6ca5a9e6a914635",
+    "advisor_multiturn_holdout_v1": "8533dd6fa96f767794a8c32eabbdd3bd510d21ca97900da9387a1bbd327ae10e",
+    "advisor_multiturn_holdout_v2": "0ce1742af9d83310ae1453cdb02d21fff8edc767abab6510b424cf258a631846",
+    "advisor_multiturn_holdout_v3": "6faf7de648ca0129830ea93a937eb847da135b72a38bc8a652855ca6850e0682",
+    "advisor_multiturn_holdout_v4": "2d6721e1d088e4e17c8a0980531837714c508fd5f83456f1e06d05c8ea46d326",
+    "advisor_multiturn_holdout_v5": "0bf102006d583f1c7527eff939ebe21caeb2da41472fb2066aaae67e56f034ef",
+    "advisor_multiturn_holdout_v6": "37864e8673cf79f16e4ebc392d47325e27df96dc0439d788dcc8d42aacc268a4",
+    "advisor_multiturn_holdout_v7": "1b74bef669507c41e7dc88989f917ef2bb62ec3b6384820fce92e4f97cdd56bb",
+    "advisor_multiturn_v1": "1baa244d66e0478b2394a74ec6cbd09f8d94542e5259822f5cdea938825db17e",
+    "advisor_multiturn_v2": "6d8cd657211a74f7219abd2be918e0748753078c44ac2c7fe8a07115b9c114c9",
+    "advisor_multiturn_v3": "3f8270a54e6f8d7a8d1f2d30628ee06247f876b25dc98170d8ae9b53944db612",
+    "advisor_multiturn_v4": "a43c0a12e17fcaa46f76f10c57fe5e860248c0a3b8f491b0385015c894d9433b",
+    "advisor_multiturn_v5": "8c7f8e414f67b48f4d9257d54d104fd554e6eadb2f0deaeea250d8545ab6cd4e",
+    "advisor_open_consultation_v1": "05f7cd6e57b4f5d47010c5554fc65ab890fdbdb1b21cf4d9ed8f11a5def84863",
+    "advisor_open_consultation_v2": "774230e4d3581bc6cdfa490f3faf1b6523695b387dcdbd4f227b3bbca9ba5b0c",
+    "advisor_preference_relevance_v1": "baa446d3dd143d80bd0e0ca219b8134f3bd869b27daafa3c6e278a41e89533f0",
+    "advisor_preference_relevance_v2": "98c29bb02173ff10cb6a56cdbd78ce3512f16c7b69e20831836a0999d4c93714",
+    "advisor_product_response_v1": "2852e0bb947bafa1f83edf513b22833973f5f835eea0e6fa68cacda0c060af83",
+    "advisor_route_evidence_v1": "410194ca29cff7fb0eba391067b56b45baae82f2b18a153cb433fa2bb13a02d3",
+    "joint_replacement_scenarios": "85df140135394473ce5e41b93a86861ec40d308df26c7ff11ea4e22318d4f7eb",
+    "replacement_scenarios": "c72035b301d84be00c0b98fd5cf23c5d4929ae8f926e16871cd6775d543d75fc",
+    "replanning_baseline": "aad9c6e9623505082e60d1bd1b8cb0415f9c15acbeb7ef0bddaf5c3d1b433ccb",
+    "user_add_scenarios": "79be1c50dd7735fc24ba3d003133ff84aaad9641d83c346028541b38e1548bb3"
+  },
+  "dataset_sha256": "c817371674a067fdd70a6b454ca6a2ebd86d80b3e00d8ef2b33e683234afa4e0"
+}
