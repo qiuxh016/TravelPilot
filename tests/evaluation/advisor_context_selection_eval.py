@@ -13,6 +13,7 @@ import hashlib
 import json
 import time
 import unicodedata
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -234,6 +235,14 @@ async def run_live(path: Path, case_ids: tuple[str, ...], token_cap: int, max_re
     if request_ceiling > 120 or max_requests < request_ceiling or max_tokens < token_ceiling:
         raise ValueError(f"selection requires authorization for {request_ceiling} requests and {token_ceiling} output tokens")
 
+    checkpoint_path = RESULT.with_suffix(".checkpoint.jsonl")
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_path.write_text(json.dumps({
+        "evaluation_id": dataset["dataset_id"],
+        "dataset_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "checkpoint_type": "per-decision-redacted-action-and-usage",
+    }, ensure_ascii=False) + "\n", encoding="utf-8")
+
     groups: dict[str, list[dict[str, Any]]] = {}
     requests = input_total = output_total = 0
     for arm in ARMS:
@@ -264,13 +273,16 @@ async def run_live(path: Path, case_ids: tuple[str, ...], token_cap: int, max_re
                     allowed = action.get("kind") != "CALL_TOOL" or action.get("tool") in schemas
                     valid = allowed and valid_args
                     matched = base_eval._expected_match(turn, action) if valid else False
-                    usage_data = usage.model_dump(mode="json") if hasattr(usage, "model_dump") else dict(usage or {})
+                    usage_data = usage.model_dump(mode="json") if hasattr(usage, "model_dump") else asdict(usage)
                     used_input = int(usage_data.get("input_tokens", usage_data.get("prompt_tokens", 0)) or 0)
                     used_output = int(usage_data.get("output_tokens", usage_data.get("completion_tokens", 0)) or 0)
                     error = None
                 except PlannerDecisionFailure as exc:
                     action, valid, allowed, matched = None, False, False, False
-                    errors, used_input, used_output, error = [{"type": exc.code}], 0, 0, exc.code
+                    usage_data = asdict(exc.usage)
+                    used_input = int(usage_data.get("prompt_tokens", 0) or 0)
+                    used_output = int(usage_data.get("completion_tokens", 0) or 0)
+                    errors, error = [{"type": exc.code}], exc.code
                 except ToolFailure as exc:
                     action, valid, allowed, matched = None, False, False, False
                     errors, used_input, used_output, error = [{"type": exc.code}], 0, 0, exc.code
@@ -279,14 +291,21 @@ async def run_live(path: Path, case_ids: tuple[str, ...], token_cap: int, max_re
                 output_total += used_output
                 if used_output > token_cap or output_total > max_tokens or requests > max_requests:
                     raise RuntimeError("provider usage exceeded the explicit evaluation ceiling")
-                turns.append({
+                turn_result = {
                     "turn": i + 1, "expected_action": turn["expected_action"],
                     "action": action, "action_valid": valid, "allowlist_valid": allowed,
                     "argument_errors": errors, "expected_action_match": matched,
                     "input_tokens": used_input, "output_tokens": used_output,
                     "latency_ms": latency, "context_sha256": _fingerprint(observation),
                     "provider_error": error,
-                })
+                }
+                turns.append(turn_result)
+                with checkpoint_path.open("a", encoding="utf-8") as checkpoint:
+                    checkpoint.write(json.dumps({
+                        "arm": arm, "case_id": case["id"], **turn_result,
+                        "request_number": requests, "output_tokens_so_far": output_total,
+                    }, ensure_ascii=False) + "\n")
+                    checkpoint.flush()
                 history.append({"role": "user", "content": turn["user"]})
                 if action is not None:
                     history.append({"role": "assistant", "content": "我已记录这项安排，正在继续处理。"})
