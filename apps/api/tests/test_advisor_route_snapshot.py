@@ -26,6 +26,7 @@ async def test_route_validation_snapshot_refresh_keeps_session_meal_lodging_and_
         version=4,
         status="READY",
         warnings=[],
+        lodging=[{"name": "梅州确认酒店", "day": start.isoformat()}],
     )
     node = SimpleNamespace(
         poi_id=poi_id,
@@ -127,3 +128,4 @@ async def test_route_validation_snapshot_refresh_keeps_session_meal_lodging_and_
         "day": start.isoformat(), "start_time": "12:00",
     }
     assert row.context["current_plan"]["stops"][0]["candidate_id"] == "candidate-park"
+    assert row.context["current_plan"]["lodging"] == plan.lodging

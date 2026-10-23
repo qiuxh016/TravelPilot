@@ -498,7 +498,10 @@ async def test_replan_confirmation_commits_once_and_repeat_returns_same_plan(mon
         id=poi_id, name="博物馆", category="MUSEUM", latitude=Decimal("30.6"),
         longitude=Decimal("104.0"), suggested_duration_min=60, opening_hours=None,
     )
-    source_plan = SimpleNamespace(id=plan_id, trip_id=trip_id, version=3)
+    source_plan = SimpleNamespace(
+        id=plan_id, trip_id=trip_id, version=3,
+        lodging=[{"name": "确认酒店", "check_in": "2026-10-01"}],
+    )
     source_node = TripPlanNodeModel(
         id=uuid4(), plan_id=plan_id, poi_id=poi_id, day=date(2026, 10, 1),
         start_time=time(10), end_time=time(11), priority=3, status="PLANNED", note=None,
@@ -597,6 +600,7 @@ async def test_replan_confirmation_commits_once_and_repeat_returns_same_plan(mon
     assert len(plans) == 1
     assert plans[0].version == 4
     assert plans[0].status == "READY"
+    assert plans[0].lodging == source_plan.lodging
     assert trip.status == "READY"
     assert run.status == "CONFIRMED"
     assert first["plan"]["id"] == second["plan"]["id"] == plans[0].id
