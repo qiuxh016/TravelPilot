@@ -110,6 +110,12 @@ def _validate_frozen_inputs(dataset: dict[str, Any], output: Path) -> None:
         raise RuntimeError("arm token allocations do not equal the authorized ceiling")
 
 
+def _active_caps(*, only_b1: bool) -> tuple[int, int]:
+    if only_b1:
+        return ARM_REQUEST_CAPS["B1_FIXED_WORKFLOW"], ARM_OUTPUT_BUDGETS["B1_FIXED_WORKFLOW"]
+    return TOTAL_REQUEST_CAP, TOTAL_OUTPUT_TOKEN_CAP
+
+
 async def _run_runtime_arm(
     *, dataset: dict[str, Any], arm: str, base_url: str, api_key: str, model: str,
 ) -> dict[str, Any]:
@@ -400,6 +406,7 @@ async def run_live(
                                     for item in proxy_audit.values())
         if total_requests > TOTAL_REQUEST_CAP or total_reserved_tokens > TOTAL_OUTPUT_TOKEN_CAP:
             raise RuntimeError("proxy audit exceeds the authorized aggregate budget")
+        active_request_cap, active_output_cap = _active_caps(only_b1=only_b1)
         report = {
             "evaluation_id": "advisor_matched_schedule_b1_v8_live",
             "dataset_id": dataset["dataset_id"],
@@ -412,10 +419,10 @@ async def run_live(
                 "B2_AGENT_LOOP": "Current production constrained AgentRuntime with local synthetic tools; verifier/recovery disabled",
                 "B3_VERIFIER_RECOVERY": "Same current AgentRuntime with deterministic verifier and bounded recovery",
             },
-            "request_cap": TOTAL_REQUEST_CAP, "requests_used": total_requests,
+            "request_cap": active_request_cap, "requests_used": total_requests,
             "per_provider_request_output_cap": PROVIDER_REQUEST_OUTPUT_CAP,
             "authorized_per_provider_request_max": 512,
-            "aggregate_output_token_cap": TOTAL_OUTPUT_TOKEN_CAP,
+            "aggregate_output_token_cap": active_output_cap,
             "aggregate_requested_output_reservation": total_reserved_tokens,
             "accounting_status": "CONSERVATIVE_UPPER_BOUND_INCLUDES_UNRECOVERABLE_B1_FIRST_ATTEMPT"
                 if skip_b1 else "EXACT_PROXY_RESERVATIONS",
