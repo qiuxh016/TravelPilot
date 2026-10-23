@@ -1,0 +1,31 @@
+{
+  "audit_type": "compatibility_only",
+  "benchmark": "TREK",
+  "upstream_repo": "https://github.com/TonyQJH/TREK-A-Travel-Reasoning-and-Evaluation-Kit-for-LLM-Agents-in-Complex-Trip-Planning",
+  "upstream_commit": "6ceb4ebb2debd69c5c7c4ba34b5b17524756912b",
+  "tasks_sha256": "e66bef2a7aa302f31980112e9e17ca006ea9399292bb20e0c12f2fa1788bdaae",
+  "task_count": 800,
+  "feasibility_labels": {
+    "feasible": 533,
+    "infeasible": 267
+  },
+  "level_counts": {
+    "mixed": 800
+  },
+  "requirement_task_counts": {
+    "flight": 800,
+    "hotel": 800,
+    "attraction": 800,
+    "car": 261
+  },
+  "directly_compatible_task_indices": [],
+  "directly_compatible_task_count": 0,
+  "compatibility_rule": "Whole-task evaluation requires attraction-only, feasible tasks. Flight, hotel, car, end-to-end budget, implicit-persona, and typed-infeasibility requirements are outside the current direct itinerary planner contract.",
+  "malformed_rows": [],
+  "result": "NO_FAIR_WHOLE_TASK_SUBSET",
+  "limitations": [
+    "This is not a TREK planner score and makes no performance claim.",
+    "The audit does not use gold outputs or invoke any model/provider.",
+    "TREK data uses a synthetic world and must not be treated as real travel facts."
+  ]
+}
