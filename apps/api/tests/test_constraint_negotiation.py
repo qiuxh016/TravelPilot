@@ -151,6 +151,32 @@ def test_two_independent_conflicts_can_be_resolved_with_two_moves():
     )
 
 
+def test_distinct_combined_schedule_options_have_distinct_ids():
+    items = [
+        activity("p0", DAY_1, 690, 90, priority=3),
+        activity("p1", DAY_1, 870, 45, priority=2),
+        activity("p2", DAY_1, 900, 90, priority=4),
+        activity("p3", DAY_1, 990, 60, priority=3),
+    ]
+    routes = {
+        (left.id, right.id): 0
+        for left in items
+        for right in items
+        if left.id != right.id
+    }
+
+    result = negotiate_schedule(
+        items,
+        start_date=DAY_1,
+        end_date=DAY_1,
+        travel_minutes=routes,
+    )
+
+    combined = [option for option in result.alternatives if len(option.changes) == 2]
+    assert len(combined) >= 2
+    assert len({option.id for option in combined}) == len(combined)
+
+
 def test_activity_outside_hard_trip_date_is_rejected():
     outside = activity("outside", DAY_2, 10 * 60, 30)
 

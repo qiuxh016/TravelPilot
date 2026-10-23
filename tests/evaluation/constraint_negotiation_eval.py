@@ -92,6 +92,8 @@ def run_evaluation() -> dict[str, object]:
         elapsed_ms = (time.perf_counter() - started) * 1000
         measured_ms.append(elapsed_ms)
         alternatives = result.alternatives
+        if len({option.id for option in alternatives}) != len(alternatives):
+            hard_invariant_violations += 1
         if expected_repair:
             eligible += 1
             negotiated_solutions += int(bool(alternatives))

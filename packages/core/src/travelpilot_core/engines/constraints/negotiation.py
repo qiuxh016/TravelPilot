@@ -7,6 +7,7 @@ to ask the traveler to choose before changing a formal itinerary.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import date, timedelta
 from itertools import combinations, pairwise, product
@@ -320,7 +321,15 @@ def negotiate_schedule(
             alternatives.setdefault(
                 signature,
                 NegotiationAlternative(
-                    id=f"option-combined-{first_id}-{second_id}",
+                    id=(
+                        "option-combined-"
+                        + hashlib.sha256(
+                            "|".join(
+                                f"{item_id}:{day.isoformat()}:{start}"
+                                for item_id, day, start in signature
+                            ).encode("utf-8")
+                        ).hexdigest()[:16]
+                    ),
                     title="同时调整两项安排",
                     summary="；".join(summaries) + "，其他安排不变",
                     change_cost=cost,

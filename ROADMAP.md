@@ -2,6 +2,8 @@
 
 Updated: 2026-10-23
 
+**Execution record (2026-10-23, negotiation option identity):** A frontend audit found that distinct combined schedule alternatives could share the same React key because their IDs used only the moved activity IDs, not the selected times. Combined option IDs now derive deterministically from the complete changed schedule signature, and the synthetic evaluator rejects duplicate alternative IDs as an invariant violation. Focused negotiation/evaluator tests: **23 passed**; Ruff passed; the 10-case synthetic negotiation evaluation still repairs **5/5** repairable cases with **0** hard-invariant violations (mean 0.971 ms, max 4.891 ms). Full API/evaluation regression: **1,103 passed**, one existing Starlette/httpx deprecation warning. No model/provider calls or formal trip writes. This closes the duplicate-option-identity defect; it does not close the separately pending v8 real-model evaluation or independent human ratings.
+
 Current next-agent plan status (2026-10-21): **W0–W6 complete for local scope.** W4 added an in-Advisor What-if dialog with per-day preview, PlanDiff/warnings, and explicit confirmation before formal writes. W5 reran the 40-case B1/B2/B3 comparison, 60-case/129-turn scripted and Runtime replays, and the authenticated 18-scenario/22-turn local product suite. W6 reconciled the README and roadmap; the full API/evaluation suite passed **998 tests** with Python UTF-8 mode. No new live-model or external-provider calls were made. Local evaluation limits and reproduction commands: `docs/evaluation/local-agent-eval-2026-10-21.md`.
 
 ## Next stage plan (proposed, 2026-10-21)
