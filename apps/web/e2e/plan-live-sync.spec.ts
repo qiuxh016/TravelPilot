@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("计划页收到共享版本更新后自动刷新", async ({ page }) => {
+test("计划页收到共享版本更新后自动刷新", async ({ page }, testInfo) => {
   const tripId = "live-sync-trip";
   let planReads = 0;
   const plan = (version: number) => ({
@@ -59,4 +59,5 @@ test("计划页收到共享版本更新后自动刷新", async ({ page }) => {
   await expect(page.locator(".plan-lodging")).toContainText("确认入住的客家酒店");
   await expect(page.locator(".plan-stop-time")).toContainText("10:00");
   await expect(page.getByRole("status").filter({ hasText: "旅行伙伴更新了计划，已同步到 v2" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("lodging-plan-sync.png"), fullPage: true });
 });
