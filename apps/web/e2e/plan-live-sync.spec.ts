@@ -8,6 +8,7 @@ test("计划页收到共享版本更新后自动刷新", async ({ page }) => {
     created_at: "2026-10-20T08:00:00Z", base_version: version - 1,
     created_by_user_id: "member", created_by_display_name: "旅行伙伴",
     change_reason: null,
+    lodging: [{ poi_id: "hotel-1", name: "确认入住的客家酒店", address: "梅州市梅江区", verification_status: "SIMULATED" }],
     nodes: [{ id: "stop-1", poi_id: "poi-1", name: "客家博物馆", day: "2026-10-22", start_time: version === 1 ? "09:00" : "10:00", end_time: version === 1 ? "10:00" : "11:00", priority: 3, status: "PLANNED", note: null }],
   });
 
@@ -54,6 +55,8 @@ test("计划页收到共享版本更新后自动刷新", async ({ page }) => {
 
   await page.goto(`/trips/${tripId}/plan`);
   await expect(page.getByText("计划 v2")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "住宿安排" })).toBeVisible();
+  await expect(page.locator(".plan-lodging")).toContainText("确认入住的客家酒店");
   await expect(page.locator(".plan-stop-time")).toContainText("10:00");
   await expect(page.getByRole("status").filter({ hasText: "旅行伙伴更新了计划，已同步到 v2" })).toBeVisible();
 });
