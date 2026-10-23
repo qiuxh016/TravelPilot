@@ -42,6 +42,8 @@ def test_matrix_verifier_accepts_square_finite_nonnegative_numeric_data(matrix):
 @pytest.mark.parametrize("matrix", [
     [[0, 12], [13]],
     [[0, -1], [13, 0]],
+    [[1, 12], [13, 0]],
+    [[0, 12], [13, 2]],
     [[0, float("inf")], [13, 0]],
     [[0, True], [13, 0]],
     [[0, "12"], [13, 0]],

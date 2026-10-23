@@ -1,18 +1,20 @@
 import { expect, test } from "@playwright/test";
 
-const api = "http://localhost:8000/api/v1";
+const apiOrigin = process.env.TRAVELPILOT_E2E_API_URL ?? "http://localhost:8000";
+const api = `${apiOrigin}/api/v1`;
 
 test("收藏地点、计划重排和旅行记忆可在页面完成", async ({ page, request }) => {
+  test.setTimeout(90_000);
   const email = `e2e-flow-${Date.now()}@example.invalid`;
   const password = "travelpilot-test-2026";
-  const auth = await request.post("http://localhost:8000/api/v1/auth/register", {
+  const auth = await request.post(`${api}/auth/register`, {
     data: { email, password },
   });
   expect(auth.ok()).toBeTruthy();
-  const mailbox = await request.get(`http://localhost:8000/api/v1/auth/dev-mailbox/${email}`);
+  const mailbox = await request.get(`${api}/auth/dev-mailbox/${email}`);
   const verifyToken = new URL((await mailbox.json()).link).searchParams.get("token")!;
-  expect((await request.post("http://localhost:8000/api/v1/auth/verify-email", { data: { token: verifyToken } })).ok()).toBeTruthy();
-  const login = await request.post("http://localhost:8000/api/v1/auth/login", { data: { email, password } });
+  expect((await request.post(`${api}/auth/verify-email`, { data: { token: verifyToken } })).ok()).toBeTruthy();
+  const login = await request.post(`${api}/auth/login`, { data: { email, password } });
   expect(login.ok()).toBeTruthy();
   const cookieState = await request.storageState();
   const csrf = cookieState.cookies.find((cookie) => cookie.name === "travelpilot_csrf")?.value ?? "";
@@ -40,15 +42,20 @@ test("收藏地点、计划重排和旅行记忆可在页面完成", async ({ pa
     await page.getByLabel("事件类型").selectOption("POI_CANCELLED");
     await page.getByLabel("POI ID").selectOption(poi.poi_id);
     await page.getByLabel("生效时间").fill("2026-10-20T09:00");
-    await page.getByRole("button", { name: "看看怎么调整" }).click();
-    await expect(page.getByRole("heading", { name: "新的安排" })).toBeVisible();
+    await page.getByRole("button", { name: "生成调整预览" }).click();
+    await expect(page.getByRole("heading", { name: "调整预览" })).toBeVisible();
     await expect(page.getByText(/调整成本/)).toBeVisible();
+    expect(await (await request.get(`${api}/trips/${trip.id}/plans`)).json()).toHaveLength(1);
+    await page.getByRole("button", { name: "确认采用这版安排" }).click();
+    await expect(page.getByRole("heading", { name: "调整已保存" })).toBeVisible();
+    expect(await (await request.get(`${api}/trips/${trip.id}/plans`)).json()).toHaveLength(2);
     if (process.env.TRAVELPILOT_EVENT_SCREENSHOT_PATH) {
       await page.screenshot({ path: process.env.TRAVELPILOT_EVENT_SCREENSHOT_PATH });
     }
 
     await page.goto(`/trips/${trip.id}/memory`);
-    await page.getByLabel("反馈").fill("今天很累，希望下午少安排景点");
+    await page.getByRole("button", { name: "留下一句话" }).click();
+    await page.getByLabel("写下你的感受").fill("今天很累，希望下午少安排景点");
     await page.getByRole("button", { name: "保存这段感受" }).click();
     await page.getByRole("button", { name: "确认记忆" }).click();
     await expect(page.getByText("SEMANTIC_PREFERENCE · 已确认")).toBeVisible();
@@ -56,6 +63,6 @@ test("收藏地点、计划重排和旅行记忆可在页面完成", async ({ pa
       await page.screenshot({ path: process.env.TRAVELPILOT_SCREENSHOT_PATH });
     }
   } finally {
-    await request.delete("http://localhost:8000/api/v1/account", { headers });
+    await request.delete(`${api}/account`, { headers });
   }
 });

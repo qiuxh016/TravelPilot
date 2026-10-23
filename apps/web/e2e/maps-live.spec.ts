@@ -11,7 +11,10 @@ test("地点探索使用高德结果并在页面绘制真实地图", async ({ pa
   });
   expect(registered.ok()).toBeTruthy();
   const mailbox = await request.get(`${api}/api/v1/auth/dev-mailbox/${email}`);
-  const token = new URL((await mailbox.json()).link).searchParams.get("token")!;
+  expect(mailbox.ok()).toBeTruthy();
+  const mailboxData = await mailbox.json() as { link?: string };
+  expect(mailboxData.link).toBeTruthy();
+  const token = new URL(mailboxData.link!, api).searchParams.get("token")!;
   expect((await request.post(`${api}/api/v1/auth/verify-email`, { data: { token } })).ok()).toBeTruthy();
   const login = await request.post(`${api}/api/v1/auth/login`, { data: { email, password } });
   expect(login.ok()).toBeTruthy();

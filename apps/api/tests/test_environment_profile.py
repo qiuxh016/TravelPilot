@@ -39,12 +39,30 @@ def test_weather_event_rejects_unsupported_condition():
         })
 
 
+def test_weather_event_requires_explicit_condition():
+    with pytest.raises(ValidationError, match="condition is required"):
+        EventCreate.model_validate({
+            "event_type": "WEATHER_CHANGE",
+            "effective_at": "2026-10-01T12:00:00+08:00",
+            "payload": {},
+        })
+
+
+@pytest.mark.parametrize("payload", [{}, {"condition": "HURRICANE"}])
+def test_core_weather_replan_rejects_missing_or_unsupported_condition(payload):
+    node = Node(uuid4(), "户外地点", "ATTRACTION", date(2026, 10, 1), time(13), time(14), 3)
+    with pytest.raises(ValueError, match="WEATHER_CONDITION_REQUIRED_OR_INVALID"):
+        replan([node], "WEATHER_CHANGE", datetime(2026, 10, 1, 12, tzinfo=UTC), payload)
+
+
 def test_weather_replan_removes_only_high_sensitivity_outdoor_and_keeps_unknown():
     day = date(2026, 10, 1)
     outdoor = Node(uuid4(), "河边步道", "ATTRACTION", day, time(13), time(14), 3,
-                   environment_profile={"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"}})
+                   environment_profile={"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"},
+                                        "source": "USER", "confidence": 0.8})
     indoor = Node(uuid4(), "博物馆", "ATTRACTION", day, time(14), time(15), 3,
-                  environment_profile={"exposure": "INDOOR", "sensitivity": {"RAIN": "LOW"}})
+                  environment_profile={"exposure": "INDOOR", "sensitivity": {"RAIN": "LOW"},
+                                       "source": "EDITORIAL", "confidence": 0.9})
     unknown = Node(uuid4(), "未标注景点", "ATTRACTION", day, time(15), time(16), 3)
 
     revised, warnings = replan(
@@ -58,11 +76,41 @@ def test_weather_replan_removes_only_high_sensitivity_outdoor_and_keeps_unknown(
 
 
 @pytest.mark.parametrize(
+    "profile",
+    [
+        {"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"}},
+        {"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"},
+         "source": "INFERRED", "confidence": 0.95},
+        {"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"},
+         "source": "EDITORIAL", "confidence": 0.69},
+    ],
+)
+def test_untrusted_or_low_confidence_weather_profile_never_removes_a_stop(profile):
+    node = Node(
+        uuid4(), "待核验地点", "ATTRACTION", date(2026, 10, 1), time(13), time(14), 3,
+        environment_profile=profile,
+    )
+
+    revised, warnings = replan(
+        [node], "WEATHER_CHANGE", datetime(2026, 10, 1, 12, tzinfo=UTC),
+        {"condition": "RAIN"},
+    )
+
+    assert revised == [node]
+    assert any("属性未知" in warning for warning in warnings)
+
+
+@pytest.mark.parametrize(
     ("profile", "expected"),
     [
-        ({"exposure": "INDOOR"}, True),
-        ({"exposure": "OUTDOOR", "sensitivity": {"RAIN": "LOW"}}, True),
-        ({"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"}}, False),
+        ({"exposure": "INDOOR", "source": "USER", "confidence": 0.8}, True),
+        ({"exposure": "OUTDOOR", "sensitivity": {"RAIN": "LOW"},
+          "source": "PROVIDER", "confidence": 0.9}, True),
+        ({"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"},
+          "source": "USER", "confidence": 0.8}, False),
+        ({"exposure": "INDOOR"}, False),
+        ({"exposure": "INDOOR", "source": "INFERRED", "confidence": 0.95}, False),
+        ({"exposure": "INDOOR", "source": "EDITORIAL", "confidence": 0.69}, False),
         ({}, False),
     ],
 )

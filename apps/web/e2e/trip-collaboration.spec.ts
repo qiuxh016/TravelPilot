@@ -141,6 +141,18 @@ test("好友可接受小团体旅行邀请并查看共享旅行，所有者可�
     const planRecord = await friend.context.get(`${api}/trips/${trip.id}/plans/${latestPlan.id}`);
     expect((await planRecord.json()).created_by_display_name).toBe("旅行editor");
 
+    await page.goto(`/trips/${trip.id}/plan`);
+    await expect(page.getByText(`计划 v${latestPlan.version}`)).toBeVisible();
+    const ownerLatestPlans = await owner.context.get(`${api}/trips/${trip.id}/plans`);
+    const ownerLatestPlan = (await ownerLatestPlans.json())[0] as { id: string; version: number; nodes: { id: string; day: string }[] };
+    const liveUpdate = await owner.context.patch(`${api}/trips/${trip.id}/plans/${ownerLatestPlan.id}/nodes/${ownerLatestPlan.nodes[0].id}`, {
+      headers: ownerHeaders,
+      data: { day: ownerLatestPlan.nodes[0].day, start_time: "12:00", end_time: "13:00", expected_base_version: ownerLatestPlan.version },
+    });
+    expect(liveUpdate.ok(), `Plan live update failed: ${liveUpdate.status()} ${await liveUpdate.text()}`).toBeTruthy();
+    await expect(page.getByText(`计划 v${ownerLatestPlan.version + 1}`)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("status").filter({ hasText: "更新了计划，已同步" })).toBeVisible();
+
     const addedStop = await friend.context.post(`${api}/trips/${trip.id}/wishlist`, {
       headers: friendHeaders,
       data: { name: "编辑者添加的地点", category: "ATTRACTION", latitude: 24.31, longitude: 116.11, suggested_duration_min: 45 },

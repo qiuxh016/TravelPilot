@@ -35,7 +35,8 @@ def candidate(name, duration=45, opening=None, poi_id=None, priority=3):
         priority,
         0.5,
         opening or {"open": "09:00", "close": "20:00"},
-        {"exposure": "INDOOR", "sensitivity": {"RAIN": "LOW"}, "source": "USER"},
+        {"exposure": "INDOOR", "sensitivity": {"RAIN": "LOW"},
+         "source": "USER", "confidence": 0.8},
     )
 
 

@@ -28,6 +28,55 @@ async def test_amap_driving_route_parses_step_polylines_to_latitude_longitude():
 
 
 @pytest.mark.asyncio
+async def test_amap_walking_route_uses_walking_endpoint():
+    provider = AmapProvider("test-key")
+    paths = []
+
+    async def fake_get(path, **_params):
+        paths.append(path)
+        return {"route": {"paths": [{"distance": "600", "duration": "600", "steps": []}]}}
+
+    provider._get = fake_get
+    route = await provider.get_route((30.66, 104.06), (30.662, 104.062), mode="WALKING")
+
+    assert paths == ["/direction/walking"]
+    assert route.mode == "WALKING"
+    assert route.duration_min == 10
+
+
+@pytest.mark.asyncio
+async def test_amap_transit_route_uses_city_scoped_v5_endpoint_and_parses_segments():
+    provider = AmapProvider("test-key")
+    calls = []
+
+    async def fake_get(path, **params):
+        calls.append((path, params))
+        return {"route": {"transits": [{
+            "distance": "3200", "cost": {"duration": "1800"},
+            "segments": [
+                {"walking": {"steps": [{"instruction": "步行至车站", "polyline": "104.060,30.660;104.061,30.661"}]}},
+                {"bus": {"buslines": [{
+                    "name": "B12路", "departure_stop": {"name": "人民公园"},
+                    "arrival_stop": {"name": "武侯祠"}, "polyline": "104.061,30.661;104.062,30.662",
+                }]}},
+            ],
+        }]}}
+
+    provider._get = fake_get
+    route = await provider.get_route(
+        (30.66, 104.06), (30.662, 104.062), "TRANSIT",
+        origin_city_code="028", destination_city_code="028",
+    )
+
+    assert calls[0][0] == "/v5/direction/transit/integrated"
+    assert calls[0][1]["city1"] == calls[0][1]["city2"] == "028"
+    assert route.mode == "TRANSIT"
+    assert route.duration_min == 30
+    assert route.polyline == ((30.66, 104.06), (30.661, 104.061), (30.662, 104.062))
+    assert [part["label"] for part in route.segments] == ["步行至车站", "B12路：人民公园 → 武侯祠"]
+
+
+@pytest.mark.asyncio
 async def test_amap_static_map_omits_line_when_no_road_geometry_is_provided(monkeypatch):
     provider = AmapProvider("test-key")
     captured = {}

@@ -36,7 +36,9 @@ def test_replan_freezes_other_days_and_fixed_nodes():
                                        "source": "USER", "confidence": 1})
     fixed = Node(uuid4(), "预约", "ATTRACTION", day.date(), time(14), time(15), 3, "FIXED")
     next_day = Node(uuid4(), "后一天", "ATTRACTION", day.date().replace(day=2), time(11), time(13), 3)
-    result, warnings = replan([first, second, fixed, next_day], "WEATHER_CHANGE", day, {})
+    result, warnings = replan(
+        [first, second, fixed, next_day], "WEATHER_CHANGE", day, {"condition": "RAIN"},
+    )
     assert first in result and fixed in result and next_day in result
     assert second not in result and warnings
     changes = plan_diff([first, second, fixed, next_day], result, "WEATHER_CHANGE")
@@ -67,7 +69,8 @@ async def test_amap_matrix_has_one_row_per_origin():
 
     async def fake_get(path, **params):
         destination = params["destination"]
-        return {"results": [{"duration": "0" if origin == destination else "600"}
+        # The upstream service may report a small non-zero self-route time.
+        return {"results": [{"duration": "60" if origin == destination else "600"}
                             for origin in params["origins"].split("|")]}
 
     provider._get = fake_get

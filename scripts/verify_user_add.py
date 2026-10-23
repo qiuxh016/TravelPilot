@@ -41,6 +41,7 @@ async def verify() -> None:
             session.add(UserModel(
                 id=user_id,
                 email=f"user-add-{suffix}@example.invalid",
+                username=f"user_add_{suffix[:12]}",
                 password_hash="not-a-real-password",
                 is_active=True,
                 email_verified=True,

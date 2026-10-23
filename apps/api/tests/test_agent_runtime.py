@@ -12,6 +12,49 @@ class Input(BaseModel):
     value: int
 
 
+@pytest.mark.parametrize(("kwargs", "message"), [
+    ({"max_steps": -1}, "max_steps"),
+    ({"max_attempts": True}, "max_attempts"),
+    ({"token_budget": 1.5}, "token_budget"),
+    ({"token_budget": -1}, "token_budget"),
+])
+def test_runtime_rejects_invalid_execution_limits(kwargs, message):
+    async def record(_trace):
+        return None
+
+    with pytest.raises(ValueError, match=message):
+        AgentRuntime([], record, **kwargs)
+
+
+@pytest.mark.parametrize(("timeout", "retries", "message"), [
+    (0, 0, "timeout_seconds"),
+    (float("inf"), 0, "timeout_seconds"),
+    (1, -1, "retry_limit"),
+])
+def test_runtime_rejects_invalid_tool_execution_limits(timeout, retries, message):
+    async def handler(_arguments):
+        return {"ok": True}
+
+    async def record(_trace):
+        return None
+
+    with pytest.raises(ValueError, match=message):
+        AgentRuntime([ToolSpec("lookup", Input, handler, timeout_seconds=timeout,
+                               retry_limit=retries)], record)
+
+
+def test_runtime_rejects_duplicate_tool_names_instead_of_shadowing():
+    async def handler(_arguments):
+        return {"ok": True}
+
+    async def record(_trace):
+        return None
+
+    tools = [ToolSpec("lookup", Input, handler), ToolSpec("lookup", Input, handler)]
+    with pytest.raises(ValueError, match="unique"):
+        AgentRuntime(tools, record)
+
+
 @pytest.mark.asyncio
 async def test_runtime_retries_only_explicit_transient_errors_and_counts_attempts():
     attempts = 0

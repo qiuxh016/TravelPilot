@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from travelpilot_api.main import (
+    ADVISOR_RUNTIME_FINGERPRINT,
     _expected_migration_heads,
     app,
     get_readiness_redis,
@@ -15,6 +16,7 @@ def test_health() -> None:
     response = TestClient(app).get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+    assert response.headers["x-advisor-runtime-fingerprint"] == ADVISOR_RUNTIME_FINGERPRINT
 
 
 def test_request_logs_use_route_templates_and_validated_request_ids(caplog):
