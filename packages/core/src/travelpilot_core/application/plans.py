@@ -57,8 +57,10 @@ class PlanService:
         base_version = version - 1
         if expected_base_version is not None and expected_base_version != base_version:
             raise ValueError(f"PLAN_VERSION_CONFLICT:{base_version}")
+        existing_plans = await self.repository.list_by_trip(trip_id)
         plan = TripPlanModel(
             trip_id=trip_id, version=version, status="READY", warnings=warnings,
+            lodging=list(existing_plans[0].lodging or []) if existing_plans else [],
             base_version=base_version, created_by_user_id=actor_user_id,
             created_by_display_name=actor_display_name,
             change_reason=reason or "生成旅行计划",
@@ -108,6 +110,7 @@ class PlanService:
                 raise ValueError("NULL_PLAN_FIELD")
         revised = TripPlanModel(trip_id=source.trip_id, version=latest + 1,
                                 status=source.status, warnings=list(source.warnings),
+                                lodging=list(source.lodging or []),
                                 base_version=latest, created_by_user_id=actor_user_id,
                                 created_by_display_name=actor_display_name,
                                 change_reason=reason or ("移除行程地点" if changes is None else "调整行程"))
@@ -201,6 +204,10 @@ class PlanService:
             version=next_version,
             status=source.status,
             warnings=list(source.warnings),
+            lodging=[
+                item for item in (source.lodging or [])
+                if str(item.get("poi_id")) != str(poi_id)
+            ],
             base_version=source.version,
             created_by_user_id=actor_user_id,
             created_by_display_name=actor_display_name,

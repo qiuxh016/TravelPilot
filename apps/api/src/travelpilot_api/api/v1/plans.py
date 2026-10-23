@@ -32,6 +32,7 @@ def to_read(plan, rows):
     return PlanRead(
         id=plan.id, trip_id=plan.trip_id, version=plan.version,
         status=plan.status, warnings=plan.warnings, created_at=plan.created_at,
+        lodging=plan.lodging or [],
         base_version=plan.base_version,
         created_by_user_id=plan.created_by_user_id,
         created_by_display_name=plan.created_by_display_name,

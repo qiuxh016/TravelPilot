@@ -767,6 +767,13 @@ blockquote { border-left: 3px solid var(--accent); margin: 22px 0; padding: 12px
 .plan-day-switcher button.is-selected { border-color: var(--accent); background: var(--accent-soft); }
 .plan-day-switcher small, .plan-day-switcher span { color: var(--muted); font-size: 10px; }
 .plan-day-switcher strong { font-size: 13px; }
+.plan-lodging { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin: 0 0 18px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 13px; background: var(--surface); }
+.plan-lodging h2 { margin: 0; font-size: 16px; }
+.plan-lodging ul, .shared-lodging ul { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.plan-lodging li, .shared-lodging li { display: grid; gap: 3px; min-width: 160px; padding: 10px 12px; border-radius: 10px; background: var(--surface-muted, var(--background)); }
+.plan-lodging li span, .plan-lodging li small, .shared-lodging li span { color: var(--muted); font-size: 12px; }
+.shared-lodging { margin-top: 14px; }
+.shared-lodging h4 { margin: 0 0 8px; }
 .plan-day-layout { display: grid; grid-template-columns: minmax(300px, .86fr) minmax(0, 1.14fr); align-items: start; gap: 16px; }
 .plan-timeline { min-width: 0; border: 1px solid var(--border); border-radius: 15px; padding: 18px; background: var(--surface); box-shadow: var(--shadow); }
 .plan-section-title { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }

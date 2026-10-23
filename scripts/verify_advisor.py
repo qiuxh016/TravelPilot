@@ -4,6 +4,7 @@ import asyncio
 import secrets
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
+from uuid import uuid4
 
 import httpx
 from sqlalchemy import delete, func, select
@@ -115,10 +116,28 @@ async def run():
             assert conflict.status_code == 409, conflict.text
             candidate_id = next(item["id"] for item in advisor_session["candidates"]
                                 if item["name"] == "宽窄巷子")
+            lodging_candidate = {
+                **next(item for item in advisor_session["candidates"] if item["id"] == candidate_id),
+                "id": str(uuid4()),
+                "provider_id": f"fake-hotel-{suffix}",
+                "name": "验证用安心酒店",
+                "category": "HOTEL",
+                "planning_category": "LODGING",
+                "suggestion": "端到端住宿持久化验证",
+            }
+            async with AsyncSessionFactory() as db:
+                session_row = await db.get(AdvisorSessionModel, session_id)
+                session_row.candidates = [*session_row.candidates, lodging_candidate]
+                await db.commit()
+            advisor_session = (await call("GET", f"{API}/advisor/sessions/{session_id}", owner_a)).json()
+            lodging_candidate_id = next(
+                item["id"] for item in advisor_session["candidates"]
+                if item["name"] == "验证用安心酒店"
+            )
 
             draft = await call("POST", f"{API}/advisor/sessions/{session_id}/draft", owner_a,
                                json={
-                                   "candidate_ids": [candidate_id],
+                                   "candidate_ids": [candidate_id, lodging_candidate_id],
                                    "schedules": [{
                                        "candidate_id": candidate_id,
                                        "day": start_date.isoformat(),
@@ -128,6 +147,7 @@ async def run():
             assert draft.status_code == 200, draft.text
             advisor_session = draft.json()
             assert advisor_session["draft"]["stops"], advisor_session["draft"]
+            assert advisor_session["draft"]["lodging"][0]["name"] == "验证用安心酒店"
             assert advisor_session["draft"]["transport"]["status"] == "SIMULATED"
             assert advisor_session["draft"]["origin_leg"]["status"] == "SIMULATED"
             assert advisor_session["draft"]["origin_leg"]["from"] == "成都东站"
@@ -164,9 +184,12 @@ async def run():
             assert len(trip_list.json()) == 1 and trip_list.json()[0]["id"] == trip_id
             wishlist = await call("GET", f"{API}/trips/{trip_id}/wishlist", owner_a)
             plans = await call("GET", f"{API}/trips/{trip_id}/plans", owner_a)
-            assert wishlist.status_code == 200 and len(wishlist.json()) == 1, wishlist.text
+            assert wishlist.status_code == 200 and len(wishlist.json()) == 2, wishlist.text
             assert plans.status_code == 200 and len(plans.json()) == 1, plans.text
             assert plans.json()[0]["id"] == plan_id and len(plans.json()[0]["nodes"]) == 1
+            assert plans.json()[0]["lodging"][0]["name"] == "验证用安心酒店", plans.json()[0]
+            persisted_session = (await call("GET", f"{API}/advisor/sessions/{session_id}", owner_a)).json()
+            assert persisted_session["context"]["current_plan"]["lodging"][0]["name"] == "验证用安心酒店"
 
             existing_trip_response = await call("POST", f"{API}/trips", owner_a, json={
                 "destination": "杭州", "start_date": start_date.isoformat(),
@@ -332,7 +355,7 @@ async def run():
                     TripModel.id == trip_id
                 )) == 0
 
-            print("ADVISOR FLOW OK: owner isolation → map verified candidate → confirm only → idempotent confirmation → existing plan and memory context → conversational edits and stale draft protection → new plan version and change log → export → account cascade deletion")
+            print("ADVISOR FLOW OK: owner isolation → map verified candidate → lodging draft → confirm-only lodging persistence → idempotent confirmation → existing plan and memory context → conversational edits and stale draft protection → new plan version and change log → export → account cascade deletion")
     finally:
         app.dependency_overrides.pop(get_maps_provider, None)
         settings.llm_api_key, settings.llm_model = previous_llm_settings

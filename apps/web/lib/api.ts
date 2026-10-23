@@ -396,9 +396,13 @@ export type PlanNode = {
 };
 export type Plan = {
   id: string; trip_id: string; version: number; status: string;
-  warnings: string[]; created_at: string; base_version: number | null;
+  warnings: string[]; lodging: PlanLodging[]; created_at: string; base_version: number | null;
   created_by_user_id: string | null; created_by_display_name: string | null;
   change_reason: string | null; nodes: PlanNode[];
+};
+export type PlanLodging = {
+  candidate_id?: string; poi_id?: string; name: string; address?: string | null;
+  provider?: string | null; verification_status?: string | null;
 };
 export const createPlanRun = (tripId: string, expectedBaseVersion?: number) => request<Plan>(`/api/v1/trips/${tripId}/plan-runs`, {
   method: "POST", body: JSON.stringify({ expected_base_version: expectedBaseVersion }),
@@ -515,7 +519,7 @@ export type FriendMessage = { id: string; sender_user_id: string; body: string; 
 export type FriendChatAnalysis = { summary: string; observed_tone: string; travel_preferences: string[]; suggested_reply: string; evidence: string[]; includes_images: boolean };
 export type TripShare = { id: string; trip_id: string; grantee_user_id: string; email: string; scope: "TRIP_SUMMARY" | "TRIP_AND_PLAN"; created_at: string };
 export type SharedTrip = { id: string; destination: string; start_date: string; end_date: string; scope: "TRIP_SUMMARY" | "TRIP_AND_PLAN"; owner_email: string };
-export type SharedTripDetail = SharedTrip & { plan_version: number | null; plan_nodes: { name: string; day: string; start_time: string; end_time: string; status: string }[] };
+export type SharedTripDetail = SharedTrip & { plan_version: number | null; plan_nodes: { name: string; day: string; start_time: string; end_time: string; status: string }[]; lodging: PlanLodging[] };
 export type TripMemberRole = "EDITOR" | "VIEWER";
 export type TripMemberStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "REVOKED";
 export type TripMember = {
@@ -540,6 +544,7 @@ export type CollaborativeTripDetail = CollaborativeTrip & {
   plan_id: string | null;
   plan_version: number | null;
   plan_nodes: PlanNode[];
+  lodging: PlanLodging[];
 };
 export const listFriends = () => request<Friendship[]>("/api/v1/friends");
 export const listFriendRequests = () => request<Friendship[]>("/api/v1/friends/requests");

@@ -384,6 +384,7 @@ async def refresh_trip_snapshot(db: AsyncSession, row: AdvisorSessionModel) -> d
     context["current_plan"] = {
         "id": str(latest_plan.id), "version": latest_plan.version,
         "status": latest_plan.status, "warnings": latest_plan.warnings, "stops": stops,
+        "lodging": list(latest_plan.lodging or []),
     } if latest_plan else None
     row.destination = trip.destination
     row.start_date = trip.start_date

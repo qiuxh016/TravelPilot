@@ -22,6 +22,7 @@ class PlanRead(BaseModel):
     version: int
     status: str
     warnings: list[str]
+    lodging: list[dict] = Field(default_factory=list)
     created_at: datetime
     base_version: int | None = None
     created_by_user_id: UUID | None = None

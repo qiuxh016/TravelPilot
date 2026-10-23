@@ -626,7 +626,7 @@ async def confirm_replan(
     status = "NEEDS_USER_INPUT" if needs_input else str(preview.get("status", "READY"))
     plan = TripPlanModel(
         trip_id=trip_id, version=next_version,
-        status=status, warnings=warnings,
+        status=status, warnings=warnings, lodging=list(source_plan.lodging or []),
     )
     session.add(plan)
     await session.flush()

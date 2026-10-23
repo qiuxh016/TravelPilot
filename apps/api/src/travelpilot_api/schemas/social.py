@@ -100,4 +100,5 @@ class SharedTripPlanNodeRead(BaseModel):
 class SharedTripDetailRead(SharedTripRead):
     plan_version: int | None = None
     plan_nodes: list[SharedTripPlanNodeRead] = Field(default_factory=list)
+    lodging: list[dict] = Field(default_factory=list)
     model_config = ConfigDict(from_attributes=True)

@@ -69,3 +69,4 @@ class CollaborativeTripDetailRead(CollaborativeTripRead):
     plan_id: UUID | None = None
     plan_version: int | None = None
     plan_nodes: list[CollaborativePlanNodeRead] = Field(default_factory=list)
+    lodging: list[dict] = Field(default_factory=list)

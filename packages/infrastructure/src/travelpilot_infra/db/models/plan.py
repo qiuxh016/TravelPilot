@@ -18,6 +18,7 @@ class TripPlanModel(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="READY")
     warnings: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    lodging: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     base_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_by_user_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True

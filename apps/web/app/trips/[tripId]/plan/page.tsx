@@ -143,6 +143,7 @@ export default function PlanPage() {
     {!loading && !error && latest && latest.nodes.length > 0 ? <>
       <div className="plan-version"><span><strong>计划 v{latest.version}</strong><small> · {latest.status}</small></span><Link href={`/trips/${tripId}/events`}>模拟变化并查看调整 →</Link></div>
       <section className="plan-day-switcher" aria-label="选择行程日期">{days.map((day, index) => <button key={day} type="button" className={day === visibleDay ? "is-selected" : ""} onClick={() => { setActiveDay(day); setSelectedStop(""); }}><small>第 {index + 1} 天</small><strong>{day}</strong><span>{latest.nodes.filter((node) => node.day === day).length} 个安排</span></button>)}</section>
+      {(latest.lodging ?? []).length > 0 && <section className="plan-lodging"><div><p className="eyebrow">STAY</p><h2>住宿安排</h2></div><ul>{(latest.lodging ?? []).map((item) => <li key={item.poi_id ?? item.candidate_id ?? item.name}><strong>{item.name}</strong>{item.address && <span>{item.address}</span>}{item.verification_status && <small>{item.verification_status === "VERIFIED" ? "地图已核验" : item.verification_status === "SIMULATED" ? "模拟地点" : "待核实"}</small>}</li>)}</ul></section>}
       {wishlist.length === 0 && latest.nodes.length > 0 && <p className="plan-sync-notice">想去的地点已清空，但当前计划是已保存的独立版本。现在会保留历史计划；移除概览中的地点后，新版本会同步移除对应安排。</p>}
       <div className="plan-day-layout">
         <section className="plan-timeline"><div className="plan-section-title"><div><p className="eyebrow">DAY PLAN</p><h2>今日安排</h2></div><span>{dayNodes.length} 个地点</span></div>

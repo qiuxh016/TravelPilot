@@ -748,6 +748,7 @@ async def get_shared_trip(
     trip, grant, owner = row
     latest_version = None
     nodes: list[SharedTripPlanNodeRead] = []
+    lodging: list[dict] = []
     if grant.scope == "TRIP_AND_PLAN":
         latest_version = await session.scalar(select(func.max(TripPlanModel.version)).where(TripPlanModel.trip_id == trip_id))
         if latest_version is not None:
@@ -760,6 +761,8 @@ async def get_shared_trip(
                 .where(TripPlanNodeModel.plan_id == plan_id)
                 .order_by(TripPlanNodeModel.day, TripPlanNodeModel.start_time)
             )).all()
+            current_plan = await session.get(TripPlanModel, plan_id)
+            lodging = list(current_plan.lodging or []) if current_plan else []
             nodes = [SharedTripPlanNodeRead(
                 name=name, day=node.day, start_time=node.start_time.isoformat(),
                 end_time=node.end_time.isoformat(), status=node.status,
@@ -768,4 +771,5 @@ async def get_shared_trip(
         id=trip.id, destination=trip.destination, start_date=trip.start_date,
         end_date=trip.end_date, scope=grant.scope, owner_email=owner.email,
         plan_version=latest_version, plan_nodes=nodes,
+        lodging=lodging,
     )

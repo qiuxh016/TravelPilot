@@ -288,12 +288,15 @@ async def get_collaborative_trip(
         TripPlanModel.trip_id == trip_id
     ))
     plan_id = None
+    lodging: list[dict] = []
     nodes: list[CollaborativePlanNodeRead] = []
     if latest_version is not None:
         plan_id = await session.scalar(select(TripPlanModel.id).where(
             TripPlanModel.trip_id == trip_id,
             TripPlanModel.version == latest_version,
         ))
+        current_plan = await session.get(TripPlanModel, plan_id)
+        lodging = list(current_plan.lodging or []) if current_plan else []
         rows = (await session.execute(
             select(TripPlanNodeModel, PoiModel.name)
             .join(PoiModel, PoiModel.id == TripPlanNodeModel.poi_id)
@@ -322,6 +325,7 @@ async def get_collaborative_trip(
         plan_id=plan_id,
         plan_version=latest_version,
         plan_nodes=nodes,
+        lodging=lodging,
     )
 
 

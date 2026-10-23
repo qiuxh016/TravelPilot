@@ -331,6 +331,7 @@ async def create_session(
                 "id": str(current_plan.id), "version": current_plan.version,
                 "status": current_plan.status, "warnings": current_plan.warnings,
                 "stops": plan_stops,
+                "lodging": list(current_plan.lodging or []),
             } if current_plan else None,
             "confirmed_memories": [{
                 "id": str(memory.id), "type": memory.memory_type, "text": memory.text,

@@ -185,7 +185,15 @@ async def confirm_advisor_draft(
             )
     version = await PlanRepository(db).next_version(trip.id)
     plan = TripPlanModel(
-        trip_id=trip.id, version=version, status="READY", warnings=row.draft.get("warnings", [])
+        trip_id=trip.id, version=version, status="READY", warnings=row.draft.get("warnings", []),
+        lodging=[
+            {
+                **item,
+                "poi_id": str(poi_ids[item["candidate_id"]]),
+            }
+            for item in row.draft.get("lodging", [])
+            if item.get("candidate_id") in poi_ids
+        ],
     )
     db.add(plan)
     await db.flush()
