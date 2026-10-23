@@ -210,6 +210,31 @@ def test_required_nonfixed_activity_is_not_moved_to_hide_an_opening_conflict():
     assert result.alternatives == ()
 
 
+def test_route_boundary_candidate_finds_only_feasible_minute_between_grid_slots():
+    previous = activity("previous", DAY_1, 9 * 60, 30, fixed=True, required=True)
+    visit = activity("visit", DAY_1, 10 * 60, 30)
+    following = activity("following", DAY_1, 11 * 60, 30, fixed=True, required=True)
+
+    result = negotiate_schedule(
+        [previous, visit, following],
+        start_date=DAY_1,
+        end_date=DAY_1,
+        travel_minutes={("previous", "visit"): 20, ("visit", "following"): 0},
+    )
+
+    moved = [
+        option for option in result.alternatives
+        if any(change["operation"] == "MOVE" for change in option.changes)
+    ]
+    assert result.feasible
+    assert moved
+    assert any(
+        change["activity_id"] == "visit" and change["after_start"] == "10:10"
+        for option in moved
+        for change in option.changes
+    )
+
+
 def test_closed_at_start_conflict_gets_only_opening_hour_valid_alternative():
     museum = activity(
         "museum",

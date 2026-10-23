@@ -460,6 +460,12 @@ def _candidate_starts(
     )
     slots = set(range(open_at, latest + 1, 15))
     for item in relevant:
+        route_after = travel_minutes.get((item.id, activity.id))
+        if _valid_route(route_after):
+            slots.add(item.end_minute + route_after + transfer_buffer)
+        route_before = travel_minutes.get((activity.id, item.id))
+        if _valid_route(route_before):
+            slots.add(item.start_minute - route_before - transfer_buffer - activity.duration_minute)
         slots.update(
             (
                 max(open_at, item.start_minute - activity.duration_minute),
