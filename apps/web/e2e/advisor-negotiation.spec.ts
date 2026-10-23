@@ -115,6 +115,7 @@ test("顾问展示已验证的冲突方案并将选择同步到新草案", async
   ]);
   await expect(page.getByText("江北老街", { exact: true }).last()).toBeVisible();
   await expect(page.getByText("鑫丰特色餐饮", { exact: true }).last()).toBeVisible();
+  await expect(page.locator(".advisor-lodging-summary")).toContainText("梅州客家酒店");
   await expect(page.getByText("已按你选的冲突调整方案重新核验")).toBeVisible();
   await expect(page.locator(".advisor-confirm-bar")).not.toContainText("预览已过期");
   await page.getByRole("button", { name: "检查并协商" }).click();
