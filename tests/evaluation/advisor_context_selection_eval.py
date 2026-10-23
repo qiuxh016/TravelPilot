@@ -220,7 +220,10 @@ def _fixture_observation(tool: str, case: dict[str, Any], arguments: dict[str, A
     return base_eval._fixture_observation(tool, case, arguments)
 
 
-async def run_live(path: Path, case_ids: tuple[str, ...], token_cap: int, max_requests: int, max_tokens: int) -> dict[str, Any]:
+async def run_live(
+    path: Path, case_ids: tuple[str, ...], token_cap: int, max_requests: int, max_tokens: int,
+    prior_unrecorded_requests: int = 0, prior_output_token_reserve: int = 0,
+) -> dict[str, Any]:
     dataset, preflight = validate_inputs(path)
     if not settings.llm_api_key or not settings.llm_model or not settings.llm_base_url:
         raise RuntimeError("LLM provider settings are incomplete; no request was sent")
@@ -232,8 +235,16 @@ async def run_live(path: Path, case_ids: tuple[str, ...], token_cap: int, max_re
     cases = [by_id[key] for key in case_ids]
     request_ceiling = len(cases) * 2 * len(ARMS)
     token_ceiling = request_ceiling * token_cap
-    if request_ceiling > 120 or max_requests < request_ceiling or max_tokens < token_ceiling:
-        raise ValueError(f"selection requires authorization for {request_ceiling} requests and {token_ceiling} output tokens")
+    cumulative_request_ceiling = request_ceiling + prior_unrecorded_requests
+    cumulative_output_ceiling = token_ceiling + prior_output_token_reserve
+    if (
+        request_ceiling > 120 or prior_unrecorded_requests < 0 or prior_output_token_reserve < 0
+        or max_requests < cumulative_request_ceiling or max_tokens < cumulative_output_ceiling
+    ):
+        raise ValueError(
+            f"selection requires authorization for {cumulative_request_ceiling} cumulative requests "
+            f"and {cumulative_output_ceiling} cumulative output tokens"
+        )
 
     checkpoint_path = RESULT.with_suffix(".checkpoint.jsonl")
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
@@ -289,7 +300,10 @@ async def run_live(path: Path, case_ids: tuple[str, ...], token_cap: int, max_re
                 latency = round((time.perf_counter() - started) * 1000, 2)
                 input_total += used_input
                 output_total += used_output
-                if used_output > token_cap or output_total > max_tokens or requests > max_requests:
+                if (
+                    used_output > token_cap or output_total + prior_output_token_reserve > max_tokens
+                    or requests + prior_unrecorded_requests > max_requests
+                ):
                     raise RuntimeError("provider usage exceeded the explicit evaluation ceiling")
                 turn_result = {
                     "turn": i + 1, "expected_action": turn["expected_action"],
@@ -303,7 +317,10 @@ async def run_live(path: Path, case_ids: tuple[str, ...], token_cap: int, max_re
                 with checkpoint_path.open("a", encoding="utf-8") as checkpoint:
                     checkpoint.write(json.dumps({
                         "arm": arm, "case_id": case["id"], **turn_result,
-                        "request_number": requests, "output_tokens_so_far": output_total,
+                        "request_number": requests,
+                        "cumulative_request_number_including_prior": requests + prior_unrecorded_requests,
+                        "output_tokens_so_far": output_total,
+                        "cumulative_output_token_upper_bound": output_total + prior_output_token_reserve,
                     }, ensure_ascii=False) + "\n")
                     checkpoint.flush()
                 history.append({"role": "user", "content": turn["user"]})
@@ -341,6 +358,10 @@ async def run_live(path: Path, case_ids: tuple[str, ...], token_cap: int, max_re
         "provider_host": settings.llm_base_url.split("/")[2] if "://" in settings.llm_base_url else "configured",
         "requests_used": requests, "output_token_cap_per_request": token_cap,
         "output_tokens_reported": output_total, "input_tokens_reported": input_total,
+        "prior_unrecorded_requests": prior_unrecorded_requests,
+        "prior_output_token_reserve": prior_output_token_reserve,
+        "cumulative_request_upper_bound": requests + prior_unrecorded_requests,
+        "cumulative_output_token_upper_bound": output_total + prior_output_token_reserve,
         "authorization_ceiling": {"requests": max_requests, "output_tokens": max_tokens},
         "completed_at_utc": datetime.now(UTC).isoformat(),
         "preflight": preflight, "summary": summary,
@@ -356,6 +377,8 @@ def main() -> None:
     parser.add_argument("--token-cap", type=int, default=MAX_OUTPUT_PER_REQUEST)
     parser.add_argument("--max-requests", type=int, default=0)
     parser.add_argument("--max-output-tokens", type=int, default=0)
+    parser.add_argument("--prior-unrecorded-requests", type=int, default=0)
+    parser.add_argument("--prior-output-token-reserve", type=int, default=0)
     args = parser.parse_args()
     dataset, report = validate_inputs(args.dataset)
     if not args.run_live:
@@ -370,7 +393,10 @@ def main() -> None:
         return
     output = args.output or RESULT
     ids = tuple(args.case_id or [case["id"] for case in dataset["cases"]])
-    result = asyncio.run(run_live(args.dataset, ids, args.token_cap, args.max_requests, args.max_output_tokens))
+    result = asyncio.run(run_live(
+        args.dataset, ids, args.token_cap, args.max_requests, args.max_output_tokens,
+        args.prior_unrecorded_requests, args.prior_output_token_reserve,
+    ))
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({key: result[key] for key in ("evaluation_id", "model", "requests_used", "output_tokens_reported", "summary")}, ensure_ascii=False, indent=2))
