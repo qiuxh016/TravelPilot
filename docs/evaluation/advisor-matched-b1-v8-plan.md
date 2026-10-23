@@ -1,7 +1,7 @@
 # Matched fixed-workflow baseline v8 plan
 
 Updated: 2026-10-23  
-Status: revised four-case matched diagnostic set and exact-prompt checks pass; pinned B1 authenticated API passes all four cases (8/8 turns proposed every confirmed stop and preserved each formal plan); B2/B3 production AgentRuntime preflight passes the same cases with a loopback stub (20 requests, 200 reported output tokens, zero formal writes); current B3 authenticated Advisor API preflight now also passes all four cases with confirmed baseline plans, unchanged plan IDs/versions, Fake Maps, and temporary-account cleanup. The comparable live-model run and independent ratings remain; the new live run is not yet authorized.
+Status: local dataset/runtime/API preflights pass. The v8 DeepSeek attempt is partial: B1 ran within its isolated arm budget, but a runner startup defect prevented retention of its result files; B2/B3 both ran all four two-turn cases, with 0/8 and 1/8 expected actions matched, respectively. B2/B3 responses frequently failed JSON parsing at the production 128-token action cap. All arms were prevented from writing formal plans; synthetic Maps/weather only. The user authorized 48 requests / 12,288 output tokens, and total accounting conservatively reserves B1's full 24-request/6,144-token allocation because its exact proxy audit was lost. The remaining safe allowance is insufficient to rerun B1's complete arm; a new authorization is needed for a bounded B1-only rerun. Independent response-quality ratings also remain open.
 
 ## Purpose
 
@@ -36,3 +36,15 @@ The run must not begin until the fresh case file, semantic-overlap review, basel
 ## Interpretation and remaining gates
 
 Even a successful matched run closes only a small schedule-task comparison. P0 still requires independent ratings of the existing single-system quality sheet and a separate paired blind review if comparative user-facing quality is claimed. The 2026-10-20 single-system review packet is at `tests/evaluation/reviews/advisor_product_quality_review_user_authorized_20261020_v4.json`; ratings have not been entered. Production external trials and continuous operations remain outside the active plan.
+
+## Authorized v8 live attempt (2026-10-23)
+
+The run used DeepSeek Flash through three separate loopback proxies with arm allocations B1=24, B2=12, B3=12 provider requests; each upstream request was clamped to 256 output tokens (below the authorized 512 maximum). This makes the global upper bound 48 requests and 12,288 requested output tokens. B1 used a detached worktree at the pinned revision, a disposable PostgreSQL database, and Redis DB 14, which was confirmed empty before use. B2/B3 used only local synthetic tool fixtures. No formal-plan confirmation endpoint was called.
+
+The B1 arm completed its case loop and its temporary accounts were deleted, but a settings mutation caused the next proxy to point at the stopped B1 proxy. The process then cleaned its temporary directory, which also removed the B1 case reports and exact proxy counter. B1 is therefore **unscored**; its full 24-request / 6,144-token allocation is reserved in the authorization ledger for safety. The runner now preserves per-case results and checkpoints outside its cleanup directory, restores the evaluator's provider settings, and has a regression for the DeepSeek root base URL.
+
+B2 completed 8/8 user turns with 0/8 expected actions matched; all 8 action responses were rejected as non-JSON. B3 completed 8/8 turns with 1/8 expected actions matched; 7/8 were rejected as non-JSON. Reported output usage was 1,024 tokens for B2 and 1,004 for B3; the proxy reserved 1,024 tokens for each. Both arms recorded zero formal writes. The action parser does not retain raw malformed model content or provider finish reason, so this result identifies a concrete production action-format failure but cannot determine whether truncation caused it.
+
+The retained local artifact is `tests/evaluation/results/advisor_matched_schedule_b2b3_v8_live_20261023.json` (ignored by Git). Its conservative budget ledger is 40/48 requests and 8,192/12,288 reserved output tokens, counting the full B1 allocation even though the exact amount is unavailable. Do not rerun B1 under the existing authorization: only 8 requests remain under this conservative accounting. Re-running the complete B1 arm requires a separate authorization capped at 24 requests and 6,144 output tokens. The current harness supports this retry and persists each B1 case plus a live proxy checkpoint.
+
+Focused verification after the harness repair: **55 tests passed** across the bounded proxy, matched dataset, and product API evaluator suites; Python compilation and `git diff --check` passed. These are harness checks and do not change the live model outcome.

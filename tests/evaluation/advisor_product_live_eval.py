@@ -1097,6 +1097,7 @@ async def run_eval(
     *, base_url: str, output: Path, server_output_cap: int | None = None,
     server_session_cap: int | None = None, trip_start_date: date | None = None,
     trip_end_date: date | None = None,
+    pace_level: int = 2,
     scenario_id: str = "schedule-two-turn", model_is_local_stub: bool = False,
     model_is_bounded_proxy: bool = False, scenario_override: dict[str, Any] | None = None,
     assessment_scenario_id: str | None = None,
@@ -1190,7 +1191,7 @@ async def run_eval(
             else:
                 trip_response = await client.post("/api/v1/trips", headers=headers, json={
                     "destination": scenario.get("destination", "成都"), "start_date": start.isoformat(),
-                    "end_date": end.isoformat(), "pace_level": 2,
+                    "end_date": end.isoformat(), "pace_level": pace_level,
                 })
                 if trip_response.status_code != 201:
                     raise RuntimeError(f"TRIP_HTTP_{trip_response.status_code}")
@@ -1240,7 +1241,7 @@ async def run_eval(
                 "destination": "" if discovery_mode else scenario.get("destination", "成都"),
                 "start_date": "" if discovery_mode else start.isoformat(),
                 "end_date": "" if discovery_mode else end.isoformat(),
-                "pace_level": 2,
+                "pace_level": pace_level,
                 "saved_places": [item[0] for item in scenario["saved_places"]],
                 "map_evidence": (
                     "AMap Web Service" if discovery_mode else "Fake Maps; synthetic fixture data"

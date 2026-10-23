@@ -43,7 +43,9 @@ def create_app(
         or upstream.port not in {None, 443}
         or upstream.username is not None
         or upstream.password is not None
-        or upstream.path.rstrip("/") != "/v1"
+        # DeepSeek accepts both its documented root base URL and the common
+        # OpenAI-compatible /v1 form. Preserve whichever path was configured.
+        or upstream.path.rstrip("/") not in {"", "/v1"}
         or upstream.query
         or upstream.fragment
     ):

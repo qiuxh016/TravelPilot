@@ -105,6 +105,9 @@ def test_proxy_requires_secure_fixed_upstream():
     with pytest.raises(ValueError):
         create_app(upstream_base_url="https://api.deepseek.com/other")
 
+    root_base = create_app(upstream_base_url="https://api.deepseek.com")
+    assert root_base.state.upstream_base_url == "https://api.deepseek.com"
+
 
 def test_proxy_rejects_non_positive_programmatic_budget():
     with pytest.raises(ValueError, match="positive"):
