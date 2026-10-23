@@ -108,7 +108,10 @@ async def decide_next_action(
     try:
         body = {
                     "model": model, "response_format": {"type": "json_object"},
-                    "max_tokens": min(128, token_budget), "temperature": 0,
+                    # Callers reserve against the turn budget before invoking the
+                    # model. Honor that reservation (up to a small absolute cap)
+                    # so structured actions are not silently truncated at 128.
+                    "max_tokens": min(512, token_budget), "temperature": 0,
                     "messages": [
                         {"role": "system", "content": (
                             "Select exactly one next action using only the supplied observations and tools. "
@@ -144,7 +147,8 @@ async def decide_next_action(
                 prompt_tokens = total_tokens - completion_tokens
             usage = TokenUsage(prompt_tokens, completion_tokens, total_tokens)
             try:
-                content = body["choices"][0]["message"]["content"]
+                choice = body["choices"][0]
+                content = choice["message"]["content"]
             except (KeyError, IndexError, TypeError) as exc:
                 raise PlannerDecisionFailure("AGENT_ACTION_INVALID", usage, "MESSAGE_CONTENT_MISSING") from exc
             if not isinstance(content, str):
@@ -152,7 +156,12 @@ async def decide_next_action(
             try:
                 payload = json.loads(content)
             except (json.JSONDecodeError, TypeError) as exc:
-                raise PlannerDecisionFailure("AGENT_ACTION_INVALID", usage, "MESSAGE_CONTENT_NOT_JSON") from exc
+                reason = (
+                    "MESSAGE_CONTENT_TRUNCATED"
+                    if choice.get("finish_reason") == "length"
+                    else "MESSAGE_CONTENT_NOT_JSON"
+                )
+                raise PlannerDecisionFailure("AGENT_ACTION_INVALID", usage, reason) from exc
             try:
                 action = AgentAction.model_validate(payload)
             except (ValidationError, TypeError, ValueError) as exc:
