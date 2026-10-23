@@ -21,6 +21,7 @@ import { downloadTripPoster } from "../../../lib/trip-poster";
 import { RouteMap } from "../../../components/route-map";
 import { TripImportTool } from "../../../components/trip-import-tool";
 import { TripSharingTool } from "../../../components/trip-sharing-tool";
+import { productConfig } from "../../../lib/product-config";
 
 const paceLabels = ["轻松慢游", "悠闲逛逛", "张弛有度", "高效游览", "行程充实"];
 const categoryLabels: Record<string, string> = { ATTRACTION: "景点", RESTAURANT: "餐厅", CAFE: "咖啡", SHOPPING: "购物", CUSTOM: "其它" };
@@ -81,7 +82,11 @@ export default function TripDetailPage() {
 
       setTrip(tripResult);
       setWishlist(wishlistResult);
-      setLatestPlan(plansResult[0]?.nodes.length ? plansResult[0] : null);
+      const nextPlan = plansResult[0]?.nodes.length ? plansResult[0] : null;
+      setLatestPlan((current) => {
+        if (current && (!nextPlan || nextPlan.version < current.version)) return current;
+        return nextPlan;
+      });
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "加载旅行失败",
@@ -95,6 +100,35 @@ export default function TripDetailPage() {
     if (tripId) {
       void loadData();
     }
+  }, [tripId]);
+
+  useEffect(() => {
+    if (!tripId) return;
+    const source = new EventSource(`${productConfig.apiBaseUrl}/api/v1/trips/${tripId}/events`, { withCredentials: true });
+    const refreshPlan = () => {
+      void listPlans(tripId).then((plans) => {
+        const nextPlan = plans[0]?.nodes.length ? plans[0] : null;
+        setLatestPlan((current) => {
+          if (!current) return nextPlan;
+          if (!nextPlan) return current;
+          return nextPlan.version >= current.version ? nextPlan : current;
+        });
+      }).catch(() => undefined);
+    };
+    // Refresh the overview when another tab/member confirms a plan. The
+    // snapshot event also covers reconnects where a plan_updated event was missed.
+    source.addEventListener("snapshot", refreshPlan);
+    source.addEventListener("plan_updated", refreshPlan);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refreshPlan();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      source.close();
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [tripId]);
 
   async function handleAddWishlist(

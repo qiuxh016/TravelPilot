@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { FormEvent } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, createPlanRun, deletePlanNode, getTrip, listPlans, listWishlist, updatePlanNode, type Plan, type PlanNode, type Trip, type WishlistItem } from "../../../../lib/api";
 import { productConfig } from "../../../../lib/product-config";
@@ -12,6 +12,9 @@ import { WeatherForecast } from "../../../../components/weather-forecast";
 export default function PlanPage() {
   const tripId = useParams<{ tripId: string }>().tripId;
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const confirmedPlanId = searchParams.get("confirmedPlan");
+  const confirmedPlanVersion = Number(searchParams.get("version") || 0);
   const [trip, setTrip] = useState<Trip | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
@@ -24,6 +27,13 @@ export default function PlanPage() {
   const [editingNode, setEditingNode] = useState<PlanNode | null>(null);
   const [nodeForm, setNodeForm] = useState({ day: "", start_time: "", end_time: "", priority: 3, status: "PLANNED", note: "" });
   const latestVersionRef = useRef(0);
+  const applyPlans = (nextPlans: Plan[]) => {
+    const nextVersion = nextPlans[0]?.version ?? 0;
+    if (nextVersion < latestVersionRef.current) return false;
+    latestVersionRef.current = nextVersion;
+    setPlans(nextPlans);
+    return true;
+  };
   const editDialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (editingNode) editDialog.current?.showModal();
@@ -36,6 +46,7 @@ export default function PlanPage() {
     setWishlist([]);
     setActiveDay("");
     setSelectedStop("");
+    latestVersionRef.current = 0;
     setError("");
     setLoading(true);
 
@@ -43,8 +54,28 @@ export default function PlanPage() {
       .then(([nextTrip, nextPlans, nextWishlist]) => {
         if (cancelled) return;
         setTrip(nextTrip);
-        setPlans((current) => nextPlans[0]?.version >= (current[0]?.version ?? 0) ? nextPlans : current);
+        applyPlans(nextPlans);
         setWishlist(nextWishlist);
+        if (confirmedPlanId && confirmedPlanVersion > 0 && (nextPlans[0]?.version ?? 0) < confirmedPlanVersion) {
+          setSyncNotice("保存请求已成功，最新计划仍在同步；正在重新读取行程…");
+          void (async () => {
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+              await new Promise((resolve) => window.setTimeout(resolve, 500));
+              const refreshed = await listPlans(tripId);
+              if (cancelled) return;
+              applyPlans(refreshed);
+              if ((refreshed[0]?.version ?? 0) >= confirmedPlanVersion) {
+                setSyncNotice(`已加载顾问确认的行程 v${refreshed[0].version}。`);
+                return;
+              }
+            }
+            if (!cancelled) setSyncNotice("行程写入已返回成功，但当前读取到的版本仍较旧。请稍后重试刷新，并检查 API 是否连接到同一数据库。");
+          })().catch(() => {
+            if (!cancelled) setSyncNotice("计划已确认，但刷新失败；请重新打开此行程查看。");
+          });
+        } else if (confirmedPlanId && nextPlans.some((plan) => plan.id === confirmedPlanId)) {
+          setSyncNotice(`已加载顾问确认的行程 v${nextPlans[0]?.version ?? confirmedPlanVersion}。`);
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -61,7 +92,7 @@ export default function PlanPage() {
       });
 
     return () => { cancelled = true; };
-  }, [tripId, router]);
+  }, [tripId, router, confirmedPlanId, confirmedPlanVersion]);
 
   useEffect(() => {
     latestVersionRef.current = plans[0]?.version ?? 0;
@@ -69,22 +100,37 @@ export default function PlanPage() {
 
   useEffect(() => {
     const source = new EventSource(`${productConfig.apiBaseUrl}/api/v1/trips/${tripId}/events`, { withCredentials: true });
-    source.addEventListener("plan_updated", (event) => {
-      const update = JSON.parse((event as MessageEvent<string>).data) as { updated_by?: string | null; plan_version: number };
+    const refreshFromEvent = (event: Event) => {
+      const update = JSON.parse((event as MessageEvent<string>).data) as { updated_by?: string | null; plan_version?: number };
       void listPlans(tripId).then((nextPlans) => {
         if ((nextPlans[0]?.version ?? 0) <= latestVersionRef.current) return;
-        latestVersionRef.current = nextPlans[0].version;
-        setPlans(nextPlans);
-        setSyncNotice(`${update.updated_by || "旅行成员"}更新了计划，已同步到 v${update.plan_version}。`);
+        applyPlans(nextPlans);
+        if (event.type !== "snapshot") {
+          setSyncNotice(`${update.updated_by || "旅行成员"}更新了计划，已同步到 v${update.plan_version ?? nextPlans[0]?.version}。`);
+        }
       }).catch(() => setSyncNotice("计划有更新，但暂时无法刷新；请稍后重试。"));
-    });
+    };
+    // A reconnect starts with `snapshot`, not `plan_updated`. Refreshing both
+    // prevents a missed update from leaving a cached itinerary visible.
+    source.addEventListener("snapshot", refreshFromEvent);
+    source.addEventListener("plan_updated", refreshFromEvent);
     source.addEventListener("access_revoked", () => {
       source.close();
       router.replace("/trips");
     });
     source.onerror = () => setSyncNotice((current) => current.includes("更新了计划，已同步") ? current : "实时同步暂时中断，正在尝试重新连接…");
     source.onopen = () => setSyncNotice((current) => current.startsWith("实时同步暂时中断") ? "" : current);
-    return () => source.close();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void listPlans(tripId).then((nextPlans) => applyPlans(nextPlans)).catch(() => undefined);
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      source.close();
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [tripId, router]);
 
   async function generate() {

@@ -103,6 +103,9 @@ async function request<T>(
   const isFormData = typeof FormData !== "undefined" && options?.body instanceof FormData;
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
+    // These API reads back mutable trip state (plans, candidates, etc.). Avoid
+    // the browser reusing an older response after a confirmation or SSE update.
+    ...(method === "GET" && options?.cache === undefined ? { cache: "no-store" } : {}),
     credentials: "include",
     headers: {
       ...(!isFormData ? { "Content-Type": "application/json" } : {}),

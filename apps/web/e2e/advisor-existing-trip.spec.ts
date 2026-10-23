@@ -713,7 +713,9 @@ test("现有旅行 Agent 主动生成草案并等待用户确认", async ({ page
         expect((await confirmResponsePromise).status()).toBe(200);
       }
     }
-    await expect(page).toHaveURL(new RegExp(`/trips/${trip.id}/plan$`));
+    await expect(page).toHaveURL(new RegExp(`/trips/${trip.id}/plan(?:\\?.*)?$`));
+    await expect(page.locator(".plan-version")).toContainText("计划 v2");
+    await expect(page.locator(".plan-stops")).toContainText("模拟川味餐馆");
     const afterConfirmation = await request.get(`${api}/api/v1/trips/${trip.id}/plans`);
     expect(await afterConfirmation.json()).toHaveLength(2);
     const removeTestMemory = await request.delete(`${api}/api/v1/account/memories/${parkMemoryRecord.id}`, {

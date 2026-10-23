@@ -1479,7 +1479,7 @@ export default function AdvisorPage() {
       } satisfies AdvisorSession;
       setActive(confirmedSession);
       setSessions((current) => [confirmedSession, ...current.filter((item) => item.id !== sessionToConfirm.id)]);
-      router.push(`/trips/${result.trip_id}/plan`);
+      router.push(`/trips/${result.trip_id}/plan?confirmedPlan=${encodeURIComponent(result.plan_id)}&version=${result.plan_version}`);
     } catch (reason) {
       if (!handleDraftMemoryConflict(reason)) setError((reason as Error).message);
     }
@@ -1564,7 +1564,7 @@ export default function AdvisorPage() {
         confirmed_trip_id: result.trip_id, confirmed_plan_id: result.plan_id,
         updated_at: confirmedAt,
       } : item));
-      router.push(`/trips/${result.trip_id}/plan`);
+      router.push(`/trips/${result.trip_id}/plan?confirmedPlan=${encodeURIComponent(result.plan_id)}&version=${result.plan_version}`);
     } catch (reason) {
       finishDraftRequest(draftKey);
       if (!handleDraftMemoryConflict(reason)) setError((reason as Error).message);
