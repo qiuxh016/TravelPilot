@@ -1,0 +1,13 @@
+{
+  "dataset_id": "advisor_route_evidence_v1",
+  "version": 1,
+  "scope": "synthetic component comparison for route-evidence action selection, validation, and recovery",
+  "provider_mode": "synthetic",
+  "frozen_before_scoring": true,
+  "cases": [
+    {"id": "fresh-matrix", "initial_evidence": "fresh_verified", "tool_result": "valid", "expected": "reuse_without_call"},
+    {"id": "missing-matrix", "initial_evidence": "missing", "tool_result": "valid", "expected": "query_and_verify"},
+    {"id": "provider-failure", "initial_evidence": "missing", "tool_result": "failure", "expected": "stop_and_fallback_safely"},
+    {"id": "malformed-matrix", "initial_evidence": "missing", "tool_result": "invalid", "expected": "reject_and_fallback_safely"}
+  ]
+}

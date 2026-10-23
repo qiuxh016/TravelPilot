@@ -1,0 +1,36 @@
+{
+  "dataset_id": "advisor_preference_relevance_v1",
+  "version": 1,
+  "status": "FROZEN",
+  "provider_mode": "deterministic_query_contract",
+  "cases": [
+    {
+      "id": "open_request_uses_confirmed_hiking_preference",
+      "current_request": "推荐一个适合周末的目的地",
+      "confirmed_preferences": "喜欢徒步和山水",
+      "hard_constraints": [],
+      "expected_with_memory": ["徒步与户外", "自然与公园"],
+      "expected_without_memory": [],
+      "forbidden_with_memory": []
+    },
+    {
+      "id": "current_only_beach_scope_overrides_old_interests",
+      "current_request": "这次只想去海边",
+      "confirmed_preferences": "长期偏好徒步和博物馆",
+      "hard_constraints": [],
+      "expected_with_memory": ["海滨休闲"],
+      "expected_without_memory": ["海滨休闲"],
+      "forbidden_with_memory": ["徒步与户外", "博物馆与展览"]
+    },
+    {
+      "id": "current_beach_request_blocks_explicitly_rejected_museum_memory",
+      "current_request": "想看海，不要博物馆",
+      "confirmed_preferences": "偏好博物馆和自然风景",
+      "hard_constraints": [],
+      "expected_with_memory": ["海滨休闲", "自然与公园"],
+      "expected_without_memory": ["海滨休闲"],
+      "forbidden_with_memory": ["博物馆与展览"]
+    }
+  ],
+  "claim_boundary": "Measures deterministic query alignment against authored current-intent labels only; not user satisfaction, LLM quality, real POI relevance, or travel outcomes."
+}

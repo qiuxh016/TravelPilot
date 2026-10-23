@@ -25,7 +25,8 @@ def run_evaluation() -> dict:
         time(10),
         time(11),
         3,
-        environment_profile={"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"}},
+        environment_profile={"exposure": "OUTDOOR", "sensitivity": {"RAIN": "HIGH"},
+                             "source": "USER", "confidence": 0.8},
     )
     following = Node(
         following_id,
@@ -47,7 +48,8 @@ def run_evaluation() -> dict:
             2,
             0.1,
             {"open": "09:00", "close": "20:00"},
-            {"exposure": "INDOOR", "sensitivity": {"RAIN": "LOW"}},
+            {"exposure": "INDOOR", "sensitivity": {"RAIN": "LOW"},
+             "source": "EDITORIAL", "confidence": 0.9},
         ),
         ReplanCandidate(
             preferred_id,
@@ -59,7 +61,8 @@ def run_evaluation() -> dict:
             5,
             0.9,
             {"open": "09:00", "close": "20:00"},
-            {"exposure": "INDOOR", "sensitivity": {"RAIN": "LOW"}},
+            {"exposure": "INDOOR", "sensitivity": {"RAIN": "LOW"},
+             "source": "EDITORIAL", "confidence": 0.9},
         ),
     ]
     routes = {

@@ -36,6 +36,8 @@ def _node(case_id: str, item: dict, *, exposure: str = "OUTDOOR") -> Node:
         environment_profile={
             "exposure": exposure,
             "sensitivity": {"RAIN": "HIGH" if exposure == "OUTDOOR" else "LOW"},
+            "source": "EDITORIAL",
+            "confidence": 0.9,
         },
     )
 
@@ -73,7 +75,8 @@ def run_evaluation() -> dict:
                 _poi_id(case_id, item["key"]), item["key"].upper(), "MUSEUM", 30.6, 104.0,
                 45, item.get("priority", 3), item.get("interest_score", 0.5),
                 {"open": "09:00", "close": "20:00"},
-                {"exposure": "INDOOR", "sensitivity": {"RAIN": "LOW"}},
+                {"exposure": "INDOOR", "sensitivity": {"RAIN": "LOW"},
+                 "source": "EDITORIAL", "confidence": 0.9},
             )
             for item in candidate_specs
         ]

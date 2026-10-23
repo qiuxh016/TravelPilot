@@ -1,0 +1,117 @@
+{
+  "dataset_id": "advisor_preference_relevance_v2",
+  "version": 2,
+  "status": "FROZEN",
+  "provider_mode": "deterministic_query_contract",
+  "cases": [
+    {
+      "id": "open_request_uses_confirmed_hiking_preference",
+      "current_request": "推荐一个适合周末的目的地",
+      "confirmed_preferences": "喜欢徒步和山水",
+      "hard_constraints": [],
+      "expected_with_memory": ["徒步与户外", "自然与公园"],
+      "expected_without_memory": [],
+      "forbidden_with_memory": []
+    },
+    {
+      "id": "narrow_beach_scope_overrides_old_interests",
+      "current_request": "这次只想去海边",
+      "confirmed_preferences": "长期偏好徒步和博物馆",
+      "hard_constraints": [],
+      "expected_with_memory": ["海滨休闲"],
+      "expected_without_memory": ["海滨休闲"],
+      "forbidden_with_memory": ["徒步与户外", "博物馆与展览"]
+    },
+    {
+      "id": "explicit_museum_rejection_blocks_memory_but_keeps_nature",
+      "current_request": "想看海，不要博物馆",
+      "confirmed_preferences": "偏好博物馆和自然风景",
+      "hard_constraints": [],
+      "expected_with_memory": ["海滨休闲", "自然与公园"],
+      "expected_without_memory": ["海滨休闲"],
+      "forbidden_with_memory": ["博物馆与展览"]
+    },
+    {
+      "id": "current_family_museum_request_precedes_photography_memory",
+      "current_request": "带孩子去博物馆看看",
+      "confirmed_preferences": "喜欢摄影和观景",
+      "hard_constraints": [],
+      "expected_with_memory": ["亲子活动", "博物馆与展览"],
+      "expected_without_memory": ["亲子活动", "博物馆与展览"],
+      "forbidden_with_memory": []
+    },
+    {
+      "id": "current_sunset_photography_precedes_hiking_memory",
+      "current_request": "想找看日落拍照的地方",
+      "confirmed_preferences": "长期喜欢徒步",
+      "hard_constraints": [],
+      "expected_with_memory": ["摄影与观景", "徒步与户外"],
+      "expected_without_memory": ["摄影与观景"],
+      "forbidden_with_memory": []
+    },
+    {
+      "id": "current_hot_spring_request_can_use_history_memory_secondarily",
+      "current_request": "想泡温泉放松一下",
+      "confirmed_preferences": "也喜欢历史古迹",
+      "hard_constraints": [],
+      "expected_with_memory": ["温泉与休闲", "历史街区"],
+      "expected_without_memory": ["温泉与休闲"],
+      "forbidden_with_memory": []
+    },
+    {
+      "id": "current_shopping_request_can_use_food_memory_secondarily",
+      "current_request": "周末想逛街购物",
+      "confirmed_preferences": "平时喜欢当地美食",
+      "hard_constraints": [],
+      "expected_with_memory": ["购物与街区", "地方美食"],
+      "expected_without_memory": ["购物与街区"],
+      "forbidden_with_memory": []
+    },
+    {
+      "id": "current_historical_walk_precedes_food_memory",
+      "current_request": "想逛历史街区和古建筑",
+      "confirmed_preferences": "喜欢地方美食",
+      "hard_constraints": [],
+      "expected_with_memory": ["历史街区", "地方美食"],
+      "expected_without_memory": ["历史街区"],
+      "forbidden_with_memory": []
+    },
+    {
+      "id": "narrow_hiking_request_does_not_add_museum_memory",
+      "current_request": "只想徒步和看山水",
+      "confirmed_preferences": "还喜欢博物馆和购物",
+      "hard_constraints": [],
+      "expected_with_memory": ["徒步与户外", "自然与公园"],
+      "expected_without_memory": ["徒步与户外", "自然与公园"],
+      "forbidden_with_memory": ["博物馆与展览", "购物与街区"]
+    },
+    {
+      "id": "current_food_interest_precedes_hiking_memory",
+      "current_request": "想吃当地特色美食",
+      "confirmed_preferences": "平时偏好徒步和山水",
+      "hard_constraints": [],
+      "expected_with_memory": ["地方美食", "徒步与户外"],
+      "expected_without_memory": ["地方美食"],
+      "forbidden_with_memory": []
+    },
+    {
+      "id": "open_request_uses_confirmed_museum_preference",
+      "current_request": "推荐一些目的地",
+      "confirmed_preferences": "喜欢科技馆和博物馆",
+      "hard_constraints": [],
+      "expected_with_memory": ["博物馆与展览"],
+      "expected_without_memory": [],
+      "forbidden_with_memory": []
+    },
+    {
+      "id": "current_coast_and_photography_request_excludes_unrelated_history_memory",
+      "current_request": "想去海边拍照看风景",
+      "confirmed_preferences": "长期喜欢历史古迹",
+      "hard_constraints": [],
+      "expected_with_memory": ["摄影与观景", "海滨休闲"],
+      "expected_without_memory": ["摄影与观景", "海滨休闲"],
+      "forbidden_with_memory": ["历史街区"]
+    }
+  ],
+  "claim_boundary": "Measures deterministic destination-query alignment against authored synthetic labels only. It does not measure user satisfaction, LLM quality, real POI relevance, or travel outcomes."
+}

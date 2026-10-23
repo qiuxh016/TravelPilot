@@ -11,8 +11,8 @@
         {"key": "following", "start": "16:00", "end": "17:00"}
       ],
       "candidates": [
-        {"key": "slow", "duration_min": 45, "priority": 5, "opening_hours": {"open": "09:00", "close": "20:00"}, "environment_profile": {"exposure": "INDOOR", "source": "EDITORIAL"}},
-        {"key": "fast", "duration_min": 45, "priority": 3, "opening_hours": {"open": "09:00", "close": "20:00"}, "environment_profile": {"exposure": "INDOOR", "source": "USER"}}
+        {"key": "slow", "duration_min": 45, "priority": 5, "opening_hours": {"open": "09:00", "close": "20:00"}, "environment_profile": {"exposure": "INDOOR", "source": "EDITORIAL", "confidence": 0.9}},
+        {"key": "fast", "duration_min": 45, "priority": 3, "opening_hours": {"open": "09:00", "close": "20:00"}, "environment_profile": {"exposure": "INDOOR", "source": "USER", "confidence": 0.8}}
       ],
       "routes": [
         {"from": "previous", "to": "slow", "minutes": 20}, {"from": "slow", "to": "following", "minutes": 20},
@@ -26,7 +26,7 @@
       "removed": {"key": "rainy-park", "start": "14:00", "end": "15:00"},
       "scheduled": [],
       "candidates": [
-        {"key": "closed-museum", "duration_min": 45, "priority": 4, "opening_hours": {"open": "09:00", "close": "14:30"}, "environment_profile": {"exposure": "INDOOR"}}
+        {"key": "closed-museum", "duration_min": 45, "priority": 4, "opening_hours": {"open": "09:00", "close": "14:30"}, "environment_profile": {"exposure": "INDOOR", "source": "EDITORIAL", "confidence": 0.9}}
       ],
       "routes": [],
       "expected_candidate": null,
@@ -40,7 +40,7 @@
         {"key": "following", "start": "15:00", "end": "16:00"}
       ],
       "candidates": [
-        {"key": "too-far", "duration_min": 30, "priority": 4, "opening_hours": {"open": "09:00", "close": "20:00"}, "environment_profile": {"exposure": "INDOOR"}}
+        {"key": "too-far", "duration_min": 30, "priority": 4, "opening_hours": {"open": "09:00", "close": "20:00"}, "environment_profile": {"exposure": "INDOOR", "source": "EDITORIAL", "confidence": 0.9}}
       ],
       "routes": [
         {"from": "previous", "to": "too-far", "minutes": 0}, {"from": "too-far", "to": "following", "minutes": 15}
@@ -57,7 +57,7 @@
         {"key": "s5", "start": "13:00", "end": "14:00"}, {"key": "s6", "start": "14:00", "end": "15:00"}
       ],
       "candidates": [
-        {"key": "indoor", "duration_min": 30, "priority": 4, "opening_hours": {"open": "09:00", "close": "20:00"}, "environment_profile": {"exposure": "INDOOR"}}
+        {"key": "indoor", "duration_min": 30, "priority": 4, "opening_hours": {"open": "09:00", "close": "20:00"}, "environment_profile": {"exposure": "INDOOR", "source": "EDITORIAL", "confidence": 0.9}}
       ],
       "routes": [],
       "expected_candidate": null,

@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "purpose": "Deterministic contract probes for confirmed travel hard-limit memories and negative transfer.",
+  "limitations": [
+    "Synthetic fixtures exercise the current lexical policy only.",
+    "This does not measure user preference satisfaction, LLM interpretation quality, or real itinerary outcomes."
+  ],
+  "cases": [
+    {
+      "id": "explicit_museum_limit_conflicts",
+      "candidate": {"name": "City History Museum", "category": "博物馆"},
+      "profile_memories": [{"constraint_type": "HARD_LIMIT", "text": "不去博物馆"}],
+      "trip_constraints": [],
+      "explicit_override": false,
+      "expect_profile_conflicts": 1,
+      "expect_trip_conflicts": 0,
+      "expect_overridden_memories": 0
+    },
+    {
+      "id": "soft_museum_preference_does_not_block",
+      "candidate": {"name": "City History Museum", "category": "博物馆"},
+      "profile_memories": [{"constraint_type": "PREFERENCE", "text": "喜欢博物馆"}],
+      "trip_constraints": [],
+      "explicit_override": false,
+      "expect_profile_conflicts": 0,
+      "expect_trip_conflicts": 0,
+      "expect_overridden_memories": 0
+    },
+    {
+      "id": "unrelated_limit_does_not_transfer",
+      "candidate": {"name": "Botanical Garden", "category": "公园"},
+      "profile_memories": [{"constraint_type": "HARD_LIMIT", "text": "不去博物馆"}],
+      "trip_constraints": [],
+      "explicit_override": false,
+      "expect_profile_conflicts": 0,
+      "expect_trip_conflicts": 0,
+      "expect_overridden_memories": 0
+    },
+    {
+      "id": "profile_override_is_explicit_and_scoped",
+      "candidate": {"name": "City History Museum", "category": "博物馆"},
+      "profile_memories": [{"constraint_type": "HARD_LIMIT", "text": "不去博物馆"}],
+      "trip_constraints": [],
+      "explicit_override": true,
+      "expect_profile_conflicts": 1,
+      "expect_trip_conflicts": 0,
+      "expect_overridden_memories": 1
+    },
+    {
+      "id": "trip_limit_is_not_profile_overridable",
+      "candidate": {"name": "City History Museum", "category": "博物馆"},
+      "profile_memories": [],
+      "trip_constraints": [{"constraint_type": "HARD_LIMIT", "text": "不去博物馆"}],
+      "explicit_override": true,
+      "expect_profile_conflicts": 0,
+      "expect_trip_conflicts": 1,
+      "expect_overridden_memories": 0
+    },
+    {
+      "id": "unknown_candidate_category_is_not_inferred",
+      "candidate": {"name": "Culture Experience", "category": "体验活动"},
+      "profile_memories": [{"constraint_type": "HARD_LIMIT", "text": "不去博物馆"}],
+      "trip_constraints": [],
+      "explicit_override": false,
+      "expect_profile_conflicts": 0,
+      "expect_trip_conflicts": 0,
+      "expect_overridden_memories": 0
+    },
+    {
+      "id": "museum_positive_clause_does_not_inherit_nature_exclusion",
+      "candidate": {"name": "City History Museum", "category": "博物馆"},
+      "profile_memories": [{"constraint_type": "HARD_LIMIT", "text": "不喜欢自然风景，但喜欢博物馆"}],
+      "trip_constraints": [],
+      "explicit_override": false,
+      "expect_profile_conflicts": 0,
+      "expect_trip_conflicts": 0,
+      "expect_overridden_memories": 0
+    },
+    {
+      "id": "nature_exclusion_applies_to_nature_candidate_only",
+      "candidate": {"name": "Botanical Garden", "category": "公园"},
+      "profile_memories": [{"constraint_type": "HARD_LIMIT", "text": "不喜欢自然风景，但喜欢博物馆"}],
+      "trip_constraints": [],
+      "explicit_override": false,
+      "expect_profile_conflicts": 1,
+      "expect_trip_conflicts": 0,
+      "expect_overridden_memories": 0
+    },
+    {
+      "id": "not_want_to_miss_museum_is_not_exclusion",
+      "candidate": {"name": "City History Museum", "category": "博物馆"},
+      "profile_memories": [{"constraint_type": "HARD_LIMIT", "text": "不想错过博物馆"}],
+      "trip_constraints": [],
+      "explicit_override": false,
+      "expect_profile_conflicts": 0,
+      "expect_trip_conflicts": 0,
+      "expect_overridden_memories": 0
+    },
+    {
+      "id": "uncertain_double_negation_is_not_hard_exclusion",
+      "candidate": {"name": "City History Museum", "category": "博物馆"},
+      "profile_memories": [{"constraint_type": "HARD_LIMIT", "text": "不一定不去博物馆"}],
+      "trip_constraints": [],
+      "explicit_override": false,
+      "expect_profile_conflicts": 0,
+      "expect_trip_conflicts": 0,
+      "expect_overridden_memories": 0
+    },
+    {
+      "id": "contrasted_exclusions_stay_with_their_categories",
+      "candidate": {"name": "City History Museum", "category": "博物馆"},
+      "profile_memories": [{"constraint_type": "HARD_LIMIT", "text": "不去公园，但喜欢博物馆"}],
+      "trip_constraints": [],
+      "explicit_override": false,
+      "expect_profile_conflicts": 0,
+      "expect_trip_conflicts": 0,
+      "expect_overridden_memories": 0
+    },
+    {
+      "id": "direct_museum_dislike_is_exclusion",
+      "candidate": {"name": "City History Museum", "category": "博物馆"},
+      "profile_memories": [{"constraint_type": "HARD_LIMIT", "text": "我不喜欢去博物馆"}],
+      "trip_constraints": [],
+      "explicit_override": false,
+      "expect_profile_conflicts": 1,
+      "expect_trip_conflicts": 0,
+      "expect_overridden_memories": 0
+    }
+  ]
+}
