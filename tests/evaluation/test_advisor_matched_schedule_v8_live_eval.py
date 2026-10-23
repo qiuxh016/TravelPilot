@@ -27,3 +27,8 @@ def test_v8_preflight_rejects_unfrozen_or_overwrite_dataset(tmp_path):
     existing.write_text("{}", encoding="utf-8")
     with pytest.raises(FileExistsError, match="overwrite"):
         live._validate_frozen_inputs(frozen, existing)
+
+
+def test_v8_only_b1_mode_is_separate_from_resume_mode():
+    assert live.ARM_REQUEST_CAPS["B1_FIXED_WORKFLOW"] == 24
+    assert live.ARM_OUTPUT_BUDGETS["B1_FIXED_WORKFLOW"] == 6_144

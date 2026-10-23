@@ -266,7 +266,9 @@ async def _run_b1(
     }
 
 
-async def run_live(output: Path, *, skip_b1: bool = False) -> dict[str, Any]:
+async def run_live(
+    output: Path, *, skip_b1: bool = False, only_b1: bool = False,
+) -> dict[str, Any]:
     from travelpilot_api.settings import settings
 
     dataset = json.loads(DATASET.read_text(encoding="utf-8"))
@@ -281,6 +283,8 @@ async def run_live(output: Path, *, skip_b1: bool = False) -> dict[str, Any]:
         raise RuntimeError("configured model endpoint is not DeepSeek HTTPS")
     if PROVIDER_REQUEST_OUTPUT_CAP > 512:
         raise RuntimeError("per-request proxy cap exceeds authorization")
+    if skip_b1 and only_b1:
+        raise ValueError("--skip-b1 and --only-b1 cannot be combined")
 
     arms: dict[str, Any] = {}
     proxy_audit: dict[str, Any] = {}
@@ -370,7 +374,7 @@ async def run_live(output: Path, *, skip_b1: bool = False) -> dict[str, Any]:
                 await _stop(b1_proxy)
 
         # B2 and B3 each have a separate enforced share of the same total cap.
-        for arm in ("B2_AGENT_LOOP", "B3_VERIFIER_RECOVERY"):
+        for arm in (() if only_b1 else ("B2_AGENT_LOOP", "B3_VERIFIER_RECOVERY")):
             proxy_port = _free_port()
             proxy = await _start_proxy(port=proxy_port, upstream=upstream_base_url,
                                        request_cap=ARM_REQUEST_CAPS[arm],
@@ -457,11 +461,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-live", action="store_true", help="required for real model calls")
     parser.add_argument("--skip-b1", action="store_true", help="resume only the unused B2/B3 shares after a lost B1 report")
+    parser.add_argument("--only-b1", action="store_true", help="run the separately authorized B1 fixed-workflow arm only")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if not args.run_live:
         parser.error("--run-live is required")
-    asyncio.run(run_live(args.output, skip_b1=args.skip_b1))
+    asyncio.run(run_live(args.output, skip_b1=args.skip_b1, only_b1=args.only_b1))
 
 
 if __name__ == "__main__":
