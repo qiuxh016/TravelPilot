@@ -293,6 +293,19 @@ class Handler(BaseHTTPRequestHandler):
                     }],
                     "search_queries": [], "intent": "modify", "pace_adjustment": "none",
                 }
+            elif any(term in current_message for term in (
+                "重新给一版", "重新排一版", "重新计算", "重新整理",
+                "时间安排", "时间往后挪", "晚些开始", "紧凑一些", "更轻松",
+            )):
+                pace_adjustment = (
+                    "slower" if any(term in current_message for term in (
+                        "更轻松", "不要太赶", "慢一点", "轻松一点",
+                    )) else "faster" if "紧凑一些" in current_message else "none"
+                )
+                content = {
+                    "places": [], "search_queries": [],
+                    "intent": "schedule", "pace_adjustment": pace_adjustment,
+                }
             elif "行程" in current_message and any(
                 term in current_message for term in ("不要太赶", "多留一些休息时间", "轻松一点", "慢一点")
             ):

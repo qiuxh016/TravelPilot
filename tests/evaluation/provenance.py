@@ -215,6 +215,20 @@ EVALUATION_SOURCES = {
         "tests/evaluation/advisor_route_weather_weather_failure_app.py",
         "tests/evaluation/advisor_route_outage_app.py",
     ),
+    "advisor_matched_schedule_product_api_local_preflight": (
+        "scripts/verify_advisor_matched_schedule_product_api.py",
+        "scripts/verify_advisor_product_local_suite.py",
+        "scripts/local_openai_chat_stub.py",
+        "tests/evaluation/advisor_product_live_eval.py",
+        "tests/evaluation/provenance.py",
+        "tests/evaluation/cases/advisor_matched_schedule_b1_v1.json",
+        "apps/api/src/travelpilot_api/api/v1/advisor_messages.py",
+        "apps/api/src/travelpilot_api/api/v1/plans.py",
+        "apps/api/src/travelpilot_api/advisor/turn_service.py",
+        "apps/api/src/travelpilot_api/advisor/scheduling.py",
+        "packages/core/src/travelpilot_core/agents/loop.py",
+        "packages/infrastructure/src/travelpilot_infra/providers/maps/fake.py",
+    ),
 }
 
 

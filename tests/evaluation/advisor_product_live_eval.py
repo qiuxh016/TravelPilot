@@ -1096,15 +1096,21 @@ def _bounded_route_evidence(value: Any) -> dict[str, Any]:
 async def run_eval(
     *, base_url: str, output: Path, server_output_cap: int | None = None,
     server_session_cap: int | None = None, trip_start_date: date | None = None,
+    trip_end_date: date | None = None,
     scenario_id: str = "schedule-two-turn", model_is_local_stub: bool = False,
-    model_is_bounded_proxy: bool = False,
+    model_is_bounded_proxy: bool = False, scenario_override: dict[str, Any] | None = None,
+    assessment_scenario_id: str | None = None,
 ) -> dict[str, Any]:
     if output.exists():
         raise FileExistsError(f"refusing to overwrite evaluation report: {output}")
-    scenario = SCENARIOS.get(scenario_id)
+    scenario = scenario_override or SCENARIOS.get(scenario_id)
     if scenario is None:
         raise ValueError(f"unknown product evaluation scenario: {scenario_id}")
     start, end = _resolve_trip_dates(trip_start_date)
+    if trip_end_date is not None:
+        if trip_end_date < start:
+            raise ValueError("evaluation trip end date must not precede its start date")
+        end = trip_end_date
     provider_mode = _provider_mode(
         settings.llm_base_url,
         model_is_local_stub=model_is_local_stub,
@@ -1183,7 +1189,7 @@ async def run_eval(
                 created_resources["formal_write_prevented"] = True
             else:
                 trip_response = await client.post("/api/v1/trips", headers=headers, json={
-                    "destination": "成都", "start_date": start.isoformat(),
+                    "destination": scenario.get("destination", "成都"), "start_date": start.isoformat(),
                     "end_date": end.isoformat(), "pace_level": 2,
                 })
                 if trip_response.status_code != 201:
@@ -1197,6 +1203,14 @@ async def run_eval(
                     })
                     if saved.status_code != 201:
                         raise RuntimeError(f"WISHLIST_HTTP_{saved.status_code}")
+                if scenario.get("confirmed_plan_setup") is True:
+                    initial_plan = await client.post(
+                        f"/api/v1/trips/{trip_id}/plan-runs", headers=headers,
+                    )
+                    if initial_plan.status_code != 201:
+                        raise RuntimeError(f"INITIAL_PLAN_HTTP_{initial_plan.status_code}")
+                    created_resources["initial_plan_id"] = initial_plan.json().get("id")
+                    created_resources["initial_plan_version"] = initial_plan.json().get("version")
             session_body = {"mode": "discover"} if discovery_mode else {
                 "mode": "existing", "trip_id": trip_id,
             }
@@ -1213,12 +1227,17 @@ async def run_eval(
                 plans_before = await client.get(f"/api/v1/trips/{trip_id}/plans")
                 if plans_before.status_code != 200:
                     raise RuntimeError(f"PLANS_BEFORE_HTTP_{plans_before.status_code}")
-                created_resources["formal_plan_count_before"] = len(plans_before.json())
+                plans_before_data = plans_before.json()
+                created_resources["formal_plan_count_before"] = len(plans_before_data)
+                created_resources["formal_plan_versions_before"] = sorted(
+                    (str(item.get("id")), item.get("version"))
+                    for item in plans_before_data if isinstance(item, dict)
+                )
             else:
                 created_resources["formal_plan_count_before"] = 0
 
             review_context = {
-                "destination": "" if discovery_mode else "成都",
+                "destination": "" if discovery_mode else scenario.get("destination", "成都"),
                 "start_date": "" if discovery_mode else start.isoformat(),
                 "end_date": "" if discovery_mode else end.isoformat(),
                 "pace_level": 2,
@@ -1296,10 +1315,15 @@ async def run_eval(
                 plans_after = await client.get(f"/api/v1/trips/{trip_id}/plans")
                 if plans_after.status_code != 200:
                     raise RuntimeError(f"PLANS_AFTER_HTTP_{plans_after.status_code}")
-                created_resources["formal_plan_count_after"] = len(plans_after.json())
+                plans_after_data = plans_after.json()
+                created_resources["formal_plan_count_after"] = len(plans_after_data)
+                created_resources["formal_plan_versions_after"] = sorted(
+                    (str(item.get("id")), item.get("version"))
+                    for item in plans_after_data if isinstance(item, dict)
+                )
                 created_resources["formal_write_prevented"] = (
-                    created_resources["formal_plan_count_after"]
-                    == created_resources["formal_plan_count_before"]
+                    created_resources["formal_plan_versions_after"]
+                    == created_resources.get("formal_plan_versions_before", [])
                 )
             else:
                 created_resources["formal_plan_count_after"] = 0
@@ -1325,7 +1349,8 @@ async def run_eval(
                     account_deleted = False
 
     product_assessment = _assess_product_outcome(
-        turns, created_resources, account_deleted, scenario_id,
+        turns, created_resources, account_deleted,
+        assessment_scenario_id or scenario_id,
     )
     report = {
         "evaluation_id": f"advisor_product_api_{scenario_id}_v1",
