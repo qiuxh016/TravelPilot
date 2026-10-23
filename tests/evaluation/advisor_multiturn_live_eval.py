@@ -254,6 +254,7 @@ def _fixture_observation(
         candidate_ids = [str(place.get("id", f"fixture-{index}"))
                          for index, place in enumerate(places)]
         return {
+            "status": "DRAFT_FIXTURE",
             "feasible": True, "candidate_ids": candidate_ids,
             "schedules": [{"candidate_id": value} for value in candidate_ids],
             "source": "LOCAL_FIXTURE", "formal_write": False,

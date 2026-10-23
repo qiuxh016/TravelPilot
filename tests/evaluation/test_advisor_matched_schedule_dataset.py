@@ -99,8 +99,8 @@ def test_matched_b2_b3_runtime_preflight_uses_only_local_stub_and_matches_action
     report = evaluate_local_stub()
 
     assert report["provider_mode"] == "LOOPBACK_STUB_AND_SYNTHETIC_TOOLS"
-    assert report["requests_used"] == 20
-    assert report["output_tokens_reported"] == 200
+    assert report["requests_used"] == 16
+    assert report["output_tokens_reported"] == 160
     assert report["per_request_output_cap"] == 128
     assert report["requests_used"] <= report["request_cap"] == 48
     assert report["output_tokens_reported"] <= report["aggregate_output_token_cap"] == 12288
@@ -119,3 +119,7 @@ def test_matched_b2_b3_runtime_preflight_uses_only_local_stub_and_matches_action
         for arm in case["arms"].values():
             assert arm["formal_writes"] == 0
             assert all(turn["formal_write"] is False for turn in arm["turns"])
+        assert all(
+            turn["verification_failures"] == 0
+            for turn in case["arms"]["B3_VERIFIER_RECOVERY"]["turns"]
+        )

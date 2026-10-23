@@ -73,6 +73,20 @@ def test_route_matrix_verifier_rejects_malformed_fixture():
     assert not evaluation._verified_fixture("get_distance_matrix", result, malformed_case)
 
 
+def test_b3_schedule_draft_fixture_matches_verifier_contract():
+    case = {
+        "initial_state": {
+            "saved_place_details": [{"id": "place-a"}, {"id": "place-b"}],
+        },
+    }
+
+    result = evaluation.action_eval._fixture_observation("build_schedule_draft", case)
+
+    assert result["status"] == "DRAFT_FIXTURE"
+    assert result["formal_write"] is False
+    assert evaluation._verified_fixture("build_schedule_draft", result, case)
+
+
 @pytest.mark.asyncio
 async def test_b3_recovery_does_not_repeat_a_failed_provider_action(monkeypatch):
     dataset = evaluation.json.loads(evaluation.DATASET.read_text(encoding="utf-8"))

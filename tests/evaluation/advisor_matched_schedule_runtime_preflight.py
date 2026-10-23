@@ -179,6 +179,12 @@ async def _evaluate_with_stub(dataset_path: Path) -> dict[str, Any]:
 
                 if any(item.get("expected_action_match") is not True for item in turn_results):
                     raise AssertionError(f"{frozen_case['id']} {arm}: expected action mismatch")
+                if arm == "B3_VERIFIER_RECOVERY" and any(
+                    item.get("verification_failures") != 0 for item in turn_results
+                ):
+                    raise AssertionError(
+                        f"{frozen_case['id']} {arm}: synthetic fixtures must pass their verifier"
+                    )
                 if any(item.get("formal_write") is not False for item in turn_results):
                     raise AssertionError(f"{frozen_case['id']} {arm}: formal write detected")
                 arm_results[arm] = {
